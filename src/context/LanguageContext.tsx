@@ -1,5 +1,5 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { detectLanguage, saveLanguage, setLanguage as applyLanguage, type Language } from '../i18n';
+import { detectLanguage, getLocale, saveLanguage, setLanguage as applyLanguage, type Language } from '../i18n';
 
 interface LanguageValue {
   language: Language;
@@ -22,7 +22,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    document.documentElement.lang = language;
+    document.documentElement.lang = getLocale();
   }, [language]);
 
   const value = useMemo(() => ({ language, setLanguage }), [language, setLanguage]);

@@ -1,10 +1,10 @@
 import type { Course } from '../api/types';
-import { getLanguage, t } from '../i18n';
+import { getLocale, t } from '../i18n';
 
 // Formatters follow the app language (not just the browser's), cached per language.
 const formatters = new Map<string, Intl.DateTimeFormat>();
 function dateFmt(): Intl.DateTimeFormat {
-  const locale = getLanguage();
+  const locale = getLocale();
   let fmt = formatters.get(locale);
   if (!fmt) {
     fmt = new Intl.DateTimeFormat(locale, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -55,5 +55,5 @@ export function formatBytes(bytes: number | undefined): string {
 }
 
 export function formatDay(iso: string | null | undefined): string {
-  return iso ? new Date(iso).toLocaleDateString(getLanguage(), { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+  return iso ? new Date(iso).toLocaleDateString(getLocale(), { month: 'short', day: 'numeric', year: 'numeric' }) : '';
 }

@@ -3,7 +3,7 @@ import type { Assignment, Course } from '../api/types';
 import { AssignmentList } from '../components/AssignmentList';
 import { Card, EmptyState, ErrorMessage, PageTitle, Spinner } from '../components/ui';
 import { useAllAssignments, useCourseColors, useVisibleCourses } from '../hooks/useCanvasData';
-import { getLanguage, t } from '../i18n';
+import { getLanguage, getLocale, t } from '../i18n';
 import { assignmentTone, isFaded, TONE_CLASSES, type Tone } from '../lib/assignmentState';
 import { dateKey, monthGrid } from '../lib/calendar';
 
@@ -48,8 +48,8 @@ function Month({ courses }: { courses: Course[] }) {
   if (error) return <ErrorMessage error={error} onRetry={refetch} />;
   if (!data) return <Spinner />;
 
-  const language = getLanguage();
-  const weekStart = language === 'es' ? 1 : 0;
+  const language = getLocale();
+  const weekStart = getLanguage() === 'es' ? 1 : 0; // Spain and Latin America start on Monday; the US and Brazil on Sunday
   const days = monthGrid(cursor.year, cursor.month, weekStart);
   const todayKey = dateKey(today);
   // 2023-01-01 was a Sunday: a fixed reference for the weekday names.

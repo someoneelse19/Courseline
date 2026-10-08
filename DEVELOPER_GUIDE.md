@@ -237,7 +237,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `ThemeContext.tsx` | Dark/light mode **and** custom accent color. `useTheme()`. |
 | `CourseStyleContext.tsx` | The user's own color and icon per course (Settings → Course colors and icons, which lists only the courses selected under Choose your courses), saved in localStorage. `useCourseStyles()`; read through `useCourseColors()` / `useCourseIcons()`. |
 | `LanguageContext.tsx` | The app language (English / Spanish): saved choice, else the browser's. `useLanguage()`. Changing it remounts the tree so every `t()` call re-renders. |
-| `i18n/index.ts`, `i18n/es.ts` | `t('English text', { vars })` and the Spanish dictionary. English text is the key; a missing key falls back to English. |
+| `i18n/index.ts`, `i18n/es.ts`, `i18n/pt.ts` | `t('English text', { vars })` and the Spanish and Brazilian Portuguese dictionaries; `getLocale()` gives the date/number locale (`pt-BR` for Portuguese). English text is the key; a missing key falls back to English. |
 | `CourseFilterContext.tsx` | Which courses to show (Settings). `useCourseFilter()`. |
 | `FileViewerContext.tsx` | The shared viewer modal. `useFileViewer().openFile(...)`. |
 
@@ -717,10 +717,10 @@ In `pages/SettingsPage.tsx`, write a `function MySection()` returning a `<Card t
 
 Wrap user-visible text in `t('English text')` (`import { t } from '../i18n'`; use `{name}` placeholders and pass values as the
 second argument, never string concatenation, so word order can differ). Then add the same English text as a key in
-`i18n/es.ts`. Separate strings for singular and plural. Error messages from `api/client.ts` and Canvas's own content are not
+`i18n/es.ts` and `i18n/pt.ts` (the tests fail if the two dictionaries differ). Separate strings for singular and plural. Error messages from `api/client.ts` and Canvas's own content are not
 translated. Dates follow the app language through `lib/format.ts`.
 
-To add a language: add it to `Language`/`LANGUAGES` and `dictionaries` in `i18n/index.ts`, and create its dictionary file.
+To add a language: add it to `Language`, `LANGUAGES`, `dictionaries` and `LOCALES` in `i18n/index.ts` (and to the browser-language check in `detectLanguage`), and create its dictionary file.
 
 ### Change the sidebar or header
 

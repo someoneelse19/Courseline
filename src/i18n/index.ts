@@ -1,23 +1,29 @@
 import { es } from './es';
+import { pt } from './pt';
 
 // Minimal i18n: English text IS the key. `t('Dashboard')` returns it unchanged in English and
 // looks it up in a dictionary for other languages, falling back to English when a string is
 // missing. `{name}` placeholders are filled from the second argument. Changing language
 // remounts the app (see LanguageContext), so plain function calls are enough: no hooks needed.
 
-export type Language = 'en' | 'es';
+export type Language = 'en' | 'es' | 'pt';
 
 export const LANGUAGES: { code: Language; label: string }[] = [
   { code: 'en', label: 'English' },
   { code: 'es', label: 'Español' },
+  { code: 'pt', label: 'Português (Brasil)' },
 ];
 
-const dictionaries: Record<Language, Record<string, string>> = { en: {}, es };
+const dictionaries: Record<Language, Record<string, string>> = { en: {}, es, pt };
 const STORAGE_KEY = 'courseline.language';
 
 let current: Language = 'en';
 
 export const getLanguage = () => current;
+
+/** The BCP 47 locale for dates and numbers (Portuguese means Brazilian Portuguese). */
+const LOCALES: Record<Language, string> = { en: 'en', es: 'es', pt: 'pt-BR' };
+export const getLocale = () => LOCALES[current];
 export const setLanguage = (language: Language) => {
   current = language;
 };
@@ -26,12 +32,13 @@ export const setLanguage = (language: Language) => {
 export function detectLanguage(): Language {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved === 'en' || saved === 'es') return saved;
+    if (LANGUAGES.some((l) => l.code === saved)) return saved as Language;
   } catch {
     /* storage unavailable */
   }
   const browser = typeof navigator === 'undefined' ? 'en' : navigator.language;
-  return browser.toLowerCase().startsWith('es') ? 'es' : 'en';
+  const base = browser.toLowerCase();
+  return base.startsWith('es') ? 'es' : base.startsWith('pt') ? 'pt' : 'en';
 }
 
 export function saveLanguage(language: Language) {

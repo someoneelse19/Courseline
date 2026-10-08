@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
-import { getLanguage, t } from '../i18n';
+import { getLocale, t } from '../i18n';
 
 export interface TrendDatum {
   name: string;
@@ -11,7 +11,7 @@ export interface TrendDatum {
 
 const H = 240;
 const M = { top: 16, right: 60, bottom: 28, left: 44 };
-const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(getLanguage(), { month: 'short', day: 'numeric' }) : '');
+const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(getLocale(), { month: 'short', day: 'numeric' }) : '');
 const pct = (n: number) => `${n.toFixed(1)}%`;
 
 function useWidth(ref: React.RefObject<HTMLElement>) {
