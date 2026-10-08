@@ -91,16 +91,6 @@ export function RichTextEditor({ value, onChange, ariaLabel, placeholder }: Rich
         <button type="button" title="Link" aria-label="Link" onMouseDown={(e) => e.preventDefault()} onClick={addLink} className={button}>
           🔗
         </button>
-        <button
-          type="button"
-          title="Clear formatting"
-          aria-label="Clear formatting"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => run('removeFormat')}
-          className={button}
-        >
-          ⌫ Clear
-        </button>
       </div>
       <div
         ref={ref}
