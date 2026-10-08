@@ -283,7 +283,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `FileViewerModal.tsx` | The overlay around the viewer (Esc, click-outside, body scroll lock). Loads `FileViewer` the first time a file is opened. |
 | `GradeTrendChart.tsx` | The SVG line chart on the grades page. |
 | `SubmissionForm.tsx` | Text / file submission UI. Uploads every file, then submits all their ids together. The text tab uses `RichTextEditor`. |
-| `RichTextEditor.tsx` | Dependency-free rich text box (contentEditable + `execCommand`): bold/italic/underline, heading, lists, quote, link. Pastes as plain text. Exports `cleanEditorHtml()` (DOMPurify allow-list; always run output through it) and `isEditorEmpty()`. |
+| `RichTextEditor.tsx` | Dependency-free rich text box (contentEditable + `execCommand`): bold/italic/underline, lists, quote, link. Pastes as plain text. Exports `cleanEditorHtml()` (DOMPurify allow-list; always run output through it) and `isEditorEmpty()`. |
 | `ErrorBoundary.tsx` | Catches render crashes. |
 | `ui.tsx` | `Spinner`, `ErrorMessage`, `Card`, `EmptyState`, `PageTitle`. |
 

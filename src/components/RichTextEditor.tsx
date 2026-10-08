@@ -6,7 +6,7 @@ import DOMPurify from 'dompurify';
 // Its output is HTML, which is what Canvas expects for a text-entry submission. Always run it
 // through cleanEditorHtml() before sending or rendering it.
 
-const ALLOWED_TAGS = ['p', 'div', 'br', 'b', 'strong', 'i', 'em', 'u', 'ul', 'ol', 'li', 'a', 'h2', 'h3', 'blockquote'];
+const ALLOWED_TAGS = ['p', 'div', 'br', 'b', 'strong', 'i', 'em', 'u', 'ul', 'ol', 'li', 'a', 'blockquote'];
 
 export function cleanEditorHtml(html: string): string {
   return DOMPurify.sanitize(html, { ALLOWED_TAGS, ALLOWED_ATTR: ['href'] }).trim();
@@ -31,7 +31,6 @@ const COMMANDS: { label: string; title: string; command: string; arg?: string; c
   { label: 'Bold', title: 'Bold', command: 'bold', content: <b>B</b> },
   { label: 'Italic', title: 'Italic', command: 'italic', content: <i>I</i> },
   { label: 'Underline', title: 'Underline', command: 'underline', content: <u>U</u> },
-  { label: 'Heading', title: 'Heading', command: 'formatBlock', arg: 'h3', content: 'H' },
   { label: 'Bulleted list', title: 'Bulleted list', command: 'insertUnorderedList', content: '• List' },
   { label: 'Numbered list', title: 'Numbered list', command: 'insertOrderedList', content: '1. List' },
   { label: 'Quote', title: 'Quote', command: 'formatBlock', arg: 'blockquote', content: '“ ”' },
