@@ -235,6 +235,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `AuthContext.tsx` | Credentials (localStorage), current user, login/logout, builds the `api` object. `useAuth()`, `useApi()`. |
 | `DataContext.tsx` | The keyed response cache behind `useQuery`. |
 | `ThemeContext.tsx` | Dark/light mode **and** custom accent color. `useTheme()`. |
+| `CourseStyleContext.tsx` | The user's own color and icon per course (Settings → Course colors and icons), saved in localStorage. `useCourseStyles()`; read through `useCourseColors()` / `useCourseIcons()`. |
 | `LanguageContext.tsx` | The app language (English / Spanish): saved choice, else the browser's. `useLanguage()`. Changing it remounts the tree so every `t()` call re-renders. |
 | `i18n/index.ts`, `i18n/es.ts` | `t('English text', { vars })` and the Spanish dictionary. English text is the key; a missing key falls back to English. |
 | `CourseFilterContext.tsx` | Which courses to show (Settings). `useCourseFilter()`. |
@@ -254,6 +255,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `grades.ts` | The grade maths (group weights, drop rules, what-if, trend, goal solver). Fully unit-testable. |
 | `accent.ts` | Accent presets and the function that turns one hex color into a full 11-step palette. |
 | `format.ts` | Dates, grades, byte sizes, `courseIdFromContext`. |
+| `courseIcons.ts` | The icon keys/names a course can use (drawings are in `components/icons.tsx`). |
 | `courseColor.ts` | Unique per-course colors: handed out by a course's position among all the user's courses (12 curated, then generated), so no two courses share one. Read through the `useCourseColors()` hook; used by course cards, the sidebar, the calendar and multi-course assignment lists. |
 | `html.ts` | Reading Canvas HTML without rendering it: `linkedFiles` (file links in a description or page), `fileLinkName`, `htmlText`. |
 
@@ -279,7 +281,8 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | File | Purpose |
 |---|---|
 | `Layout.tsx` | App shell (header, sidebar, routed page). **The only place page padding lives.** |
-| `Header.tsx`, `Sidebar.tsx` | Top bar (menu, user, log out); left navigation. Sidebar icons are inline SVGs in the `icons` object at the top of `Sidebar.tsx` (no icon library); add one there for a new item. The dark/light toggle lives only on the Settings page. |
+| `icons.tsx` | Shared inline-SVG icons: `navIcons` for the sidebar, the course icon set, `<CourseIcon courseId>` (the chosen icon in the chosen color). Add a course icon: key in `lib/courseIcons.ts`, drawing here. |
+| `Header.tsx`, `Sidebar.tsx` | Top bar (menu, user, log out); left navigation. Sidebar icons are inline SVGs in `navIcons` in `components/icons.tsx` (no icon library); add one there for a new item. The dark/light toggle lives only on the Settings page. |
 | `CourseLayout.tsx`, `CourseTabs.tsx` | Per-course title/grade header and the tab strip. **Add course tabs in `CourseTabs.tsx`.** |
 | `CourseCard.tsx`, `GradeSummary.tsx`, `AssignmentList.tsx` | Reusable list/card pieces. `AssignmentList` also exports `assignmentStatus()`. |
 | `HtmlContent.tsx` | Sanitized rendering of Canvas HTML; intercepts file links. |
@@ -303,6 +306,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `components/HtmlContent.test.ts` | Sanitizer: scripts/handlers/iframes removed, links made absolute, Canvas file links made inert. |
 | `components/SubmissionForm.test.tsx` | Upload-then-submit order, failure submits nothing, retry skips already-uploaded files, allowed extensions, rich-text tab (HTML body, sanitizing, empty check, reset). |
 | `context/DataContext.test.tsx` | Cache: single request per key, error capture, 5-minute freshness, refetch keeps old data visible, only the changed key re-renders, `ensure` and `prime`. |
+| `context/CourseStyleContext.test.tsx` | Per-course color/icon: save, merge, reset, ignore invalid saved values. |
 | `lib/courseColor.test.ts` | Colors are unique at any count, order-independent, and stable when a course is added. |
 | `lib/assignmentState.test.ts` | Calendar tones (red missing / blue to do / green handed in) and which finished work fades. |
 | `lib/calendar.test.ts` | Month grid (week start, whole weeks, year rollover) and local date keys. |
@@ -600,7 +604,7 @@ component.**
 1. Create `src/pages/MyPage.tsx` exporting a component. Do not add outer padding.
 2. In `App.tsx`, load it on demand: `const MyPage = lazyPage(() => import('./pages/MyPage'), 'MyPage');`, then add
    `<Route path="my-page" element={<MyPage />} />` inside the `<Route element={<Layout />}>` block.
-3. Add a `<NavLink>` in `components/Sidebar.tsx` (with an icon from its `icons` object).
+3. Add a `<NavLink>` in `components/Sidebar.tsx` (with an icon from `navIcons` in `components/icons.tsx`).
 
 ### Add a new tab inside a course
 

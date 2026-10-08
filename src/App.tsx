@@ -6,6 +6,7 @@ import { Layout } from './components/Layout';
 import { Spinner } from './components/ui';
 import { useAuth } from './context/AuthContext';
 import { CourseFilterProvider } from './context/CourseFilterContext';
+import { CourseStyleProvider } from './context/CourseStyleContext';
 import { DataProvider } from './context/DataContext';
 import { FileViewerProvider } from './context/FileViewerContext';
 import { CoursesPage } from './pages/CoursesPage';
@@ -43,6 +44,7 @@ export default function App() {
     // DataProvider lives inside the auth gate so logout wipes the cache.
     <DataProvider>
       <CourseFilterProvider>
+      <CourseStyleProvider>
       <FileViewerProvider>
       <Routes>
         <Route element={<Layout />}>
@@ -72,6 +74,7 @@ export default function App() {
         </Route>
       </Routes>
       </FileViewerProvider>
+      </CourseStyleProvider>
       </CourseFilterProvider>
     </DataProvider>
   );

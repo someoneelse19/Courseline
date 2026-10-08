@@ -9,8 +9,19 @@ const BASE = ['#2563eb', '#16a34a', '#e11d48', '#d97706', '#0891b2', '#c026d3', 
 /** The `index`-th color: curated for the first twelve, then golden-angle hues (alternating lightness) so it never runs out. */
 export function colorAt(index: number): string {
   if (index < BASE.length) return BASE[index];
-  const hue = Math.round((index * 137.508) % 360);
-  return `hsl(${hue} 65% ${index % 2 ? 40 : 58}%)`;
+  return hslToHex(Math.round((index * 137.508) % 360), 0.65, index % 2 ? 0.4 : 0.58);
+}
+
+// Hex (not hsl()) so the value can also seed an <input type="color"> in Settings.
+function hslToHex(h: number, s: number, l: number): string {
+  const a = s * Math.min(l, 1 - l);
+  const channel = (n: number) => {
+    const k = (n + h / 30) % 12;
+    return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))))
+      .toString(16)
+      .padStart(2, '0');
+  };
+  return `#${channel(0)}${channel(8)}${channel(4)}`;
 }
 
 export const NEUTRAL_COURSE_COLOR = '#9ca3af'; // until the course list has loaded

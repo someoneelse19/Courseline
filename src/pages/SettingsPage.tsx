@@ -3,7 +3,10 @@ import { Card, EmptyState, ErrorMessage, PageTitle, Spinner } from '../component
 import { useCourseFilter } from '../context/CourseFilterContext';
 import { useTheme } from '../context/ThemeContext';
 import { ACCENT_PRESETS, DEFAULT_ACCENT } from '../lib/accent';
-import { useCourses } from '../hooks/useCanvasData';
+import { CourseIconShape } from '../components/icons';
+import { useCourseStyles } from '../context/CourseStyleContext';
+import { useCourseColors, useCourseIcons, useCourses } from '../hooks/useCanvasData';
+import { COURSE_ICON_KEYS, COURSE_ICON_LABELS } from '../lib/courseIcons';
 import { t, LANGUAGES, type Language } from '../i18n';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -16,6 +19,7 @@ export function SettingsPage() {
         <ThemePicker />
         <AccentPicker />
         <CoursePicker />
+        <CourseStylePicker />
       </div>
     </>
   );
@@ -180,6 +184,84 @@ function CoursePicker() {
             ))}
           </ul>
         )}
+    </Card>
+  );
+}
+
+function CourseStylePicker() {
+  const { data, error, refetch } = useCourses(); // every course, even hidden ones
+  const { styles, setStyle, reset } = useCourseStyles();
+  const colorOf = useCourseColors();
+  const iconOf = useCourseIcons();
+  const [open, setOpen] = useState<number | null>(null);
+
+  if (error) return <ErrorMessage error={error} onRetry={refetch} />;
+  if (!data) return <Spinner />;
+
+  return (
+    <Card title={t('Course colors and icons')}>
+      <p className="-mt-1 mb-3 text-sm text-neutral-500 dark:text-neutral-400">
+        {t('Pick how each course looks in the sidebar, calendar and course cards. Saved in this browser.')}
+      </p>
+      <ul className="divide-y divide-neutral-200 dark:divide-neutral-800">
+        {data.map((c) => {
+          const name = c.name ?? c.course_code ?? `Course ${c.id}`;
+          const customized = !!styles[c.id];
+          return (
+            <li key={c.id} className="py-2.5">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setOpen(open === c.id ? null : c.id)}
+                  aria-expanded={open === c.id}
+                  aria-label={t('Choose icon for {name}', { name })}
+                  title={t('Choose icon')}
+                  style={{ color: colorOf(c.id) }}
+                  className="rounded-md border border-neutral-300 p-2 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+                >
+                  <CourseIconShape iconKey={iconOf(c.id)} className="h-5 w-5" />
+                </button>
+                <span className="min-w-0 flex-1 truncate text-sm font-medium">{name}</span>
+                <input
+                  type="color"
+                  aria-label={t('Color for {name}', { name })}
+                  value={colorOf(c.id)}
+                  onChange={(e) => setStyle(c.id, { color: e.target.value })}
+                  className="h-8 w-10 cursor-pointer rounded-sm border border-neutral-300 bg-transparent p-0.5 dark:border-neutral-700"
+                />
+                <button
+                  type="button"
+                  disabled={!customized}
+                  onClick={() => reset(c.id)}
+                  className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 disabled:opacity-40 dark:border-neutral-700 dark:hover:bg-neutral-800"
+                >
+                  {t('Reset')}
+                </button>
+              </div>
+              {open === c.id && (
+                <div role="group" aria-label={t('Icons')} className="mt-2 flex flex-wrap gap-1.5">
+                  {COURSE_ICON_KEYS.map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      title={t(COURSE_ICON_LABELS[key])}
+                      aria-label={t(COURSE_ICON_LABELS[key])}
+                      aria-pressed={iconOf(c.id) === key}
+                      onClick={() => setStyle(c.id, { icon: key })}
+                      style={{ color: colorOf(c.id) }}
+                      className={`rounded-md border p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 ${
+                        iconOf(c.id) === key ? 'border-neutral-900 dark:border-white' : 'border-neutral-300 dark:border-neutral-700'
+                      }`}
+                    >
+                      <CourseIconShape iconKey={key} className="h-5 w-5" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </Card>
   );
 }

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { Course } from '../api/types';
+import { CourseIcon } from './icons';
 import { useCourseColors } from '../hooks/useCanvasData';
 import { formatGrade, getGrade } from '../lib/format';
 import { t } from '../i18n';
@@ -14,7 +15,10 @@ export function CourseCard({ course }: { course: Course }) {
     >
       <div className="h-2" style={{ backgroundColor: colorOf(course.id) }} />
       <div className="p-4">
-        <h3 className="truncate font-semibold">{course.name}</h3>
+        <h3 className="flex items-center gap-2 font-semibold">
+          <CourseIcon courseId={course.id} className="h-5 w-5" />
+          <span className="truncate">{course.name}</span>
+        </h3>
         <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">
           {[course.course_code, course.term?.name].filter(Boolean).join(' · ')}
         </p>

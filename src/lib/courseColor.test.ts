@@ -8,6 +8,10 @@ describe('course colors', () => {
     }
   });
 
+  it('always returns #rrggbb, which a color input accepts', () => {
+    for (let i = 0; i < 60; i++) expect(colorAt(i)).toMatch(/^#[0-9a-f]{6}$/);
+  });
+
   it('does not depend on the order the courses arrive in', () => {
     expect(buildCourseColors([30, 10, 20])).toEqual(buildCourseColors([10, 20, 30]));
   });

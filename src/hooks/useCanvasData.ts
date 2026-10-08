@@ -4,6 +4,8 @@ import { useMemo } from 'react';
 import { useApi } from '../context/AuthContext';
 import { useCourseFilter } from '../context/CourseFilterContext';
 import { useQueryStore } from '../context/DataContext';
+import { useCourseStyles } from '../context/CourseStyleContext';
+import { DEFAULT_COURSE_ICON, type CourseIconKey } from '../lib/courseIcons';
 import { buildCourseColors, NEUTRAL_COURSE_COLOR } from '../lib/courseColor';
 import { useQuery } from './useQuery';
 
@@ -20,11 +22,18 @@ export function useVisibleCourses() {
   return { ...result, data };
 }
 
-/** `colorOf(courseId)`: that course's unique color (see lib/courseColor.ts). Based on the full course list, so Settings filters don't shift colors. */
+/** `colorOf(courseId)`: that course's unique color (see lib/courseColor.ts) unless the user picked one in Settings. Based on the full course list, so Settings filters don't shift colors. */
 export function useCourseColors(): (courseId: number) => string {
   const { data } = useCourses();
+  const { styles } = useCourseStyles();
   const colors = useMemo(() => buildCourseColors((data ?? []).map((c) => c.id)), [data]);
-  return (courseId) => colors.get(courseId) ?? NEUTRAL_COURSE_COLOR;
+  return (courseId) => styles[courseId]?.color ?? colors.get(courseId) ?? NEUTRAL_COURSE_COLOR;
+}
+
+/** `iconOf(courseId)`: the icon the user picked for that course (a book by default). */
+export function useCourseIcons(): (courseId: number) => CourseIconKey {
+  const { styles } = useCourseStyles();
+  return (courseId) => styles[courseId]?.icon ?? DEFAULT_COURSE_ICON;
 }
 
 export function useCourse(courseId: number) {
