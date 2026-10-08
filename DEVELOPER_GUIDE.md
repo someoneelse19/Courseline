@@ -254,6 +254,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `grades.ts` | The grade maths (group weights, drop rules, what-if, trend, goal solver). Fully unit-testable. |
 | `accent.ts` | Accent presets and the function that turns one hex color into a full 11-step palette. |
 | `format.ts` | Dates, grades, byte sizes, `courseIdFromContext`. |
+| `courseColor.ts` | `courseColor(id)`: the stable per-course color used by course cards, the calendar (dots and legend) and multi-course assignment lists. |
 | `html.ts` | Reading Canvas HTML without rendering it: `linkedFiles` (file links in a description or page), `fileLinkName`, `htmlText`. |
 
 ### `src/pages/` — one file per screen (routes in `App.tsx`)

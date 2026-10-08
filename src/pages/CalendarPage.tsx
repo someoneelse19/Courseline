@@ -5,6 +5,7 @@ import { Card, EmptyState, ErrorMessage, PageTitle, Spinner } from '../component
 import { useAllAssignments, useVisibleCourses } from '../hooks/useCanvasData';
 import { getLanguage, t } from '../i18n';
 import { dateKey, monthGrid } from '../lib/calendar';
+import { courseColor } from '../lib/courseColor';
 
 // A month view of everything due, across the visible courses. Click a day to list its assignments.
 // Only assignments with a due date appear (Canvas calendar events are not included yet).
@@ -116,8 +117,13 @@ function Month({ courses }: { courses: Course[] }) {
                   {d.getDate()}
                 </span>
                 {items.slice(0, MAX_CHIPS).map((a) => (
-                  <span key={a.id} className={`truncate rounded-sm px-1 py-0.5 text-[11px] leading-tight ${assignmentStatus(a).className}`}>
-                    {a.name}
+                  <span
+                    key={a.id}
+                    title={`${names.get(a.course_id) ?? ''}: ${a.name}`}
+                    className={`flex items-center gap-1 rounded-sm px-1 py-0.5 text-[11px] leading-tight ${assignmentStatus(a).className}`}
+                  >
+                    <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${courseColor(a.course_id)}`} />
+                    <span className="truncate">{a.name}</span>
                   </span>
                 ))}
                 {items.length > MAX_CHIPS && (
@@ -127,6 +133,15 @@ function Month({ courses }: { courses: Course[] }) {
             );
           })}
         </div>
+
+        <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-600 dark:text-neutral-300" aria-label={t('Courses')}>
+          {courses.map((c) => (
+            <li key={c.id} className="flex items-center gap-1.5">
+              <span aria-hidden className={`h-2.5 w-2.5 rounded-full ${courseColor(c.id)}`} />
+              {names.get(c.id)}
+            </li>
+          ))}
+        </ul>
       </Card>
 
       <Card title={selectedLabel}>
