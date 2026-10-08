@@ -54,8 +54,8 @@ export function SettingsPage() {
           </>
         ) : (
           <>
-            <CoursePicker />
             <CourseStylePicker />
+            <CoursePicker />
           </>
         )}
       </div>
