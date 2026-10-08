@@ -5,7 +5,7 @@ import { useTheme } from '../context/ThemeContext';
 import { ACCENT_PRESETS, DEFAULT_ACCENT } from '../lib/accent';
 import { CourseIconShape } from '../components/icons';
 import { useCourseStyles } from '../context/CourseStyleContext';
-import { useCourseColors, useCourseIcons, useCourses } from '../hooks/useCanvasData';
+import { useCourseColors, useCourseIcons, useCourses, useVisibleCourses } from '../hooks/useCanvasData';
 import { COURSE_ICON_KEYS, COURSE_ICON_LABELS } from '../lib/courseIcons';
 import { t, LANGUAGES, type Language } from '../i18n';
 import { useLanguage } from '../context/LanguageContext';
@@ -189,7 +189,7 @@ function CoursePicker() {
 }
 
 function CourseStylePicker() {
-  const { data, error, refetch } = useCourses(); // every course, even hidden ones
+  const { data, error, refetch } = useVisibleCourses(); // only the courses chosen above
   const { styles, setStyle, reset } = useCourseStyles();
   const colorOf = useCourseColors();
   const iconOf = useCourseIcons();
@@ -201,8 +201,9 @@ function CourseStylePicker() {
   return (
     <Card title={t('Course colors and icons')}>
       <p className="-mt-1 mb-3 text-sm text-neutral-500 dark:text-neutral-400">
-        {t('Pick how each course looks in the sidebar, calendar and course cards. Saved in this browser.')}
+        {t('Pick how each of your selected courses looks in the sidebar, calendar and course cards. Saved in this browser.')}
       </p>
+      {data.length === 0 && <EmptyState>{t('No courses selected. Tick some under “Choose your courses”.')}</EmptyState>}
       <ul className="divide-y divide-neutral-200 dark:divide-neutral-800">
         {data.map((c) => {
           const name = c.name ?? c.course_code ?? `Course ${c.id}`;

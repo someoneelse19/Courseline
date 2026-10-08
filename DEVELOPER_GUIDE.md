@@ -235,7 +235,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `AuthContext.tsx` | Credentials (localStorage), current user, login/logout, builds the `api` object. `useAuth()`, `useApi()`. |
 | `DataContext.tsx` | The keyed response cache behind `useQuery`. |
 | `ThemeContext.tsx` | Dark/light mode **and** custom accent color. `useTheme()`. |
-| `CourseStyleContext.tsx` | The user's own color and icon per course (Settings → Course colors and icons), saved in localStorage. `useCourseStyles()`; read through `useCourseColors()` / `useCourseIcons()`. |
+| `CourseStyleContext.tsx` | The user's own color and icon per course (Settings → Course colors and icons, which lists only the courses selected under Choose your courses), saved in localStorage. `useCourseStyles()`; read through `useCourseColors()` / `useCourseIcons()`. |
 | `LanguageContext.tsx` | The app language (English / Spanish): saved choice, else the browser's. `useLanguage()`. Changing it remounts the tree so every `t()` call re-renders. |
 | `i18n/index.ts`, `i18n/es.ts` | `t('English text', { vars })` and the Spanish dictionary. English text is the key; a missing key falls back to English. |
 | `CourseFilterContext.tsx` | Which courses to show (Settings). `useCourseFilter()`. |
