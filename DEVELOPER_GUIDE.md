@@ -275,7 +275,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | File | Purpose |
 |---|---|
 | `Layout.tsx` | App shell (header, sidebar, routed page). **The only place page padding lives.** |
-| `Header.tsx`, `Sidebar.tsx` | Top bar (menu, user, log out); left navigation. |
+| `Header.tsx`, `Sidebar.tsx` | Top bar (menu, user, log out); left navigation. Sidebar icons are inline SVGs in the `icons` object at the top of `Sidebar.tsx` (no icon library); add one there for a new item. The dark/light toggle lives only on the Settings page. |
 | `CourseLayout.tsx`, `CourseTabs.tsx` | Per-course title/grade header and the tab strip. **Add course tabs in `CourseTabs.tsx`.** |
 | `CourseCard.tsx`, `GradeSummary.tsx`, `AssignmentList.tsx` | Reusable list/card pieces. `AssignmentList` also exports `assignmentStatus()`. |
 | `HtmlContent.tsx` | Sanitized rendering of Canvas HTML; intercepts file links. |
@@ -590,7 +590,7 @@ component.**
 1. Create `src/pages/MyPage.tsx` exporting a component. Do not add outer padding.
 2. In `App.tsx`, load it on demand: `const MyPage = lazyPage(() => import('./pages/MyPage'), 'MyPage');`, then add
    `<Route path="my-page" element={<MyPage />} />` inside the `<Route element={<Layout />}>` block.
-3. Add a `<NavLink>` in `components/Sidebar.tsx`.
+3. Add a `<NavLink>` in `components/Sidebar.tsx` (with an icon from its `icons` object).
 
 ### Add a new tab inside a course
 
@@ -701,7 +701,7 @@ In `pages/SettingsPage.tsx`, write a `function MySection()` returning a `<Card t
 
 ### Change the sidebar or header
 
-`components/Sidebar.tsx` (links, course list), `components/Header.tsx` (theme toggle, user, log out).
+`components/Sidebar.tsx` (links, course list), `components/Header.tsx` (user, log out; the theme toggle is on the Settings page).
 
 ### Point the app at a different Canvas / change the proxy
 
