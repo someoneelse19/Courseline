@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { Assignment } from '../api/types';
+import type { Assignment, Course } from '../api/types';
 import { AssignmentList } from '../components/AssignmentList';
 import { Card, EmptyState, ErrorMessage, PageTitle, Spinner } from '../components/ui';
 import { useAllAssignments, useVisibleCourses } from '../hooks/useCanvasData';
@@ -32,9 +32,9 @@ function isDone(a: Assignment): boolean {
   return s.excused === true || s.workflow_state === 'graded' || s.workflow_state === 'submitted' || s.workflow_state === 'pending_review';
 }
 
-function AllAssignments({ courses }: { courses: { id: number; name: string }[] }) {
+function AllAssignments({ courses }: { courses: Course[] }) {
   const { data, error, refetch } = useAllAssignments(courses.map((c) => c.id));
-  const names = useMemo(() => new Map(courses.map((c) => [c.id, c.name])), [courses]);
+  const names = useMemo(() => new Map(courses.map((c) => [c.id, c.name ?? c.course_code ?? `Course ${c.id}`])), [courses]);
   const [tab, setTab] = useState<Tab>('pending');
   const { pending, done } = useMemo(() => {
     const all = data ?? [];
