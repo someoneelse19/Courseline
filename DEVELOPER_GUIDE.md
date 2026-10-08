@@ -263,6 +263,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `DashboardPage.tsx` | `/` — welcome, upcoming assignments, first four courses, grades card. |
 | `CoursesPage.tsx` | `/courses` — all visible courses as cards. |
 | `AssignmentsPage.tsx` | `/assignments` — pending/done tabs across all visible courses. |
+| `CalendarPage.tsx` | `/calendar` — month grid of assignments due across the visible courses (via `useAllAssignments`); click a day to list it. Weeks start Monday in Spanish. Pure date maths in `lib/calendar.ts`. |
 | `SettingsPage.tsx` | `/settings` — Theme, Accent color, Course selection. |
 | `LoginPage.tsx` | Shown whenever there are no valid credentials. |
 | `CoursePagesPage.tsx` | `/courses/:id` (default tab, "Pages") — pages and modules merged. |
@@ -301,6 +302,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `components/HtmlContent.test.ts` | Sanitizer: scripts/handlers/iframes removed, links made absolute, Canvas file links made inert. |
 | `components/SubmissionForm.test.tsx` | Upload-then-submit order, failure submits nothing, retry skips already-uploaded files, allowed extensions, rich-text tab (HTML body, sanitizing, empty check, reset). |
 | `context/DataContext.test.tsx` | Cache: single request per key, error capture, 5-minute freshness, refetch keeps old data visible, only the changed key re-renders, `ensure` and `prime`. |
+| `lib/calendar.test.ts` | Month grid (week start, whole weeks, year rollover) and local date keys. |
 | `i18n/i18n.test.ts` | `t()` in both languages, placeholders, saved-language detection, and that every Spanish string keeps the English `{placeholders}`. |
 | `firstPaint.test.ts` | The inline script in `index.html`: old `better-canvas.*` keys move to `courseline.*` without overwriting newer ones; theme and accent apply. |
 | `App.test.tsx` | Smoke test: every route renders its data through the real providers, cache and lazy-loaded screens; sidebar navigation; the Pages tab makes no per-page requests. |
@@ -417,6 +419,7 @@ transition (React Router 7), so the current screen stays up while the next one l
 | `/courses/:courseId/assignments/:assignmentId` | `AssignmentDetailPage` | Keeps the Assignments tab highlighted. |
 | `/courses/:courseId/assignments/:assignmentId/submission` | `SubmissionViewPage` | |
 | `/assignments` | `AssignmentsPage` | |
+| `/calendar` | `CalendarPage` | |
 | `/settings` | `SettingsPage` | |
 | `*` | "Page not found" | |
 
@@ -904,7 +907,7 @@ The app is in real use, so treat every change as something a student will hit to
 
 ### Limitations by design
 
-- Read-mostly: no discussions, announcements, calendar, inbox, quizzes (the sidebar/tabs have TODO markers).
+- Read-mostly: no discussions, announcements, inbox, quizzes; the calendar shows assignment due dates only, not Canvas calendar events (the sidebar/tabs have TODO markers).
 - Cache is in memory only: a page reload refetches everything.
 - Accent presets are only checked for white-text contrast, not colorblind separation (the UI uses one accent, so this
   is moot, but status badges are color + text).
@@ -919,5 +922,5 @@ The app is in real use, so treat every change as something a student will hit to
 - Run a submission against a real Canvas and fix whatever differs (see above).
 - Add Playwright tests with a saved fake-Canvas fixture for the screens and the file viewer.
 - Move the token behind a tiny backend (or OAuth2) so the app can be shared.
-- Planner API to replace the per-course fan-out in "All assignments"; announcements/discussions/calendar/inbox.
+- Planner API to replace the per-course fan-out in "All assignments"; announcements/discussions/inbox, and calendar events in the calendar.
 - Persist the query cache (so reloads are instant) or adopt TanStack Query.

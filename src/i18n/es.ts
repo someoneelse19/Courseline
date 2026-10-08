@@ -1,6 +1,14 @@
 // Spanish translations. Keys are the exact English strings passed to t(); a missing key falls
 // back to English. Keep {placeholders} identical to the English text.
 export const es: Record<string, string> = {
+  'Calendar': 'Calendario',
+  'Previous month': 'Mes anterior',
+  'Next month': 'Mes siguiente',
+  'Today': 'Hoy',
+  '1 assignment': '1 tarea',
+  '{n} assignments': '{n} tareas',
+  '+{n} more': '+{n} más',
+  'Nothing due on this day.': 'No hay nada para entregar este día.',
   'Signing in…': 'Iniciando sesión…',
   'Page not found.': 'Página no encontrada.',
   'Go home': 'Ir al inicio',

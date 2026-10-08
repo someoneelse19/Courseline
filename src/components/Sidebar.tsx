@@ -6,7 +6,7 @@ import { t } from '../i18n';
 
 // Layout: Dashboard (+ cross-course views) at the top, your courses in the middle,
 // Settings pinned to the bottom. Fixed column on desktop, slide-over drawer on mobile.
-// TODO: add Calendar, Inbox, Announcements here as features land.
+// TODO: add Inbox, Announcements here as features land.
 
 // Inline 24px stroke icons (no icon library); they inherit the link's text color.
 function Icon({ children }: { children: ReactNode }) {
@@ -39,6 +39,12 @@ const icons = {
     <Icon>
       <rect x="5" y="3" width="14" height="18" rx="2" />
       <path d="M9 8h6M9 12h6M9 16h3" />
+    </Icon>
+  ),
+  calendar: (
+    <Icon>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M3 10h18M8 3v4M16 3v4" />
     </Icon>
   ),
   course: (
@@ -85,6 +91,11 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           <NavLink to="/assignments" className={({ isActive }) => item(isActive)}>
             {icons.assignments}
             <span className="truncate">{t('All assignments')}</span>
+          </NavLink>
+
+          <NavLink to="/calendar" className={({ isActive }) => item(isActive)}>
+            {icons.calendar}
+            <span className="truncate">{t('Calendar')}</span>
           </NavLink>
 
           <h3 className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">{t('Courses')}</h3>

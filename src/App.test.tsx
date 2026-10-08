@@ -116,6 +116,7 @@ describe('screens', () => {
     ['/courses/1/grades', ['Current grade', 'Grade over time', 'Labs']],
     ['/courses/1/assignments/5', ['Instructions', 'rubric.pdf', 'Nice work']],
     ['/courses/1/assignments/5/submission', ['Your submission', '8 / 10', 'My lab']],
+    ['/calendar', ['Calendar', 'Today']],
     ['/settings', ['Accent color', 'Choose your courses', '1 of 1 selected']],
     ['/nowhere', ['Page not found']],
   ])('%s', async (at, texts) => {

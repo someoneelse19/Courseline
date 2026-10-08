@@ -19,6 +19,7 @@ function lazyPage<K extends string, M extends Record<K, ComponentType>>(load: ()
 }
 const AssignmentDetailPage = lazyPage(() => import('./pages/AssignmentDetailPage'), 'AssignmentDetailPage');
 const AssignmentsPage = lazyPage(() => import('./pages/AssignmentsPage'), 'AssignmentsPage');
+const CalendarPage = lazyPage(() => import('./pages/CalendarPage'), 'CalendarPage');
 const CourseDetailPage = lazyPage(() => import('./pages/CourseDetailPage'), 'CourseDetailPage');
 const CourseFilesPage = lazyPage(() => import('./pages/CourseFilesPage'), 'CourseFilesPage');
 const CourseGradesPage = lazyPage(() => import('./pages/CourseGradesPage'), 'CourseGradesPage');
@@ -58,6 +59,7 @@ export default function App() {
             <Route path="assignments/:assignmentId/submission" element={<SubmissionViewPage />} />
           </Route>
           <Route path="assignments" element={<AssignmentsPage />} />
+          <Route path="calendar" element={<CalendarPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route
             path="*"
