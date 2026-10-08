@@ -1,17 +1,18 @@
 import { Link } from 'react-router-dom';
 import type { Course } from '../api/types';
-import { courseColor } from '../lib/courseColor';
+import { useCourseColors } from '../hooks/useCanvasData';
 import { formatGrade, getGrade } from '../lib/format';
 import { t } from '../i18n';
 
 export function CourseCard({ course }: { course: Course }) {
+  const colorOf = useCourseColors();
   const grade = getGrade(course);
   return (
     <Link
       to={`/courses/${course.id}`}
       className="block overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xs transition hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900"
     >
-      <div className={`h-2 ${courseColor(course.id)}`} />
+      <div className="h-2" style={{ backgroundColor: colorOf(course.id) }} />
       <div className="p-4">
         <h3 className="truncate font-semibold">{course.name}</h3>
         <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">

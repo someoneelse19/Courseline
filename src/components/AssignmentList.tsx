@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { Assignment } from '../api/types';
-import { courseColor } from '../lib/courseColor';
+import { useCourseColors } from '../hooks/useCanvasData';
 import { formatDue, isPast } from '../lib/format';
 import { EmptyState } from './ui';
 import { t } from '../i18n';
@@ -26,6 +26,7 @@ export function AssignmentList({
   /** When given, each row shows its course name (for lists spanning several courses). */
   courseNames?: ReadonlyMap<number, string>;
 }) {
+  const colorOf = useCourseColors();
   if (assignments.length === 0) return <EmptyState>{t('No assignments.')}</EmptyState>;
 
   const sorted = [...assignments].sort((a, b) => {
@@ -47,7 +48,7 @@ export function AssignmentList({
               <p className="flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
                 {courseNames?.has(a.course_id) && (
                   <>
-                    <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${courseColor(a.course_id)}`} />
+                    <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: colorOf(a.course_id) }} />
                     <span className="truncate">{courseNames.get(a.course_id)}</span>
                     <span aria-hidden>·</span>
                   </>

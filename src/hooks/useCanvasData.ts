@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { useApi } from '../context/AuthContext';
 import { useCourseFilter } from '../context/CourseFilterContext';
 import { useQueryStore } from '../context/DataContext';
+import { buildCourseColors, NEUTRAL_COURSE_COLOR } from '../lib/courseColor';
 import { useQuery } from './useQuery';
 
 export function useCourses() {
@@ -17,6 +18,13 @@ export function useVisibleCourses() {
   const { isVisible } = useCourseFilter();
   const data = useMemo(() => result.data?.filter((c) => isVisible(c.id)), [result.data, isVisible]);
   return { ...result, data };
+}
+
+/** `colorOf(courseId)`: that course's unique color (see lib/courseColor.ts). Based on the full course list, so Settings filters don't shift colors. */
+export function useCourseColors(): (courseId: number) => string {
+  const { data } = useCourses();
+  const colors = useMemo(() => buildCourseColors((data ?? []).map((c) => c.id)), [data]);
+  return (courseId) => colors.get(courseId) ?? NEUTRAL_COURSE_COLOR;
 }
 
 export function useCourse(courseId: number) {

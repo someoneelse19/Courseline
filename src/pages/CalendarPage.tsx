@@ -2,10 +2,9 @@ import { useMemo, useState } from 'react';
 import type { Assignment, Course } from '../api/types';
 import { assignmentStatus, AssignmentList } from '../components/AssignmentList';
 import { Card, EmptyState, ErrorMessage, PageTitle, Spinner } from '../components/ui';
-import { useAllAssignments, useVisibleCourses } from '../hooks/useCanvasData';
+import { useAllAssignments, useCourseColors, useVisibleCourses } from '../hooks/useCanvasData';
 import { getLanguage, t } from '../i18n';
 import { dateKey, monthGrid } from '../lib/calendar';
-import { courseColor } from '../lib/courseColor';
 
 // A month view of everything due, across the visible courses. Click a day to list its assignments.
 // Only assignments with a due date appear (Canvas calendar events are not included yet).
@@ -29,6 +28,7 @@ export function CalendarPage() {
 
 function Month({ courses }: { courses: Course[] }) {
   const { data, error, refetch } = useAllAssignments(courses.map((c) => c.id));
+  const colorOf = useCourseColors();
   const today = new Date();
   const [cursor, setCursor] = useState({ year: today.getFullYear(), month: today.getMonth() });
   const [selected, setSelected] = useState(dateKey(today));
@@ -122,7 +122,7 @@ function Month({ courses }: { courses: Course[] }) {
                     title={`${names.get(a.course_id) ?? ''}: ${a.name}`}
                     className={`flex items-center gap-1 rounded-sm px-1 py-0.5 text-[11px] leading-tight ${assignmentStatus(a).className}`}
                   >
-                    <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${courseColor(a.course_id)}`} />
+                    <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: colorOf(a.course_id) }} />
                     <span className="truncate">{a.name}</span>
                   </span>
                 ))}
@@ -137,7 +137,7 @@ function Month({ courses }: { courses: Course[] }) {
         <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-600 dark:text-neutral-300" aria-label={t('Courses')}>
           {courses.map((c) => (
             <li key={c.id} className="flex items-center gap-1.5">
-              <span aria-hidden className={`h-2.5 w-2.5 rounded-full ${courseColor(c.id)}`} />
+              <span aria-hidden className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: colorOf(c.id) }} />
               {names.get(c.id)}
             </li>
           ))}

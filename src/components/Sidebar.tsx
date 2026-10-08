@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
-import { useVisibleCourses } from '../hooks/useCanvasData';
+import { useCourseColors, useVisibleCourses } from '../hooks/useCanvasData';
 import { Spinner } from './ui';
 import { t } from '../i18n';
 
@@ -71,6 +71,7 @@ const item = (active: boolean) =>
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { data: courses, error } = useVisibleCourses();
+  const colorOf = useCourseColors();
   const { pathname } = useLocation();
   const currentCourseId = pathname.match(/^\/courses\/(\d+)/)?.[1];
 
@@ -110,7 +111,9 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           ) : (
             courses.map((c) => (
               <Link key={c.id} to={`/courses/${c.id}`} title={c.name} className={item(currentCourseId === String(c.id))}>
-                {icons.course}
+                <span style={{ color: colorOf(c.id) }} className="flex">
+                  {icons.course}
+                </span>
                 <span className="truncate">{c.name}</span>
               </Link>
             ))

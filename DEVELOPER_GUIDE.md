@@ -254,7 +254,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `grades.ts` | The grade maths (group weights, drop rules, what-if, trend, goal solver). Fully unit-testable. |
 | `accent.ts` | Accent presets and the function that turns one hex color into a full 11-step palette. |
 | `format.ts` | Dates, grades, byte sizes, `courseIdFromContext`. |
-| `courseColor.ts` | `courseColor(id)`: the stable per-course color used by course cards, the calendar (dots and legend) and multi-course assignment lists. |
+| `courseColor.ts` | Unique per-course colors: handed out by a course's position among all the user's courses (12 curated, then generated), so no two courses share one. Read through the `useCourseColors()` hook; used by course cards, the sidebar, the calendar and multi-course assignment lists. |
 | `html.ts` | Reading Canvas HTML without rendering it: `linkedFiles` (file links in a description or page), `fileLinkName`, `htmlText`. |
 
 ### `src/pages/` — one file per screen (routes in `App.tsx`)
@@ -303,6 +303,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `components/HtmlContent.test.ts` | Sanitizer: scripts/handlers/iframes removed, links made absolute, Canvas file links made inert. |
 | `components/SubmissionForm.test.tsx` | Upload-then-submit order, failure submits nothing, retry skips already-uploaded files, allowed extensions, rich-text tab (HTML body, sanitizing, empty check, reset). |
 | `context/DataContext.test.tsx` | Cache: single request per key, error capture, 5-minute freshness, refetch keeps old data visible, only the changed key re-renders, `ensure` and `prime`. |
+| `lib/courseColor.test.ts` | Colors are unique at any count, order-independent, and stable when a course is added. |
 | `lib/calendar.test.ts` | Month grid (week start, whole weeks, year rollover) and local date keys. |
 | `i18n/i18n.test.ts` | `t()` in both languages, placeholders, saved-language detection, and that every Spanish string keeps the English `{placeholders}`. |
 | `firstPaint.test.ts` | The inline script in `index.html`: old `better-canvas.*` keys move to `courseline.*` without overwriting newer ones; theme and accent apply. |
