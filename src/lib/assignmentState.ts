@@ -24,3 +24,29 @@ export const TONE_CLASSES: Record<Tone, string> = {
 
 /** Finished work whose due date has passed fades back, so what still needs attention stands out. */
 export const isFaded = (a: Assignment): boolean => isDone(a) && isPast(a.due_at);
+
+/** The date an assignment is placed by: its due date, else the day it was posted (or becomes available). */
+export const assignmentDate = (a: Assignment): string | null => a.due_at ?? a.created_at ?? a.unlock_at ?? null;
+
+/**
+ * Most relevant first: what is coming up, soonest first, then what already passed, most recent
+ * first. Undated assignments go last. Applies the same way to pending and finished work.
+ */
+export function sortAssignments(list: Assignment[], now = Date.now()): Assignment[] {
+  const time = (a: Assignment) => {
+    const d = assignmentDate(a);
+    return d ? new Date(d).getTime() : null;
+  };
+  const rank = (a: Assignment) => {
+    const x = time(a);
+    return x === null ? 2 : x >= now ? 0 : 1;
+  };
+  return [...list].sort((a, b) => {
+    const ra = rank(a);
+    const rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    const ta = time(a) ?? 0;
+    const tb = time(b) ?? 0;
+    return (ra === 0 ? ta - tb : tb - ta) || a.name.localeCompare(b.name);
+  });
+}

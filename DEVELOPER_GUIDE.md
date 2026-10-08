@@ -266,7 +266,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `DashboardPage.tsx` | `/` — welcome, upcoming assignments, first four courses, grades card. |
 | `CoursesPage.tsx` | `/courses` — all visible courses as cards. |
 | `AssignmentsPage.tsx` | `/assignments` — pending/done tabs across all visible courses. |
-| `CalendarPage.tsx` | `/calendar` — month grid of assignments due across the visible courses (via `useAllAssignments`); click a day to list it. Weeks start Monday in Spanish. Pure date maths in `lib/calendar.ts`; item colors come from `lib/assignmentState.ts` (red = missing, pastel blue = to do, pastel green = submitted/graded/excused; submitted work past its due date is faded). The same scheme colors the status badges in every assignment list and the per-course grades table. |
+| `CalendarPage.tsx` | `/calendar` — month grid of assignments due across the visible courses (via `useAllAssignments`); click a day to list it. Weeks start Monday in Spanish. Pure date maths in `lib/calendar.ts`; item colors come from `lib/assignmentState.ts` (red = missing, pastel blue = to do, pastel green = submitted/graded/excused; submitted work past its due date is faded). Lists are ordered by `sortAssignments()` (upcoming soonest first, then past most recent first; an undated assignment is placed by its post date, undated ones last). The same scheme colors the status badges in every assignment list and the per-course grades table. |
 | `SettingsPage.tsx` | `/settings` — Theme, Accent color, Course selection. |
 | `LoginPage.tsx` | Shown whenever there are no valid credentials. |
 | `CoursePagesPage.tsx` | `/courses/:id` (default tab, "Pages") — pages and modules merged. |

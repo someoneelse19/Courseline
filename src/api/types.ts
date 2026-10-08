@@ -110,6 +110,7 @@ export interface Assignment {
   // (see components/HtmlContent.tsx). Links/images inside are often root-relative.
   description?: string | null;
   grading_type?: string;
+  created_at?: string | null; // when the assignment was posted
   unlock_at?: string | null;
   lock_at?: string | null;
   locked_for_user?: boolean;

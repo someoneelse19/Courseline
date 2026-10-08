@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Assignment } from '../api/types';
 import { assignmentStatus } from '../components/AssignmentList';
-import { assignmentTone, isDone, isFaded, TONE_CLASSES } from './assignmentState';
+import { assignmentDate, assignmentTone, isDone, isFaded, sortAssignments, TONE_CLASSES } from './assignmentState';
 
 const DAY = 86_400_000;
 const make = (submission: Partial<NonNullable<Assignment['submission']>> | undefined, dueOffsetDays: number): Assignment =>
@@ -52,4 +52,30 @@ describe('assignmentStatus badges use the same colors as the calendar', () => {
     ['done', make({ workflow_state: 'graded', score: 8 }, -3)],
     ['done', make({ excused: true }, -3)],
   ] as const)('%s', (tone, a) => expect(assignmentStatus(a).className).toBe(TONE_CLASSES[tone]));
+});
+
+describe('sortAssignments', () => {
+  const NOW = Date.parse('2026-10-08T12:00:00Z');
+  const at = (name: string, iso: string | null, extra: Partial<Assignment> = {}) =>
+    ({ id: name.length * 31 + name.charCodeAt(0), course_id: 1, name, due_at: iso, points_possible: 1, html_url: '', ...extra }) as Assignment;
+  const names = (list: Assignment[]) => sortAssignments(list, NOW).map((a) => a.name);
+
+  it('puts upcoming work first (soonest first), then past work (most recent first)', () => {
+    const list = [at('old', '2026-09-01T00:00:00Z'), at('later', '2026-10-20T00:00:00Z'), at('recent', '2026-10-07T00:00:00Z'), at('soon', '2026-10-09T00:00:00Z')];
+    expect(names(list)).toEqual(['soon', 'later', 'recent', 'old']);
+  });
+
+  it('places an undated assignment by its post date, and fully undated ones last', () => {
+    const list = [at('none', null), at('posted-soon', null, { created_at: '2026-10-10T00:00:00Z' }), at('due', '2026-10-15T00:00:00Z')];
+    expect(names(list)).toEqual(['posted-soon', 'due', 'none']);
+    expect(assignmentDate(list[1])).toBe('2026-10-10T00:00:00Z');
+  });
+
+  it('prefers the due date over the post date, and does not change the input', () => {
+    const a = at('a', '2026-10-09T00:00:00Z', { created_at: '2026-01-01T00:00:00Z' });
+    expect(assignmentDate(a)).toBe('2026-10-09T00:00:00Z');
+    const input = [at('x', null), a];
+    sortAssignments(input, NOW);
+    expect(input.map((i) => i.name)).toEqual(['x', 'a']);
+  });
 });

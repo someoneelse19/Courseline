@@ -2,6 +2,7 @@
 // back to English. Keep {placeholders} identical to the English text.
 export const es: Record<string, string> = {
   'Calendar': 'Calendario',
+  'No due date · posted {date}': 'Sin fecha de entrega · publicada el {date}',
   'Course colors and icons': 'Colores e iconos de los cursos',
   'Pick how each course looks in the sidebar, calendar and course cards. Saved in this browser.': 'Elige cómo se ve cada curso en la barra lateral, el calendario y las tarjetas. Se guarda en este navegador.',
   'Choose icon for {name}': 'Elegir icono para {name}',

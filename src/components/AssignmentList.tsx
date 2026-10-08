@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom';
 import type { Assignment } from '../api/types';
 import { useCourseColors } from '../hooks/useCanvasData';
-import { assignmentTone, isFaded, TONE_CLASSES } from '../lib/assignmentState';
-import { formatDue, isPast } from '../lib/format';
+import { assignmentTone, isFaded, sortAssignments, TONE_CLASSES } from '../lib/assignmentState';
+import { formatDay, formatDue, isPast } from '../lib/format';
 import { EmptyState } from './ui';
 import { t } from '../i18n';
 
@@ -19,7 +19,7 @@ export function assignmentStatus(a: Assignment): { label: string; className: str
   return { label: t('To do'), className };
 }
 
-/** Sorted: dated assignments by due date first, undated last. */
+/** Sorted by relevance (see sortAssignments): upcoming soonest first, then past most recent first, undated last. */
 export function AssignmentList({
   assignments,
   courseNames,
@@ -31,11 +31,7 @@ export function AssignmentList({
   const colorOf = useCourseColors();
   if (assignments.length === 0) return <EmptyState>{t('No assignments.')}</EmptyState>;
 
-  const sorted = [...assignments].sort((a, b) => {
-    if (!a.due_at) return 1;
-    if (!b.due_at) return -1;
-    return a.due_at.localeCompare(b.due_at);
-  });
+  const sorted = sortAssignments(assignments);
 
   return (
     <ul className="divide-y divide-neutral-200 dark:divide-neutral-800">
@@ -55,7 +51,11 @@ export function AssignmentList({
                     <span aria-hidden>·</span>
                   </>
                 )}
-                <span className="shrink-0">{formatDue(a.due_at)}</span>
+                <span className="shrink-0">
+                  {a.due_at || !(a.created_at ?? a.unlock_at)
+                    ? formatDue(a.due_at)
+                    : t('No due date · posted {date}', { date: formatDay(a.created_at ?? a.unlock_at) })}
+                </span>
               </p>
             </div>
             <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${st.className}`}>{st.label}</span>
