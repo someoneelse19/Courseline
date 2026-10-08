@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Card, EmptyState, ErrorMessage, PageTitle, Spinner } from '../components/ui';
 import { useCourseFilter } from '../context/CourseFilterContext';
 import { useTheme } from '../context/ThemeContext';
@@ -10,16 +11,53 @@ import { COURSE_ICON_KEYS, COURSE_ICON_LABELS } from '../lib/courseIcons';
 import { t, LANGUAGES, type Language } from '../i18n';
 import { useLanguage } from '../context/LanguageContext';
 
+// Sections are grouped into tabs so the page stays short. The open tab lives in the URL
+// (/settings?tab=courses) so it can be linked to and survives a reload. Add a section: put its
+// card in the right tab below, or add a tab to TABS.
+type Tab = 'appearance' | 'courses';
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'appearance', label: 'Appearance' },
+  { id: 'courses', label: 'Courses' },
+];
+
 export function SettingsPage() {
+  const [params, setParams] = useSearchParams();
+  const tab: Tab = params.get('tab') === 'courses' ? 'courses' : 'appearance';
+
   return (
     <>
       <PageTitle>{t('Settings')}</PageTitle>
+      <div role="tablist" className="mb-6 flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
+        {TABS.map((x) => (
+          <button
+            key={x.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === x.id}
+            onClick={() => setParams(x.id === 'appearance' ? {} : { tab: x.id }, { replace: true })}
+            className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
+              tab === x.id
+                ? 'border-accent-600 text-accent-700 dark:border-accent-400 dark:text-accent-300'
+                : 'border-transparent text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100'
+            }`}
+          >
+            {t(x.label)}
+          </button>
+        ))}
+      </div>
       <div className="space-y-6">
-        <LanguagePicker />
-        <ThemePicker />
-        <AccentPicker />
-        <CoursePicker />
-        <CourseStylePicker />
+        {tab === 'appearance' ? (
+          <>
+            <LanguagePicker />
+            <ThemePicker />
+            <AccentPicker />
+          </>
+        ) : (
+          <>
+            <CoursePicker />
+            <CourseStylePicker />
+          </>
+        )}
       </div>
     </>
   );

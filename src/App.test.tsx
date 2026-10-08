@@ -117,7 +117,8 @@ describe('screens', () => {
     ['/courses/1/assignments/5', ['Instructions', 'rubric.pdf', 'Nice work']],
     ['/courses/1/assignments/5/submission', ['Your submission', '8 / 10', 'My lab']],
     ['/calendar', ['Calendar', 'Today']],
-    ['/settings', ['Accent color', 'Choose your courses', '1 of 1 selected']],
+    ['/settings', ['Appearance', 'Accent color']],
+    ['/settings?tab=courses', ['Choose your courses', '1 of 1 selected', 'Course colors and icons']],
     ['/nowhere', ['Page not found']],
   ])('%s', async (at, texts) => {
     await show(at);
@@ -133,8 +134,8 @@ describe('language', () => {
 
   it('shows Spanish when it is the saved language', async () => {
     localStorage.setItem('courseline.language', 'es');
-    await show('/settings');
-    await until('Color de acento', 'Elige tus cursos', '1 de 1 seleccionados');
+    await show('/settings?tab=courses');
+    await until('Elige tus cursos', '1 de 1 seleccionados');
     expect(document.documentElement.lang).toBe('es');
   });
 

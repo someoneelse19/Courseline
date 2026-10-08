@@ -1,6 +1,7 @@
 // Spanish translations. Keys are the exact English strings passed to t(); a missing key falls
 // back to English. Keep {placeholders} identical to the English text.
 export const es: Record<string, string> = {
+  'Appearance': 'Apariencia',
   'Calendar': 'Calendario',
   'No due date · submitted {date}': 'Sin fecha de entrega · entregada el {date}',
   'No due date · posted {date}': 'Sin fecha de entrega · publicada el {date}',

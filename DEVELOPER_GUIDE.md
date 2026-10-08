@@ -267,7 +267,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `CoursesPage.tsx` | `/courses` — all visible courses as cards. |
 | `AssignmentsPage.tsx` | `/assignments` — pending/done tabs across all visible courses. |
 | `CalendarPage.tsx` | `/calendar` — month grid of assignments due across the visible courses (via `useAllAssignments`); click a day to list it. Weeks start Monday in Spanish. Pure date maths in `lib/calendar.ts`; item colors come from `lib/assignmentState.ts` (red = missing, pastel blue = to do, pastel green = submitted/graded/excused; submitted work past its due date is faded). Lists are ordered by `sortAssignments()` (upcoming soonest first, then past most recent first; an undated assignment is placed by its post date, one handed in with no due date by when it was handed in and shown grayed out, fully undated ones last). The same scheme colors the status badges in every assignment list and the per-course grades table. |
-| `SettingsPage.tsx` | `/settings` — Theme, Accent color, Course selection. |
+| `SettingsPage.tsx` | `/settings` — tabs (open one kept in `?tab=`): **Appearance** (Language, Theme, Accent color) and **Courses** (course selection, course colors and icons). Add a section to a tab, or a tab to `TABS`. |
 | `LoginPage.tsx` | Shown whenever there are no valid credentials. |
 | `CoursePagesPage.tsx` | `/courses/:id` (default tab, "Pages") — pages and modules merged. |
 | `CourseDetailPage.tsx` | `/courses/:id/assignments` — the "Assignments" tab. |
@@ -710,8 +710,8 @@ first paint, mirror it in the inline script in `index.html`.
 
 ### Add a settings section
 
-In `pages/SettingsPage.tsx`, write a `function MySection()` returning a `<Card title="...">` and add it to the list in
-`SettingsPage`.
+In `pages/SettingsPage.tsx`, write a `function MySection()` returning a `<Card title="...">` and add it to the right tab in
+`SettingsPage` (or add a tab to `TABS`).
 
 ### Add or change a translatable string
 

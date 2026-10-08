@@ -1,6 +1,7 @@
 // Brazilian Portuguese translations. Keys are the exact English strings passed to t(); a missing key
 // falls back to English. Keep {placeholders} identical to the English text.
 export const pt: Record<string, string> = {
+  'Appearance': 'Aparência',
   'Calendar': 'Calendário',
   'No due date · submitted {date}': 'Sem data de entrega · enviada em {date}',
   'No due date · posted {date}': 'Sem data de entrega · publicada em {date}',
