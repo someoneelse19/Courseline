@@ -242,7 +242,7 @@ Everything lives in `src/` (about 5,500 lines of app code plus tests). Config fi
 | File | Purpose |
 |---|---|
 | `useQuery.ts` | Generic fetch-and-cache hook. |
-| `useCanvasData.ts` | One-line hooks per resource: `useCourses`, `useVisibleCourses`, `useCourse`, `useAssignments`, `useAssignment`, `useMySubmission`, `useModules`, `useModuleItems`, `usePage`, `usePages`, `useCourseFiles`, `useAssignmentGroups`, `useUpcoming`. |
+| `useCanvasData.ts` | One-line hooks per resource: `useCourses`, `useVisibleCourses`, `useCourse`, `useAssignments`, `useAllAssignments`, `useAssignment`, `useMySubmission`, `useModules`, `useModuleItems`, `usePage`, `usePages`, `useCourseFiles`, `useAssignmentGroups`, `useUpcoming`. |
 
 ### `src/lib/` — pure logic (no React)
 
@@ -258,8 +258,7 @@ Everything lives in `src/` (about 5,500 lines of app code plus tests). Config fi
 |---|---|
 | `DashboardPage.tsx` | `/` — welcome, upcoming assignments, first four courses, grades card. |
 | `CoursesPage.tsx` | `/courses` — all visible courses as cards. |
-| `AssignmentsPage.tsx` | `/assignments` — one course at a time (stub; see the comment about aggregate endpoints). |
-| `GradesPage.tsx` | `/grades` — grade per course, each with a **Breakdown →** link. |
+| `AssignmentsPage.tsx` | `/assignments` — pending/done tabs across all visible courses. |
 | `SettingsPage.tsx` | `/settings` — Theme, Accent color, Course selection. |
 | `LoginPage.tsx` | Shown whenever there are no valid credentials. |
 | `CoursePagesPage.tsx` | `/courses/:id` (default tab, "Pages") — pages and modules merged. |
@@ -356,7 +355,7 @@ All paths are under `/api/v1`. Function names are in `api/canvas.ts`.
 | `getProfile` | `GET /users/self/profile` | login check, header name |
 | `getCourses` | `GET /courses?enrollment_state=active&include[]=total_scores&include[]=term` | most pages (filters out restricted stubs) |
 | `getCourse` | `GET /courses/:id` (same includes) | course header, grades page |
-| `getAssignments` | `GET /courses/:id/assignments?include[]=submission&order_by=due_at` | Assignments tab |
+| `getAssignments` | `GET /courses/:id/assignments?include[]=submission&order_by=due_at` | Assignments tab, All assignments page |
 | `getAssignment` | `GET /courses/:id/assignments/:aid?include[]=submission` | assignment page |
 | `getMySubmission` | `GET /courses/:id/assignments/:aid/submissions/self` (+ comments, rubric includes) | assignment page, submission page |
 | `getAssignmentGroups` | `GET /courses/:id/assignment_groups?include[]=assignments&include[]=submission&include[]=score_statistics&scope_assignments_to_student=true` (retries without `score_statistics` on a plain 400) | grades page |
@@ -401,7 +400,6 @@ Defined in `App.tsx`. Unauthenticated users always get `LoginPage`.
 | `/courses/:courseId/assignments/:assignmentId` | `AssignmentDetailPage` | Keeps the Assignments tab highlighted. |
 | `/courses/:courseId/assignments/:assignmentId/submission` | `SubmissionViewPage` | |
 | `/assignments` | `AssignmentsPage` | |
-| `/grades` | `GradesPage` | |
 | `/settings` | `SettingsPage` | |
 | `*` | "Page not found" | |
 
@@ -877,7 +875,7 @@ The app is in real use, so treat every change as something a student will hit to
 - Cache is in memory only: a page reload refetches everything.
 - Accent presets are only checked for white-text contrast, not colorblind separation (the UI uses one accent, so this
   is moot, but status badges are color + text).
-- `AssignmentsPage` ("All assignments") is a one-course-at-a-time stub; a real cross-course view needs the Planner API.
+- `AssignmentsPage` ("All assignments") fans out one request per visible course; with many courses the Planner API would be cheaper (one call, server-side aggregation).
 - `Settings → Choose your courses`: courses added later stay hidden once any selection is saved.
 - Spreadsheet previews cap at 2,000 rows per sheet; very large decks/documents render fully in the browser (memory).
 - No i18n: all text is English (the Canvas content itself may be in any language).
@@ -888,5 +886,5 @@ The app is in real use, so treat every change as something a student will hit to
 - Run a submission against a real Canvas and fix whatever differs (see above).
 - Add Playwright tests with a saved fake-Canvas fixture for the screens and the file viewer.
 - Move the token behind a tiny backend (or OAuth2) so the app can be shared.
-- Planner API for a real "All assignments" view; announcements/discussions/calendar/inbox.
+- Planner API to replace the per-course fan-out in "All assignments"; announcements/discussions/calendar/inbox.
 - Persist the query cache (so reloads are instant) or adopt TanStack Query.

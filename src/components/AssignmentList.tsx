@@ -16,7 +16,14 @@ export function assignmentStatus(a: Assignment): { label: string; className: str
 }
 
 /** Sorted: dated assignments by due date first, undated last. */
-export function AssignmentList({ assignments }: { assignments: Assignment[] }) {
+export function AssignmentList({
+  assignments,
+  courseNames,
+}: {
+  assignments: Assignment[];
+  /** When given, each row shows its course name (for lists spanning several courses). */
+  courseNames?: ReadonlyMap<number, string>;
+}) {
   if (assignments.length === 0) return <EmptyState>No assignments.</EmptyState>;
 
   const sorted = [...assignments].sort((a, b) => {
@@ -35,7 +42,9 @@ export function AssignmentList({ assignments }: { assignments: Assignment[] }) {
               <Link to={`/courses/${a.course_id}/assignments/${a.id}`} className="block truncate font-medium hover:underline">
                 {a.name}
               </Link>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">{formatDue(a.due_at)}</p>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">{courseNames?.get(a.course_id) && `${courseNames.get(a.course_id)} · `}
+                {formatDue(a.due_at)}
+              </p>
             </div>
             <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${st.className}`}>{st.label}</span>
           </li>

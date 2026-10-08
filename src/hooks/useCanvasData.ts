@@ -28,6 +28,14 @@ export function useAssignments(courseId: number) {
   return useQuery(`assignments:${courseId}`, () => api.getAssignments(courseId));
 }
 
+/** Assignments across several courses at once (one request per course, in parallel). */
+export function useAllAssignments(courseIds: number[]) {
+  const api = useApi();
+  return useQuery(`assignments:all:${courseIds.join(',')}`, async () =>
+    (await Promise.all(courseIds.map((id) => api.getAssignments(id)))).flat(),
+  );
+}
+
 export function useAssignment(courseId: number, assignmentId: number) {
   const api = useApi();
   return useQuery(`assignment:${courseId}:${assignmentId}`, () => api.getAssignment(courseId, assignmentId));

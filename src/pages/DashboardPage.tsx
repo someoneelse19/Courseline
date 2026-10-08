@@ -71,7 +71,7 @@ export function DashboardPage() {
           </Card>
         </div>
 
-        <Card title="Grades" action={<Link to="/grades" className="text-sm text-accent-600 hover:underline dark:text-accent-400">Details</Link>}>
+        <Card title="Grades">
           {courses.error ? (
             <ErrorMessage error={courses.error} onRetry={courses.refetch} />
           ) : !courses.data ? (

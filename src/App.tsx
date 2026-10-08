@@ -14,7 +14,6 @@ import { CourseGradesPage } from './pages/CourseGradesPage';
 import { CoursePagesPage } from './pages/CoursePagesPage';
 import { CoursesPage } from './pages/CoursesPage';
 import { DashboardPage } from './pages/DashboardPage';
-import { GradesPage } from './pages/GradesPage';
 import { LoginPage } from './pages/LoginPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { SubmissionViewPage } from './pages/SubmissionViewPage';
@@ -51,7 +50,6 @@ export default function App() {
             <Route path="assignments/:assignmentId/submission" element={<SubmissionViewPage />} />
           </Route>
           <Route path="assignments" element={<AssignmentsPage />} />
-          <Route path="grades" element={<GradesPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route
             path="*"

@@ -34,9 +34,6 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           <NavLink to="/assignments" className={({ isActive }) => item(isActive)}>
             All assignments
           </NavLink>
-          <NavLink to="/grades" className={({ isActive }) => item(isActive)}>
-            Grades
-          </NavLink>
 
           <h3 className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Courses</h3>
           {error ? (
