@@ -2,6 +2,8 @@
 // back to English. Keep {placeholders} identical to the English text.
 export const es: Record<string, string> = {
   'Calendar': 'Calendario',
+  'Status colors': 'Colores de estado',
+  'Faded = submitted and past due': 'Atenuada = entregada y ya vencida',
   'Previous month': 'Mes anterior',
   'Next month': 'Mes siguiente',
   'Today': 'Hoy',

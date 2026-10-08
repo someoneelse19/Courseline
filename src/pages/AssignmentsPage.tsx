@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import type { Assignment, Course } from '../api/types';
+import type { Course } from '../api/types';
 import { AssignmentList } from '../components/AssignmentList';
 import { Card, EmptyState, ErrorMessage, PageTitle, Spinner } from '../components/ui';
+import { isDone } from '../lib/assignmentState';
 import { useAllAssignments, useVisibleCourses } from '../hooks/useCanvasData';
 import { t } from '../i18n';
 
@@ -25,13 +26,6 @@ export function AssignmentsPage() {
 }
 
 type Tab = 'pending' | 'done';
-
-/** Done = turned in, graded or excused. Everything else (including missing/past due) is still pending. */
-function isDone(a: Assignment): boolean {
-  const s = a.submission;
-  if (!s) return false;
-  return s.excused === true || s.workflow_state === 'graded' || s.workflow_state === 'submitted' || s.workflow_state === 'pending_review';
-}
 
 function AllAssignments({ courses }: { courses: Course[] }) {
   const { data, error, refetch } = useAllAssignments(courses.map((c) => c.id));

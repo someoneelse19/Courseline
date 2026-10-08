@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import type { Assignment, Course } from '../api/types';
-import { assignmentStatus, AssignmentList } from '../components/AssignmentList';
+import { AssignmentList } from '../components/AssignmentList';
 import { Card, EmptyState, ErrorMessage, PageTitle, Spinner } from '../components/ui';
 import { useAllAssignments, useCourseColors, useVisibleCourses } from '../hooks/useCanvasData';
 import { getLanguage, t } from '../i18n';
+import { assignmentTone, isFaded, TONE_CLASSES, type Tone } from '../lib/assignmentState';
 import { dateKey, monthGrid } from '../lib/calendar';
 
 // A month view of everything due, across the visible courses. Click a day to list its assignments.
@@ -120,7 +121,7 @@ function Month({ courses }: { courses: Course[] }) {
                   <span
                     key={a.id}
                     title={`${names.get(a.course_id) ?? ''}: ${a.name}`}
-                    className={`flex items-center gap-1 rounded-sm px-1 py-0.5 text-[11px] leading-tight ${assignmentStatus(a).className}`}
+                    className={`flex items-center gap-1 rounded-sm px-1 py-0.5 text-[11px] leading-tight ${TONE_CLASSES[assignmentTone(a)]} ${isFaded(a) ? 'opacity-50' : ''}`}
                   >
                     <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: colorOf(a.course_id) }} />
                     <span className="truncate">{a.name}</span>
@@ -133,6 +134,21 @@ function Month({ courses }: { courses: Course[] }) {
             );
           })}
         </div>
+
+        <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs" aria-label={t('Status colors')}>
+          {(
+            [
+              ['missing', t('Missing')],
+              ['todo', t('To do')],
+              ['done', t('Submitted')],
+            ] as [Tone, string][]
+          ).map(([tone, label]) => (
+            <li key={tone} className={`rounded-sm px-1.5 py-0.5 ${TONE_CLASSES[tone]}`}>
+              {label}
+            </li>
+          ))}
+          <li className="px-1.5 py-0.5 text-neutral-500 dark:text-neutral-400">{t('Faded = submitted and past due')}</li>
+        </ul>
 
         <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-600 dark:text-neutral-300" aria-label={t('Courses')}>
           {courses.map((c) => (

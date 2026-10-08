@@ -264,7 +264,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `DashboardPage.tsx` | `/` — welcome, upcoming assignments, first four courses, grades card. |
 | `CoursesPage.tsx` | `/courses` — all visible courses as cards. |
 | `AssignmentsPage.tsx` | `/assignments` — pending/done tabs across all visible courses. |
-| `CalendarPage.tsx` | `/calendar` — month grid of assignments due across the visible courses (via `useAllAssignments`); click a day to list it. Weeks start Monday in Spanish. Pure date maths in `lib/calendar.ts`. |
+| `CalendarPage.tsx` | `/calendar` — month grid of assignments due across the visible courses (via `useAllAssignments`); click a day to list it. Weeks start Monday in Spanish. Pure date maths in `lib/calendar.ts`; item colors come from `lib/assignmentState.ts` (red = missing, pastel blue = to do, pastel green = submitted/graded/excused; submitted work past its due date is faded). |
 | `SettingsPage.tsx` | `/settings` — Theme, Accent color, Course selection. |
 | `LoginPage.tsx` | Shown whenever there are no valid credentials. |
 | `CoursePagesPage.tsx` | `/courses/:id` (default tab, "Pages") — pages and modules merged. |
@@ -304,6 +304,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `components/SubmissionForm.test.tsx` | Upload-then-submit order, failure submits nothing, retry skips already-uploaded files, allowed extensions, rich-text tab (HTML body, sanitizing, empty check, reset). |
 | `context/DataContext.test.tsx` | Cache: single request per key, error capture, 5-minute freshness, refetch keeps old data visible, only the changed key re-renders, `ensure` and `prime`. |
 | `lib/courseColor.test.ts` | Colors are unique at any count, order-independent, and stable when a course is added. |
+| `lib/assignmentState.test.ts` | Calendar tones (red missing / blue to do / green handed in) and which finished work fades. |
 | `lib/calendar.test.ts` | Month grid (week start, whole weeks, year rollover) and local date keys. |
 | `i18n/i18n.test.ts` | `t()` in both languages, placeholders, saved-language detection, and that every Spanish string keeps the English `{placeholders}`. |
 | `firstPaint.test.ts` | The inline script in `index.html`: old `better-canvas.*` keys move to `courseline.*` without overwriting newer ones; theme and accent apply. |
