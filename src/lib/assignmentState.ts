@@ -22,11 +22,15 @@ export const TONE_CLASSES: Record<Tone, string> = {
   done: 'bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300',
 };
 
-/** Finished work whose due date has passed fades back, so what still needs attention stands out. */
-export const isFaded = (a: Assignment): boolean => isDone(a) && isPast(a.due_at);
+/** Finished work with no due date: it is placed (and shown) by when it was handed in. */
+export const isSubmittedUndated = (a: Assignment): boolean => !a.due_at && isDone(a) && !!a.submission?.submitted_at;
 
-/** The date an assignment is placed by: its due date, else the day it was posted (or becomes available). */
-export const assignmentDate = (a: Assignment): string | null => a.due_at ?? a.created_at ?? a.unlock_at ?? null;
+/** Finished work whose due date has passed, or that never had one, fades back so what still needs attention stands out. */
+export const isFaded = (a: Assignment): boolean => isDone(a) && (isPast(a.due_at) || !a.due_at);
+
+/** The date an assignment is placed by: its due date; handed in with none, the day it was handed in; else the day it was posted (or becomes available). */
+export const assignmentDate = (a: Assignment): string | null =>
+  a.due_at ?? (isSubmittedUndated(a) ? a.submission!.submitted_at! : null) ?? a.created_at ?? a.unlock_at ?? null;
 
 /**
  * Most relevant first: what is coming up, soonest first, then what already passed, most recent

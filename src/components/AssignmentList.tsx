@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import type { Assignment } from '../api/types';
 import { useCourseColors } from '../hooks/useCanvasData';
-import { assignmentTone, isFaded, sortAssignments, TONE_CLASSES } from '../lib/assignmentState';
+import { assignmentTone, isFaded, isSubmittedUndated, sortAssignments, TONE_CLASSES } from '../lib/assignmentState';
 import { formatDay, formatDue, isPast } from '../lib/format';
 import { EmptyState } from './ui';
 import { t } from '../i18n';
@@ -52,9 +52,11 @@ export function AssignmentList({
                   </>
                 )}
                 <span className="shrink-0">
-                  {a.due_at || !(a.created_at ?? a.unlock_at)
-                    ? formatDue(a.due_at)
-                    : t('No due date · posted {date}', { date: formatDay(a.created_at ?? a.unlock_at) })}
+                  {isSubmittedUndated(a)
+                    ? t('No due date · submitted {date}', { date: formatDay(a.submission!.submitted_at) })
+                    : a.due_at || !(a.created_at ?? a.unlock_at)
+                      ? formatDue(a.due_at)
+                      : t('No due date · posted {date}', { date: formatDay(a.created_at ?? a.unlock_at) })}
                 </span>
               </p>
             </div>

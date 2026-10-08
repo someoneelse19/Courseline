@@ -36,6 +36,8 @@ describe('isFaded', () => {
     expect(isFaded(make({ workflow_state: 'submitted' }, 2))).toBe(false); // handed in early, due later
     expect(isFaded(make({ missing: true }, -2))).toBe(false);
     expect(isFaded(make({}, -2))).toBe(false);
+    expect(isFaded({ ...make({ workflow_state: 'submitted' }, 0), due_at: null })).toBe(true); // handed in, never had a due date
+    expect(isFaded({ ...make({}, 0), due_at: null })).toBe(false);
   });
 });
 
@@ -77,5 +79,22 @@ describe('sortAssignments', () => {
     const input = [at('x', null), a];
     sortAssignments(input, NOW);
     expect(input.map((i) => i.name)).toEqual(['x', 'a']);
+  });
+});
+
+describe('submitted work with no due date', () => {
+  const NOW = Date.parse('2026-10-08T12:00:00Z');
+  const undated = (name: string, submittedAt: string) =>
+    ({ id: name.length, course_id: 1, name, due_at: null, points_possible: 1, html_url: '', created_at: '2026-01-01T00:00:00Z', submission: { workflow_state: 'submitted', submitted_at: submittedAt } }) as unknown as Assignment;
+
+  it('is placed by when it was handed in, not when it was posted', () => {
+    const a = undated('a', '2026-10-05T00:00:00Z');
+    expect(assignmentDate(a)).toBe('2026-10-05T00:00:00Z');
+  });
+
+  it('sorts among dated work as if that were its due date', () => {
+    const dated = (name: string, iso: string) => ({ id: name.length + 100, course_id: 1, name, due_at: iso, points_possible: 1, html_url: '' }) as Assignment;
+    const list = [dated('older', '2026-10-01T00:00:00Z'), undated('handed-in', '2026-10-05T00:00:00Z'), dated('newer', '2026-10-07T00:00:00Z')];
+    expect(sortAssignments(list, NOW).map((a) => a.name)).toEqual(['newer', 'handed-in', 'older']);
   });
 });
