@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Better Canvas</title>
+    <meta name="description" content="A faster, cleaner web client for Canvas LMS: course pages and modules in one view, an in-app file viewer, and an in-depth grades page." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script>
+      // Apply the saved/system theme before first paint to avoid a light-mode flash.
+      // Keep in sync with src/context/ThemeContext.tsx.
+      try {
+        var t = localStorage.getItem('theme');
+        var dark = t ? t === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (dark) document.documentElement.classList.add('dark');
+      } catch (e) {}
+      // Same for the custom accent color (palette precomputed by ThemeContext).
+      try {
+        var v = JSON.parse(localStorage.getItem('better-canvas.accent-vars') || 'null');
+        if (v) for (var k in v) document.documentElement.style.setProperty(k, v[k]);
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

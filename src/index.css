@@ -1,0 +1,84 @@
+@import 'tailwindcss' source(none);
+@source '../index.html';
+@source './**/*.{ts,tsx}';
+
+/* Dark mode is a `.dark` class on <html> (ThemeContext), not the operating system setting. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* The accent color is user-configurable (Settings, src/lib/accent.ts): this scale reads CSS variables. */
+  --color-accent-50: rgb(var(--accent-50));
+  --color-accent-100: rgb(var(--accent-100));
+  --color-accent-200: rgb(var(--accent-200));
+  --color-accent-300: rgb(var(--accent-300));
+  --color-accent-400: rgb(var(--accent-400));
+  --color-accent-500: rgb(var(--accent-500));
+  --color-accent-600: rgb(var(--accent-600));
+  --color-accent-700: rgb(var(--accent-700));
+  --color-accent-800: rgb(var(--accent-800));
+  --color-accent-900: rgb(var(--accent-900));
+  --color-accent-950: rgb(var(--accent-950));
+}
+
+@layer base {
+  /* Tailwind 4 no longer gives buttons a pointer cursor or grays out placeholders; keep the previous look. */
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-neutral-400);
+  }
+
+  /* Default accent (blue). Settings overrides these on <html>; index.html applies them before first paint. */
+  :root {
+    --accent-50: 239 246 255;
+    --accent-100: 219 234 254;
+    --accent-200: 191 219 254;
+    --accent-300: 147 197 253;
+    --accent-400: 96 165 250;
+    --accent-500: 59 130 246;
+    --accent-600: 37 99 235;
+    --accent-700: 29 78 216;
+    --accent-800: 30 64 175;
+    --accent-900: 30 58 138;
+    --accent-950: 15 23 42;
+  }
+  body {
+    @apply bg-neutral-50 text-neutral-900 antialiased dark:bg-neutral-950 dark:text-neutral-100;
+  }
+}
+
+/* Tailwind's reset strips default styling, so restore basics for instructor HTML. */
+@layer components {
+  /* overflow-x lets wide tables scroll sideways without clipping them vertically (they stay display:table). */
+  .canvas-html { @apply overflow-x-auto text-sm leading-relaxed wrap-break-word; }
+  .canvas-html > * + * { @apply mt-3; }
+  .canvas-html h1, .canvas-html h2, .canvas-html h3, .canvas-html h4 { @apply font-semibold; }
+  .canvas-html h1 { @apply text-xl; }
+  .canvas-html h2 { @apply text-lg; }
+  .canvas-html ul { @apply list-disc pl-6; }
+  .canvas-html ol { @apply list-decimal pl-6; }
+  .canvas-html a { @apply text-accent-600 underline dark:text-accent-400; }
+  .canvas-html img { @apply h-auto max-w-full; }
+  .canvas-html table { @apply border-collapse; }
+  .canvas-html th, .canvas-html td { @apply border border-neutral-300 px-2 py-1 dark:border-neutral-700; }
+  /* Canvas marks up file/external links with SVG icons (stripped by sanitizing) and screenreader-only labels. */
+  .canvas-html .screenreader-only { @apply sr-only; }
+  .canvas-html .file_download_btn { @apply no-underline; }
+  .canvas-html .file_download_btn::after { content: '\2193'; }
+  .canvas-html .external_link_icon::after { content: '\00a0\2197'; }
+  .canvas-html blockquote { @apply border-l-4 border-neutral-300 pl-3 dark:border-neutral-700; }
+  .canvas-html pre { @apply overflow-x-auto rounded-sm bg-neutral-100 p-2 dark:bg-neutral-800; }
+  /* Instructors paste inline colors that are unreadable in dark mode; let the theme win. */
+  .dark .canvas-html [style*="color"] { color: inherit !important; }
+  .dark .canvas-html [style*="background"] { background: transparent !important; }
+}
+
+@layer components {
+  /* Spreadsheet preview: scoped so it never touches other tables. */
+  .xlsx-sheet table { @apply border-collapse text-sm; }
+  .xlsx-sheet th, .xlsx-sheet td { @apply whitespace-nowrap border border-neutral-300 px-2 py-1 text-left align-top dark:border-neutral-700; }
+  .xlsx-sheet tr:first-child td, .xlsx-sheet th { @apply bg-neutral-100 font-semibold dark:bg-neutral-800; }
+}

@@ -1,0 +1,17 @@
+# dependencies and build output
+node_modules
+dist
+coverage
+
+# secrets and local config: NEVER commit these
+.env
+.env.local
+.env.*.local
+.claude/
+
+# OS / editor noise
+.DS_Store
+.idea
+.vscode
+*.log
+*.tsbuildinfo
