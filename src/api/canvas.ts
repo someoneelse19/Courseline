@@ -29,6 +29,9 @@ export function createCanvasApi(config: ClientConfig) {
     getCourse: (courseId: number) =>
       client.get<Course>(`/courses/${courseId}`, { include: ['total_scores', 'term'] }),
 
+    /** A course with its syllabus (HTML). Kept apart from getCourse because the body can be large. */
+    getCourseSyllabus: (courseId: number) => client.get<Course>(`/courses/${courseId}`, { include: ['syllabus_body', 'term'] }),
+
     /**
      * Assignments for one course, including the user's own submission (score, status).
      * Fanning this out across every course is how you hit rate limits — only

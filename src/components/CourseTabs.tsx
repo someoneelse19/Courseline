@@ -12,6 +12,7 @@ export function CourseTabs({ courseId }: { courseId: number }) {
     { to: `${base}/assignments`, label: t('Assignments'), active: pathname.startsWith(`${base}/assignments`) },
     { to: `${base}/files`, label: t('Files by unit'), active: pathname.startsWith(`${base}/files`) },
     { to: `${base}/grades`, label: t('Grades'), active: pathname.startsWith(`${base}/grades`) },
+    { to: `${base}/export`, label: t('AI export'), active: pathname.startsWith(`${base}/export`) },
   ];
   return (
     <nav className="mb-4 flex gap-1 border-b border-neutral-200 dark:border-neutral-800">

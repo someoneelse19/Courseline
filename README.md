@@ -16,6 +16,7 @@ React · TypeScript · Vite · Tailwind CSS 4
 - **In-depth grades page.** Grade over time, assignment-group breakdown with weights and drop rules, what-if scores
   and a "what do I need to reach X%" calculator.
 - **Dark mode and a custom accent color**, plus a setting to pick which courses to show.
+- **AI export tab in every course**: packs the syllabus, units, pages, assignments and file text into a zip an AI can use as a tutor (stays on your computer).
 - **English, Spanish and Brazilian Portuguese**, switchable in Settings (defaults to your browser's language).
 
 ## Screenshots

@@ -254,6 +254,10 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 |---|---|
 | `grades.ts` | The grade maths (group weights, drop rules, what-if, trend, goal solver). Fully unit-testable. |
 | `accent.ts` | Accent presets and the function that turns one hex color into a full 11-step palette. |
+| `htmlToMarkdown.ts` | Canvas HTML → Markdown (headings, lists, tables, links, equations as LaTeX, image descriptions). |
+| `extractText.ts` | Text out of downloaded files: plain/code/HTML, PDF (pdf.js), Word and PowerPoint (zip + XML, including speaker notes), spreadsheets. Returns null when there is none. |
+| `courseExport.ts` | Pure: turns the gathered course data into the export's documents (README, ALL_TEXT, syllabus, units, pages, assignments, file text, manifest) and rewrites Canvas links to the local copies. |
+| `courseExportRunner.ts` | `scanCourse()` reads the course from Canvas; `packExport()`/`buildExportZip()` download files, extract text and zip. Cancellable, 3 downloads at a time. |
 | `format.ts` | Dates, grades, byte sizes, `courseIdFromContext`. |
 | `courseIcons.ts` | The icon keys/names a course can use (drawings are in `components/icons.tsx`). |
 | `courseColor.ts` | Unique per-course colors: handed out by a course's position among all the user's courses (12 curated, then generated), so no two courses share one. Read through the `useCourseColors()` hook; used by course cards, the sidebar, the calendar and multi-course assignment lists. |
@@ -266,6 +270,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `DashboardPage.tsx` | `/` — welcome, upcoming assignments, first four courses, grades card. |
 | `CoursesPage.tsx` | `/courses` — all visible courses as cards. |
 | `AssignmentsPage.tsx` | `/assignments` — pending/done tabs across all visible courses. |
+| `CourseExportPage.tsx` | `/courses/:id/export` — the **AI export** tab: scan the course, choose options (file text, original files, size limit), build and download a zip. All in the browser; nothing is uploaded. |
 | `CalendarPage.tsx` | `/calendar` — month grid of assignments due across the visible courses (via `useAllAssignments`); click a day to list it. Weeks start Monday in Spanish. Pure date maths in `lib/calendar.ts`; item colors come from `lib/assignmentState.ts` (red = missing, pastel blue = to do, pastel green = submitted/graded/excused; submitted work past its due date is faded). Lists are ordered by `sortAssignments()` (upcoming soonest first, then past most recent first; an undated assignment is placed by its post date, one handed in with no due date by when it was handed in and shown grayed out, fully undated ones last). The same scheme colors the status badges in every assignment list and the per-course grades table. |
 | `SettingsPage.tsx` | `/settings` — tabs (open one kept in `?tab=`): **Appearance** (Language, Theme, Accent color) and **Courses** (course colors and icons, then course selection). Add a section to a tab, or a tab to `TABS`. |
 | `LoginPage.tsx` | Shown whenever there are no valid credentials. |
@@ -309,6 +314,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `context/CourseStyleContext.test.tsx` | Per-course color/icon: save, merge, reset, ignore invalid saved values. |
 | `lib/courseColor.test.ts` | Colors are unique at any count, order-independent, and stable when a course is added. |
 | `lib/assignmentState.test.ts` | The one color scheme for assignments (red missing / pastel blue to do / pastel green handed in), which finished work fades, and that the list badges use it. |
+| `lib/htmlToMarkdown.test.ts`, `lib/extractText.test.ts`, `lib/courseExport.test.ts`, `lib/courseExportRunner.test.ts` | The AI export: Markdown conversion, text from Word/PowerPoint/plain files, the document set and link rewriting, scanning, packing, size limits, failures and cancelling (with a fake Canvas API). |
 | `lib/calendar.test.ts` | Month grid (week start, whole weeks, year rollover) and local date keys. |
 | `i18n/i18n.test.ts` | `t()` in both languages, placeholders, saved-language detection, and that every Spanish string keeps the English `{placeholders}`. |
 | `firstPaint.test.ts` | The inline script in `index.html`: old `better-canvas.*` keys move to `courseline.*` without overwriting newer ones; theme and accent apply. |
@@ -373,6 +379,7 @@ All paths are under `/api/v1`. Function names are in `api/canvas.ts`.
 | `getProfile` | `GET /users/self/profile` | login check, header name |
 | `getCourses` | `GET /courses?enrollment_state=active&include[]=total_scores&include[]=term` | most pages (filters out restricted stubs) |
 | `getCourse` | `GET /courses/:id` (same includes) | course header, grades page |
+| `getCourseSyllabus` | `GET /courses/:id?include[]=syllabus_body&include[]=term` | AI export |
 | `getAssignments` | `GET /courses/:id/assignments?include[]=submission&order_by=due_at` | Assignments tab, All assignments page |
 | `getAssignment` | `GET /courses/:id/assignments/:aid?include[]=submission` | assignment page |
 | `getMySubmission` | `GET /courses/:id/assignments/:aid/submissions/self` (+ comments, rubric includes) | assignment page, submission page |
@@ -426,6 +433,7 @@ transition (React Router 7), so the current screen stays up while the next one l
 | `/courses/:courseId/assignments/:assignmentId` | `AssignmentDetailPage` | Keeps the Assignments tab highlighted. |
 | `/courses/:courseId/assignments/:assignmentId/submission` | `SubmissionViewPage` | |
 | `/assignments` | `AssignmentsPage` | |
+| `/courses/:courseId/export` | `CourseExportPage` | |
 | `/calendar` | `CalendarPage` | |
 | `/settings` | `SettingsPage` | |
 | `*` | "Page not found" | |

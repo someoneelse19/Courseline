@@ -113,6 +113,7 @@ describe('screens', () => {
     ['/courses/1', ['Week 1', 'Slides.pdf', 'Welcome to Bio']],
     ['/courses/1/assignments', ['Lab report', '8/10', 'Quiz 1']],
     ['/courses/1/files', ['Slides.pdf', 'Not in a unit', 'Extra.docx']],
+    ['/courses/1/export', ['AI export', 'Scan course']],
     ['/courses/1/grades', ['Current grade', 'Grade over time', 'Labs']],
     ['/courses/1/assignments/5', ['Instructions', 'rubric.pdf', 'Nice work']],
     ['/courses/1/assignments/5/submission', ['Your submission', '8 / 10', 'My lab']],

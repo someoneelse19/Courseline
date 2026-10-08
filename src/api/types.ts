@@ -44,6 +44,7 @@ export interface Course {
   // Whether the instructor weights assignment groups (vs. a plain points total).
   apply_assignment_group_weights?: boolean;
   enrollments?: Enrollment[]; // present on /users/self/courses
+  syllabus_body?: string | null; // HTML; only with include[]=syllabus_body
 }
 
 export interface SubmissionComment {
