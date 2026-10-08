@@ -275,7 +275,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | File | Purpose |
 |---|---|
 | `Layout.tsx` | App shell (header, sidebar, routed page). **The only place page padding lives.** |
-| `Header.tsx`, `Sidebar.tsx` | Top bar (menu, theme toggle, user, log out); left navigation. |
+| `Header.tsx`, `Sidebar.tsx` | Top bar (menu, user, log out); left navigation. |
 | `CourseLayout.tsx`, `CourseTabs.tsx` | Per-course title/grade header and the tab strip. **Add course tabs in `CourseTabs.tsx`.** |
 | `CourseCard.tsx`, `GradeSummary.tsx`, `AssignmentList.tsx` | Reusable list/card pieces. `AssignmentList` also exports `assignmentStatus()`. |
 | `HtmlContent.tsx` | Sanitized rendering of Canvas HTML; intercepts file links. |
