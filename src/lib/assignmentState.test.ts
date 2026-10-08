@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Assignment } from '../api/types';
-import { assignmentTone, isDone, isFaded } from './assignmentState';
+import { assignmentStatus } from '../components/AssignmentList';
+import { assignmentTone, isDone, isFaded, TONE_CLASSES } from './assignmentState';
 
 const DAY = 86_400_000;
 const make = (submission: Partial<NonNullable<Assignment['submission']>> | undefined, dueOffsetDays: number): Assignment =>
@@ -40,4 +41,15 @@ describe('isFaded', () => {
 
 describe('isDone', () => {
   it('is false without a submission', () => expect(isDone(make(undefined, 1))).toBe(false));
+});
+
+describe('assignmentStatus badges use the same colors as the calendar', () => {
+  it.each([
+    ['missing', make({ missing: true }, -2)],
+    ['todo', make({}, 3)],
+    ['todo', make({}, -3)], // past due but not marked missing: still blue, labelled "Past due"
+    ['done', make({ workflow_state: 'submitted' }, 3)],
+    ['done', make({ workflow_state: 'graded', score: 8 }, -3)],
+    ['done', make({ excused: true }, -3)],
+  ] as const)('%s', (tone, a) => expect(assignmentStatus(a).className).toBe(TONE_CLASSES[tone]));
 });

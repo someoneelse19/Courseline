@@ -4,6 +4,7 @@ import type { Assignment } from '../api/types';
 import { GradeTrendChart, type TrendDatum } from '../components/GradeTrendChart';
 import { Card, EmptyState, ErrorMessage, Spinner } from '../components/ui';
 import { useAssignmentGroups, useCourse } from '../hooks/useCanvasData';
+import { assignmentTone, TONE_CLASSES } from '../lib/assignmentState';
 import { computeGrade, gradeTrend, neededAverage, toModel } from '../lib/grades';
 import { formatDay } from '../lib/format';
 import { t } from '../i18n';
@@ -19,14 +20,14 @@ const sign = (n: number) => `${n >= 0 ? '+' : '−'}${Math.abs(n).toFixed(1)}`;
 
 function rowStatus(a: Assignment | undefined, graded: boolean): { label: string; className: string } {
   const s = a?.submission;
-  const neutral = 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300';
-  if (s?.excused) return { label: t('Excused'), className: neutral };
-  if (graded) return s?.late ? { label: t('Graded · late'), className: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' } : { label: t('Graded'), className: neutral };
-  if (s?.missing) return { label: t('Missing'), className: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300' };
-  if (s?.workflow_state === 'submitted' || s?.workflow_state === 'pending_review')
-    return { label: t('Awaiting grade'), className: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300' };
-  if (a?.due_at && new Date(a.due_at).getTime() < Date.now()) return { label: t('Past due'), className: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' };
-  return { label: t('To do'), className: neutral };
+  // Same colors as the calendar and every other assignment list (lib/assignmentState.ts).
+  const className = TONE_CLASSES[graded ? 'done' : a ? assignmentTone(a) : 'todo'];
+  if (s?.excused) return { label: t('Excused'), className };
+  if (graded) return { label: s?.late ? t('Graded · late') : t('Graded'), className };
+  if (s?.missing) return { label: t('Missing'), className };
+  if (s?.workflow_state === 'submitted' || s?.workflow_state === 'pending_review') return { label: t('Awaiting grade'), className };
+  if (a?.due_at && new Date(a.due_at).getTime() < Date.now()) return { label: t('Past due'), className };
+  return { label: t('To do'), className };
 }
 
 function Tile({ label, children, note }: { label: string; children: ReactNode; note?: ReactNode }) {

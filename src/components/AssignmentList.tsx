@@ -1,20 +1,22 @@
 import { Link } from 'react-router-dom';
 import type { Assignment } from '../api/types';
 import { useCourseColors } from '../hooks/useCanvasData';
+import { assignmentTone, isFaded, TONE_CLASSES } from '../lib/assignmentState';
 import { formatDue, isPast } from '../lib/format';
 import { EmptyState } from './ui';
 import { t } from '../i18n';
 
+/** The badge for an assignment. Its color is the same scheme as the calendar (lib/assignmentState.ts). */
 export function assignmentStatus(a: Assignment): { label: string; className: string } {
   const s = a.submission;
-  if (s?.excused) return { label: t('Excused'), className: 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300' };
-  if (s?.workflow_state === 'graded' && s.score != null)
-    return { label: `${s.score}/${a.points_possible ?? '?'}`, className: 'bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300' };
-  if (s?.missing) return { label: t('Missing'), className: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300' };
+  const className = TONE_CLASSES[assignmentTone(a)];
+  if (s?.excused) return { label: t('Excused'), className };
+  if (s?.workflow_state === 'graded' && s.score != null) return { label: `${s.score}/${a.points_possible ?? '?'}`, className };
+  if (s?.missing) return { label: t('Missing'), className };
   if (s?.workflow_state === 'submitted' || s?.workflow_state === 'pending_review')
-    return { label: s.late ? t('Submitted (late)') : t('Submitted'), className: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300' };
-  if (isPast(a.due_at)) return { label: t('Past due'), className: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' };
-  return { label: t('To do'), className: 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300' };
+    return { label: s.late ? t('Submitted (late)') : t('Submitted'), className };
+  if (isPast(a.due_at)) return { label: t('Past due'), className };
+  return { label: t('To do'), className };
 }
 
 /** Sorted: dated assignments by due date first, undated last. */
@@ -40,7 +42,7 @@ export function AssignmentList({
       {sorted.map((a) => {
         const st = assignmentStatus(a);
         return (
-          <li key={a.id} className="flex items-center justify-between gap-3 py-3">
+          <li key={a.id} className={`flex items-center justify-between gap-3 py-3 ${isFaded(a) ? 'opacity-50' : ''}`}>
             <div className="min-w-0">
               <Link to={`/courses/${a.course_id}/assignments/${a.id}`} className="block truncate font-medium hover:underline">
                 {a.name}

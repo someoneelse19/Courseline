@@ -266,7 +266,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `DashboardPage.tsx` | `/` — welcome, upcoming assignments, first four courses, grades card. |
 | `CoursesPage.tsx` | `/courses` — all visible courses as cards. |
 | `AssignmentsPage.tsx` | `/assignments` — pending/done tabs across all visible courses. |
-| `CalendarPage.tsx` | `/calendar` — month grid of assignments due across the visible courses (via `useAllAssignments`); click a day to list it. Weeks start Monday in Spanish. Pure date maths in `lib/calendar.ts`; item colors come from `lib/assignmentState.ts` (red = missing, pastel blue = to do, pastel green = submitted/graded/excused; submitted work past its due date is faded). |
+| `CalendarPage.tsx` | `/calendar` — month grid of assignments due across the visible courses (via `useAllAssignments`); click a day to list it. Weeks start Monday in Spanish. Pure date maths in `lib/calendar.ts`; item colors come from `lib/assignmentState.ts` (red = missing, pastel blue = to do, pastel green = submitted/graded/excused; submitted work past its due date is faded). The same scheme colors the status badges in every assignment list and the per-course grades table. |
 | `SettingsPage.tsx` | `/settings` — Theme, Accent color, Course selection. |
 | `LoginPage.tsx` | Shown whenever there are no valid credentials. |
 | `CoursePagesPage.tsx` | `/courses/:id` (default tab, "Pages") — pages and modules merged. |
@@ -308,7 +308,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `context/DataContext.test.tsx` | Cache: single request per key, error capture, 5-minute freshness, refetch keeps old data visible, only the changed key re-renders, `ensure` and `prime`. |
 | `context/CourseStyleContext.test.tsx` | Per-course color/icon: save, merge, reset, ignore invalid saved values. |
 | `lib/courseColor.test.ts` | Colors are unique at any count, order-independent, and stable when a course is added. |
-| `lib/assignmentState.test.ts` | Calendar tones (red missing / blue to do / green handed in) and which finished work fades. |
+| `lib/assignmentState.test.ts` | The one color scheme for assignments (red missing / pastel blue to do / pastel green handed in), which finished work fades, and that the list badges use it. |
 | `lib/calendar.test.ts` | Month grid (week start, whole weeks, year rollover) and local date keys. |
 | `i18n/i18n.test.ts` | `t()` in both languages, placeholders, saved-language detection, and that every Spanish string keeps the English `{placeholders}`. |
 | `firstPaint.test.ts` | The inline script in `index.html`: old `better-canvas.*` keys move to `courseline.*` without overwriting newer ones; theme and accent apply. |
