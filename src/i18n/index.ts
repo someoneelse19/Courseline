@@ -11,7 +11,7 @@ export type Language = 'en' | 'es' | 'pt';
 export const LANGUAGES: { code: Language; label: string }[] = [
   { code: 'en', label: 'English' },
   { code: 'es', label: 'Español' },
-  { code: 'pt', label: 'Português (Brasil)' },
+  { code: 'pt', label: 'Português' },
 ];
 
 const dictionaries: Record<Language, Record<string, string>> = { en: {}, es, pt };
