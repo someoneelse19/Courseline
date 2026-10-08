@@ -282,7 +282,8 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `FileViewer.tsx` | The viewer: all file-type renderers, zoom, page tracking (the biggest file, ~900 lines). |
 | `FileViewerModal.tsx` | The overlay around the viewer (Esc, click-outside, body scroll lock). Loads `FileViewer` the first time a file is opened. |
 | `GradeTrendChart.tsx` | The SVG line chart on the grades page. |
-| `SubmissionForm.tsx` | Text / file submission UI. Uploads every file, then submits all their ids together. |
+| `SubmissionForm.tsx` | Text / file submission UI. Uploads every file, then submits all their ids together. The text tab uses `RichTextEditor`. |
+| `RichTextEditor.tsx` | Dependency-free rich text box (contentEditable + `execCommand`): bold/italic/underline, heading, lists, quote, link, clear. Pastes as plain text. Exports `cleanEditorHtml()` (DOMPurify allow-list; always run output through it) and `isEditorEmpty()`. |
 | `ErrorBoundary.tsx` | Catches render crashes. |
 | `ui.tsx` | `Spinner`, `ErrorMessage`, `Card`, `EmptyState`, `PageTitle`. |
 
@@ -296,7 +297,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `lib/accent.test.ts`, `lib/format.test.ts` | Palette generation and contrast rule, CSS variable application, grade/byte formatting. |
 | `lib/html.test.ts` | File links found in Canvas HTML: names, `data-id`, duplicates, unnamed links. |
 | `components/HtmlContent.test.ts` | Sanitizer: scripts/handlers/iframes removed, links made absolute, Canvas file links made inert. |
-| `components/SubmissionForm.test.tsx` | Upload-then-submit order, failure submits nothing, retry skips already-uploaded files, allowed extensions, text tab. |
+| `components/SubmissionForm.test.tsx` | Upload-then-submit order, failure submits nothing, retry skips already-uploaded files, allowed extensions, rich-text tab (HTML body, sanitizing, empty check, reset). |
 | `context/DataContext.test.tsx` | Cache: single request per key, error capture, 5-minute freshness, refetch keeps old data visible, only the changed key re-renders, `ensure` and `prime`. |
 | `firstPaint.test.ts` | The inline script in `index.html`: old `better-canvas.*` keys move to `courseline.*` without overwriting newer ones; theme and accent apply. |
 | `App.test.tsx` | Smoke test: every route renders its data through the real providers, cache and lazy-loaded screens; sidebar navigation; the Pages tab makes no per-page requests. |

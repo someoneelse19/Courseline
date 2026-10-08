@@ -98,23 +98,54 @@ describe('SubmissionForm: file upload', () => {
 });
 
 describe('SubmissionForm: text entry', () => {
-  it('submits the text', async () => {
-    await render();
-    await act(async () => void button('Text entry').click());
-    const box = q<HTMLTextAreaElement>('textarea')!;
+  const type = async (html: string) => {
+    const box = q<HTMLElement>('[contenteditable]')!;
     await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(box, 'my answer');
+      box.innerHTML = html;
       box.dispatchEvent(new Event('input', { bubbles: true }));
     });
+  };
+
+  it('submits the formatted text as HTML', async () => {
+    await render();
+    await act(async () => void button('Text entry').click());
+    await type('my <b>answer</b>');
     await submit();
-    expect(api.submitAssignment).toHaveBeenCalledWith(1, 2, { submission_type: 'online_text_entry', body: 'my answer' });
+    expect(api.submitAssignment).toHaveBeenCalledWith(1, 2, { submission_type: 'online_text_entry', body: 'my <b>answer</b>' });
     expect(api.uploadSubmissionFile).not.toHaveBeenCalled();
+  });
+
+  it('strips scripts and event handlers before submitting', async () => {
+    await render();
+    await act(async () => void button('Text entry').click());
+    await type('<p onclick="x()">hi</p><script>alert(1)</script><a href="javascript:alert(1)">bad</a>');
+    await submit();
+    const body = api.submitAssignment.mock.calls[0][2].body as string;
+    expect(body).toContain('hi');
+    expect(body).not.toMatch(/script|onclick|javascript:/);
+  });
+
+  it('keeps Submit disabled while the editor has no visible text', async () => {
+    await render();
+    await act(async () => void button('Text entry').click());
+    await type('<p><br></p>');
+    expect(q<HTMLButtonElement>('button[type=submit]')!.disabled).toBe(true);
+    await type('<p>x</p>');
+    expect(q<HTMLButtonElement>('button[type=submit]')!.disabled).toBe(false);
+  });
+
+  it('clears the editor after a successful submit', async () => {
+    await render();
+    await act(async () => void button('Text entry').click());
+    await type('done');
+    await submit();
+    expect(q<HTMLElement>('[contenteditable]')!.innerHTML).toBe('');
   });
 
   it('shows only the tabs the assignment accepts', async () => {
     await render(assignment({ submission_types: ['online_text_entry'] }));
     expect(button('File upload')).toBeUndefined();
-    expect(q('textarea')).not.toBeNull(); // opens on the only available tab
+    expect(q('[contenteditable]')).not.toBeNull(); // opens on the only available tab
   });
 
   it('renders nothing for assignments that take neither', async () => {

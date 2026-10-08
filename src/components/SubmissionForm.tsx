@@ -1,6 +1,7 @@
 import { useRef, useState, type FormEvent } from 'react';
 import type { Assignment } from '../api/types';
 import { useApi } from '../context/AuthContext';
+import { cleanEditorHtml, isEditorEmpty, RichTextEditor } from './RichTextEditor';
 import { Card, ErrorMessage } from './ui';
 
 interface SubmissionFormProps {
@@ -92,8 +93,8 @@ export function SubmissionForm({ courseId, assignmentId, assignment, onSubmitted
         setFiles([]);
         onSubmitted?.();
       } else {
-        if (!text.trim()) throw new Error('Write something to submit.');
-        await api.submitAssignment(courseId, assignmentId, { submission_type: 'online_text_entry', body: text });
+        if (isEditorEmpty(text)) throw new Error('Write something to submit.');
+        await api.submitAssignment(courseId, assignmentId, { submission_type: 'online_text_entry', body: cleanEditorHtml(text) });
         setText('');
         onSubmitted?.();
       }
@@ -106,7 +107,7 @@ export function SubmissionForm({ courseId, assignmentId, assignment, onSubmitted
 
   const tabClass = (active: boolean) =>
     `px-3 py-2 text-sm font-medium ${active ? 'border-b-2 border-accent-600 text-accent-700 dark:text-accent-300' : 'text-neutral-600 dark:text-neutral-400'}`;
-  const canSubmit = activeTab === 'upload' ? files.length > 0 : text.trim().length > 0;
+  const canSubmit = activeTab === 'upload' ? files.length > 0 : !isEditorEmpty(text);
 
   return (
     <Card title="Submit assignment">
@@ -171,14 +172,7 @@ export function SubmissionForm({ courseId, assignmentId, assignment, onSubmitted
         )}
 
         {activeTab === 'text' && (
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Write your submission here…"
-            rows={8}
-            aria-label="Your submission"
-            className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-950"
-          />
+          <RichTextEditor value={text} onChange={setText} ariaLabel="Your submission" placeholder="Write your submission here…" />
         )}
 
         {error && <ErrorMessage error={error} />}
