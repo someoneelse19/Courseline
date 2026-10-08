@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { getLanguage, t } from '../i18n';
 
 export interface TrendDatum {
   name: string;
@@ -10,8 +11,7 @@ export interface TrendDatum {
 
 const H = 240;
 const M = { top: 16, right: 60, bottom: 28, left: 44 };
-const dateFmt = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
-const fmtDate = (iso: string | null) => (iso ? dateFmt.format(new Date(iso)) : '');
+const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(getLanguage(), { month: 'short', day: 'numeric' }) : '');
 const pct = (n: number) => `${n.toFixed(1)}%`;
 
 function useWidth(ref: React.RefObject<HTMLElement>) {
@@ -47,7 +47,7 @@ export function GradeTrendChart({ data }: { data: TrendDatum[] }) {
   if (hi - lo < 20) hi = lo + 20;
   const step = hi - lo <= 30 ? 10 : hi - lo <= 60 ? 20 : 25;
   const ticks: number[] = [];
-  for (let t = Math.ceil(lo / step) * step; t <= hi; t += step) ticks.push(t);
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) ticks.push(v);
 
   const plotW = width - M.left - M.right;
   const plotH = H - M.top - M.bottom;
@@ -82,10 +82,10 @@ export function GradeTrendChart({ data }: { data: TrendDatum[] }) {
       <div className="mb-2 flex justify-end">
         <button
           type="button"
-          onClick={() => setTable((t) => !t)}
+          onClick={() => setTable((v) => !v)}
           className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
         >
-          {table ? 'Chart view' : 'Table view'}
+          {table ? t('Chart view') : t('Table view')}
         </button>
       </div>
 
@@ -95,10 +95,10 @@ export function GradeTrendChart({ data }: { data: TrendDatum[] }) {
             <thead className="sticky top-0 bg-neutral-50 text-left text-xs text-neutral-500 dark:bg-neutral-900 dark:text-neutral-400">
               <tr>
                 <th className="px-3 py-2 font-medium">#</th>
-                <th className="px-3 py-2 font-medium">Assignment</th>
-                <th className="px-3 py-2 font-medium">Score</th>
-                <th className="px-3 py-2 font-medium">Date</th>
-                <th className="px-3 py-2 text-right font-medium">Grade after</th>
+                <th className="px-3 py-2 font-medium">{t('Assignment')}</th>
+                <th className="px-3 py-2 font-medium">{t('Score')}</th>
+                <th className="px-3 py-2 font-medium">{t('Date')}</th>
+                <th className="px-3 py-2 text-right font-medium">{t('Grade after')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
@@ -123,17 +123,17 @@ export function GradeTrendChart({ data }: { data: TrendDatum[] }) {
             height={H}
             role="img"
             tabIndex={0}
-            aria-label={`Running grade over ${n} graded assignments, from ${pct(data[0].running)} to ${pct(last.running)}. Use the arrow keys to step through points, or switch to table view.`}
+            aria-label={t('Running grade over {n} graded assignments, from {from} to {to}. Use the arrow keys to step through points, or switch to table view.', { n, from: pct(data[0].running), to: pct(last.running) })}
             onKeyDown={onKey}
             onFocus={() => active == null && setActive(n - 1)}
             onBlur={() => setActive(null)}
             className="block rounded-md outline-hidden focus-visible:ring-2 focus-visible:ring-accent-500"
           >
-            {ticks.map((t) => (
-              <g key={t}>
-                <line x1={M.left} x2={width - M.right} y1={y(t)} y2={y(t)} strokeWidth={1} shapeRendering="crispEdges" className="stroke-neutral-200 dark:stroke-neutral-800" />
-                <text x={M.left - 8} y={y(t)} dy="0.32em" textAnchor="end" className="fill-neutral-500 text-[11px] tabular-nums dark:fill-neutral-400">
-                  {t}%
+            {ticks.map((v) => (
+              <g key={v}>
+                <line x1={M.left} x2={width - M.right} y1={y(v)} y2={y(v)} strokeWidth={1} shapeRendering="crispEdges" className="stroke-neutral-200 dark:stroke-neutral-800" />
+                <text x={M.left - 8} y={y(v)} dy="0.32em" textAnchor="end" className="fill-neutral-500 text-[11px] tabular-nums dark:fill-neutral-400">
+                  {v}%
                 </text>
               </g>
             ))}

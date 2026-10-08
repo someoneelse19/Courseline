@@ -6,6 +6,7 @@ import { Card, EmptyState, ErrorMessage, Spinner } from '../components/ui';
 import { useAssignmentGroups, useCourse } from '../hooks/useCanvasData';
 import { computeGrade, gradeTrend, neededAverage, toModel } from '../lib/grades';
 import { formatDay } from '../lib/format';
+import { t } from '../i18n';
 
 // Per-course grade breakdown: headline numbers, how the grade has moved, how each assignment group
 // contributes, and a what-if / goal calculator. All the maths lives in lib/grades.ts.
@@ -19,13 +20,13 @@ const sign = (n: number) => `${n >= 0 ? '+' : '−'}${Math.abs(n).toFixed(1)}`;
 function rowStatus(a: Assignment | undefined, graded: boolean): { label: string; className: string } {
   const s = a?.submission;
   const neutral = 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300';
-  if (s?.excused) return { label: 'Excused', className: neutral };
-  if (graded) return s?.late ? { label: 'Graded · late', className: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' } : { label: 'Graded', className: neutral };
-  if (s?.missing) return { label: 'Missing', className: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300' };
+  if (s?.excused) return { label: t('Excused'), className: neutral };
+  if (graded) return s?.late ? { label: t('Graded · late'), className: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' } : { label: t('Graded'), className: neutral };
+  if (s?.missing) return { label: t('Missing'), className: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300' };
   if (s?.workflow_state === 'submitted' || s?.workflow_state === 'pending_review')
-    return { label: 'Awaiting grade', className: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300' };
-  if (a?.due_at && new Date(a.due_at).getTime() < Date.now()) return { label: 'Past due', className: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' };
-  return { label: 'To do', className: neutral };
+    return { label: t('Awaiting grade'), className: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300' };
+  if (a?.due_at && new Date(a.due_at).getTime() < Date.now()) return { label: t('Past due'), className: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' };
+  return { label: t('To do'), className: neutral };
 }
 
 function Tile({ label, children, note }: { label: string; children: ReactNode; note?: ReactNode }) {
@@ -74,7 +75,7 @@ export function CourseGradesPage() {
 
   if (groupsQ.error) return <ErrorMessage error={groupsQ.error} onRetry={groupsQ.refetch} />;
   if (!model || !real || !course.data) return <Spinner />;
-  if (model.items.length === 0) return <EmptyState>No graded assignments in this course yet.</EmptyState>;
+  if (model.items.length === 0) return <EmptyState>{t('No graded assignments in this course yet.')}</EmptyState>;
 
   const enrollment = course.data.enrollments?.find((e) => e.type === 'student');
   const canvasCurrent = enrollment?.computed_current_score ?? null;
@@ -109,10 +110,10 @@ export function CourseGradesPage() {
 
   const hasStats = [...byId.values()].some((a) => a.score_statistics);
   const filters: { key: Filter; label: string; n: number }[] = [
-    { key: 'all', label: 'All', n: model.items.length },
-    { key: 'graded', label: 'Graded', n: counts.graded },
-    { key: 'missing', label: 'Missing', n: counts.missing },
-    { key: 'pending', label: 'Not graded yet', n: counts.pending },
+    { key: 'all', label: t('All'), n: model.items.length },
+    { key: 'graded', label: t('Graded'), n: counts.graded },
+    { key: 'missing', label: t('Missing'), n: counts.missing },
+    { key: 'pending', label: t('Not graded yet'), n: counts.pending },
   ];
   const input = 'rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm placeholder:text-neutral-400 dark:border-neutral-700 dark:bg-neutral-950 dark:placeholder:text-neutral-600';
 
@@ -121,30 +122,30 @@ export function CourseGradesPage() {
       {/* Headline numbers */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Tile
-          label="Current grade"
+          label={t('Current grade')}
           note={
             <>
-              {enrollment?.computed_current_grade ? `${enrollment.computed_current_grade} · ` : ''}graded work only
-              {mismatch && <span className="block">Rebuilt here from your scores: {pct(real.current)}</span>}
+              {enrollment?.computed_current_grade ? `${enrollment.computed_current_grade} · ` : ''}{t('graded work only')}
+              {mismatch && <span className="block">{t('Rebuilt here from your scores: {value}', { value: pct(real.current) })}</span>}
             </>
           }
         >
           <p className="text-5xl font-semibold tracking-tight">{pct(headline)}</p>
         </Tile>
-        <Tile label="If the rest were zero" note={counts.pending + counts.missing === 0 ? 'Everything is graded' : 'Ungraded work counts as 0'}>
+        <Tile label={t('If the rest were zero')} note={counts.pending + counts.missing === 0 ? t('Everything is graded') : t('Ungraded work counts as 0')}>
           <p className="text-3xl font-semibold tracking-tight">{pct(finalHeadline)}</p>
         </Tile>
-        <Tile label="Points" note={weighted ? 'Graded work; the course weights groups' : 'Graded work'}>
+        <Tile label={t('Points')} note={weighted ? t('Graded work; the course weights groups') : t('Graded work')}>
           <p className="text-3xl font-semibold tracking-tight">
             {pts(earned)} <span className="text-lg font-normal text-neutral-500 dark:text-neutral-400">/ {pts(possible)}</span>
           </p>
         </Tile>
-        <Tile label="Work status">
+        <Tile label={t('Work status')}>
           <dl className="grid grid-cols-3 gap-2 text-center">
             {[
-              ['Graded', counts.graded],
-              ['Missing', counts.missing],
-              ['Not graded', counts.pending],
+              [t('Graded'), counts.graded],
+              [t('Missing'), counts.missing],
+              [t('Not graded'), counts.pending],
             ].map(([k, v]) => (
               <div key={k}>
                 <dd className="text-2xl font-semibold">{v}</dd>
@@ -156,41 +157,41 @@ export function CourseGradesPage() {
       </div>
 
       {/* Trend */}
-      <Card title="Grade over time">
-        <p className="-mt-2 mb-2 text-xs text-neutral-500 dark:text-neutral-400">Your current grade after each graded assignment, in the order they were graded.</p>
-        {trend.length < 2 ? <EmptyState>Not enough graded work yet to show a trend.</EmptyState> : <GradeTrendChart data={trend} />}
+      <Card title={t('Grade over time')}>
+        <p className="-mt-2 mb-2 text-xs text-neutral-500 dark:text-neutral-400">{t('Your current grade after each graded assignment, in the order they were graded.')}</p>
+        {trend.length < 2 ? <EmptyState>{t('Not enough graded work yet to show a trend.')}</EmptyState> : <GradeTrendChart data={trend} />}
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Groups */}
         <div className="lg:col-span-2">
-          <Card title="By assignment group">
+          <Card title={t('By assignment group')}>
             <ul className="space-y-4">
               {model.groups.map((g) => {
                 const s = real.groups[g.id].current;
-                const dropRule = [g.dropLowest && `lowest ${g.dropLowest}`, g.dropHighest && `highest ${g.dropHighest}`].filter(Boolean).join(' and ');
+                const dropRule = [g.dropLowest && t('lowest {n}', { n: g.dropLowest }), g.dropHighest && t('highest {n}', { n: g.dropHighest })].filter(Boolean).join(` ${t('and')} `);
                 return (
                   <li key={g.id}>
                     <div className="flex items-baseline justify-between gap-3 text-sm">
                       <span className="min-w-0 truncate font-medium">{g.name}</span>
                       <span className="shrink-0 text-xs text-neutral-500 dark:text-neutral-400">
-                        {weighted && g.weight > 0 ? `${g.weight}% of grade` : ''}
-                        {weighted && g.weight > 0 && s.pct != null ? ` · counts ${((g.weight * s.pct) / 100).toFixed(1)} of ${g.weight}` : ''}
+                        {weighted && g.weight > 0 ? t('{n}% of grade', { n: g.weight }) : ''}
+                        {weighted && g.weight > 0 && s.pct != null ? ` · ${t('counts {value} of {total}', { value: ((g.weight * s.pct) / 100).toFixed(1), total: g.weight })}` : ''}
                       </span>
                     </div>
                     <div className="mt-1.5 flex items-center gap-3">
                       {/* Track is a lighter step of the bar's own ramp; 12px thick, square at the baseline, 4px round data end. */}
                       <div className="h-3 flex-1 rounded-r-[4px] bg-accent-100 dark:bg-accent-950">
                         {s.pct != null && (
-                          <div className="h-full rounded-r-[4px] bg-accent-600" style={{ width: `${Math.max(0, Math.min(s.pct, 100))}%` }} role="img" aria-label={`${pct(s.pct)} in ${g.name}`} />
+                          <div className="h-full rounded-r-[4px] bg-accent-600" style={{ width: `${Math.max(0, Math.min(s.pct, 100))}%` }} role="img" aria-label={t('{value} in {group}', { value: pct(s.pct), group: g.name })} />
                         )}
                       </div>
                       <span className="w-14 shrink-0 text-right text-sm font-semibold tabular-nums">{pct(s.pct)}</span>
                     </div>
                     <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-                      {s.counted === 0 ? 'No graded work yet' : `${pts(s.earned)} / ${pts(s.possible)} points`}
-                      {dropRule && ` · drops your ${dropRule} score${g.dropLowest + g.dropHighest > 1 ? 's' : ''}`}
-                      {s.dropped.length > 0 && ` · ${s.dropped.length} dropped`}
+                      {s.counted === 0 ? t('No graded work yet') : t('{earned} / {possible} points', { earned: pts(s.earned), possible: pts(s.possible) })}
+                      {dropRule && ` · ${g.dropLowest + g.dropHighest > 1 ? t('drops your {rule} scores', { rule: dropRule }) : t('drops your {rule} score', { rule: dropRule })}`}
+                      {s.dropped.length > 0 && ` · ${t('{n} dropped', { n: s.dropped.length })}`}
                     </p>
                   </li>
                 );
@@ -200,30 +201,34 @@ export function CourseGradesPage() {
         </div>
 
         {/* Goal */}
-        <Card title="Set a goal">
+        <Card title={t('Set a goal')}>
           <label className="flex items-center gap-2 text-sm">
-            I want a final grade of
+            {t('I want a final grade of')}
             <input type="number" min={0} max={200} value={target} onChange={(e) => setTarget(Number(e.target.value) || 0)} className={`${input} w-20`} />%
           </label>
           <p className="mt-3 text-sm" role="status">
-            {goal?.status === 'none' && 'Nothing left to grade, so your grade is final.'}
-            {goal?.status === 'secured' && `Already secured: even zeros on the remaining ${goal.remaining} assignment${goal.remaining === 1 ? '' : 's'} keep you at or above ${target}%.`}
+            {goal?.status === 'none' && t('Nothing left to grade, so your grade is final.')}
+            {goal?.status === 'secured' &&
+              (goal.remaining === 1
+                ? t('Already secured: even a zero on the remaining assignment keeps you at or above {target}%.', { target })
+                : t('Already secured: even zeros on the remaining {n} assignments keep you at or above {target}%.', { n: goal.remaining, target }))}
             {goal?.status === 'reachable' && (
               <>
-                You need an average of <strong>{pct(goal.needed)}</strong> across the remaining {goal.remaining} assignment{goal.remaining === 1 ? '' : 's'}.
+                {t('You need an average of')} <strong>{pct(goal.needed)}</strong>{' '}
+                {goal.remaining === 1 ? t('on the remaining assignment.') : t('across the remaining {n} assignments.', { n: goal.remaining })}
               </>
             )}
-            {goal?.status === 'unreachable' && `Out of reach: perfect scores on the remaining ${goal.remaining} would give ${pct(goal.bestPossible)}.`}
+            {goal?.status === 'unreachable' && t('Out of reach: perfect scores on the remaining {n} would give {value}.', { n: goal.remaining, value: pct(goal.bestPossible) })}
           </p>
-          <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">Uses your real scores plus any what-if scores you enter below.</p>
+          <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">{t('Uses your real scores plus any what-if scores you enter below.')}</p>
         </Card>
       </div>
 
       {/* Assignments + what-if */}
       <Card
-        title="Assignments"
+        title={t('Assignments')}
         action={
-          <div className="flex flex-wrap gap-1" role="group" aria-label="Filter assignments">
+          <div className="flex flex-wrap gap-1" role="group" aria-label={t('Filter assignments')}>
             {filters.map((f) => (
               <button
                 key={f.key}
@@ -243,12 +248,12 @@ export function CourseGradesPage() {
         {whatIf && (
           <div role="status" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-accent-200 bg-accent-50 px-3 py-2 text-sm dark:border-accent-900 dark:bg-accent-950">
             <span>
-              <strong>What-if:</strong> current <strong>{pct(whatIf.current)}</strong>
-              {whatIf.current != null && real.current != null && <span className="text-neutral-600 dark:text-neutral-300"> ({sign(whatIf.current - real.current)} vs now)</span>}
-              {' · '}if the rest were zero <strong>{pct(whatIf.final)}</strong>
+              <strong>{t('What-if:')}</strong> {t('current')} <strong>{pct(whatIf.current)}</strong>
+              {whatIf.current != null && real.current != null && <span className="text-neutral-600 dark:text-neutral-300"> ({t('{delta} vs now', { delta: sign(whatIf.current - real.current) })})</span>}
+              {' · '}{t('if the rest were zero')} <strong>{pct(whatIf.final)}</strong>
             </span>
             <button type="button" onClick={() => setOverrides({})} className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs hover:bg-white dark:border-neutral-700 dark:hover:bg-neutral-900">
-              Reset what-ifs
+              {t('Reset what-ifs')}
             </button>
           </div>
         )}
@@ -257,13 +262,13 @@ export function CourseGradesPage() {
           <table className="w-full text-sm">
             <thead className="text-left text-xs text-neutral-500 dark:text-neutral-400">
               <tr>
-                <th className="py-2 pr-3 font-medium">Assignment</th>
-                <th className="hidden px-3 py-2 font-medium md:table-cell">Due</th>
-                <th className="px-3 py-2 font-medium">Status</th>
-                <th className="px-3 py-2 text-right font-medium">Score</th>
+                <th className="py-2 pr-3 font-medium">{t('Assignment')}</th>
+                <th className="hidden px-3 py-2 font-medium md:table-cell">{t('Due')}</th>
+                <th className="px-3 py-2 font-medium">{t('Status')}</th>
+                <th className="px-3 py-2 text-right font-medium">{t('Score')}</th>
                 <th className="hidden px-3 py-2 text-right font-medium sm:table-cell">%</th>
-                {hasStats && <th className="hidden px-3 py-2 text-right font-medium lg:table-cell">Class median</th>}
-                <th className="py-2 pl-3 text-right font-medium">What-if (points)</th>
+                {hasStats && <th className="hidden px-3 py-2 text-right font-medium lg:table-cell">{t('Class median')}</th>}
+                <th className="py-2 pl-3 text-right font-medium">{t('What-if (points)')}</th>
               </tr>
             </thead>
             {model.groups.map((g) => {
@@ -291,8 +296,8 @@ export function CourseGradesPage() {
                           <Link to={`/courses/${courseId}/assignments/${i.id}`} className="font-medium hover:underline">
                             {i.name}
                           </Link>
-                          {isDropped && <span className="ml-2 rounded-sm bg-neutral-100 px-1.5 py-0.5 text-[11px] text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">dropped</span>}
-                          {i.omitted && <span className="ml-2 text-[11px] text-neutral-500">not in final grade</span>}
+                          {isDropped && <span className="ml-2 rounded-sm bg-neutral-100 px-1.5 py-0.5 text-[11px] text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">{t('dropped')}</span>}
+                          {i.omitted && <span className="ml-2 text-[11px] text-neutral-500">{t('not in final grade')}</span>}
                         </td>
                         <td className="hidden whitespace-nowrap px-3 py-2 text-neutral-500 dark:text-neutral-400 md:table-cell">{i.dueAt ? formatDay(i.dueAt) : '—'}</td>
                         <td className="px-3 py-2">
@@ -320,7 +325,7 @@ export function CourseGradesPage() {
                             min={0}
                             step="any"
                             inputMode="decimal"
-                            aria-label={`What-if score for ${i.name}`}
+                            aria-label={t('What-if score for {name}', { name: i.name })}
                             placeholder={i.score != null ? pts(i.score) : '—'}
                             value={overrides[i.id] ?? ''}
                             disabled={i.excused || i.omitted}
@@ -337,7 +342,7 @@ export function CourseGradesPage() {
           </table>
         </div>
         <p className="mt-3 text-xs text-neutral-500 dark:text-neutral-400">
-          What-if scores are only for planning: they never leave this page. Totals are calculated the way Canvas does it (group weights and drop rules included).
+          {t('What-if scores are only for planning: they never leave this page. Totals are calculated the way Canvas does it (group weights and drop rules included).')}
         </p>
       </Card>
     </div>

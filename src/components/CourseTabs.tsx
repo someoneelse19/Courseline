@@ -1,4 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
+import { t } from '../i18n';
 
 // Per-course sub-navigation. Add a tab here when a course gets a new section.
 export function CourseTabs({ courseId }: { courseId: number }) {
@@ -6,11 +7,11 @@ export function CourseTabs({ courseId }: { courseId: number }) {
   const base = `/courses/${courseId}`;
   const tabs = [
     // Pages is the course's default tab (the bare course URL).
-    { to: base, label: 'Pages', active: pathname === base || pathname.startsWith(`${base}/pages`) },
+    { to: base, label: t('Pages'), active: pathname === base || pathname.startsWith(`${base}/pages`) },
     // The assignment detail page lives under this tab too, so it stays highlighted there.
-    { to: `${base}/assignments`, label: 'Assignments', active: pathname.startsWith(`${base}/assignments`) },
-    { to: `${base}/files`, label: 'Files by unit', active: pathname.startsWith(`${base}/files`) },
-    { to: `${base}/grades`, label: 'Grades', active: pathname.startsWith(`${base}/grades`) },
+    { to: `${base}/assignments`, label: t('Assignments'), active: pathname.startsWith(`${base}/assignments`) },
+    { to: `${base}/files`, label: t('Files by unit'), active: pathname.startsWith(`${base}/files`) },
+    { to: `${base}/grades`, label: t('Grades'), active: pathname.startsWith(`${base}/grades`) },
   ];
   return (
     <nav className="mb-4 flex gap-1 border-b border-neutral-200 dark:border-neutral-800">

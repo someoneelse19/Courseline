@@ -3,6 +3,7 @@ import type { Assignment } from '../api/types';
 import { useApi } from '../context/AuthContext';
 import { cleanEditorHtml, isEditorEmpty, RichTextEditor } from './RichTextEditor';
 import { Card, ErrorMessage } from './ui';
+import { t } from '../i18n';
 
 interface SubmissionFormProps {
   courseId: number;
@@ -52,7 +53,7 @@ export function SubmissionForm({ courseId, assignmentId, assignment, onSubmitted
         key: nextKey.current++,
         file,
         status: blocked ? 'error' : 'ready',
-        error: blocked ? `Not an allowed file type (allowed: ${allowed.join(', ')})` : undefined,
+        error: blocked ? t('Not an allowed file type (allowed: {allowed})', { allowed: allowed.join(', ') }) : undefined,
       };
     });
     setFiles((prev) => [...prev, ...next]);
@@ -67,7 +68,7 @@ export function SubmissionForm({ courseId, assignmentId, assignment, onSubmitted
     try {
       if (activeTab === 'upload') {
         if (files.some((f) => f.status === 'error' && !f.uploadedId && f.error?.startsWith('Not an allowed'))) {
-          throw new Error('Remove the files with the wrong type, then submit again.');
+          throw new Error(t('Remove the files with the wrong type, then submit again.'));
         }
         // Upload one at a time (gentle on Canvas's rate limit); skip anything already uploaded.
         const ids: number[] = [];
@@ -84,16 +85,16 @@ export function SubmissionForm({ courseId, assignmentId, assignment, onSubmitted
             update(item.key, { status: 'uploaded', uploadedId: uploaded.id });
           } catch (err) {
             failed++;
-            update(item.key, { status: 'error', error: err instanceof Error ? err.message : 'Upload failed' });
+            update(item.key, { status: 'error', error: err instanceof Error ? err.message : t('Upload failed') });
           }
         }
-        if (failed > 0) throw new Error(`${failed} file${failed === 1 ? '' : 's'} could not be uploaded, so nothing was submitted. Fix or remove ${failed === 1 ? 'it' : 'them'} and submit again.`);
-        if (ids.length === 0) throw new Error('Choose at least one file.');
+        if (failed > 0) throw new Error(failed === 1 ? t('1 file could not be uploaded, so nothing was submitted. Fix or remove it and submit again.') : t('{n} files could not be uploaded, so nothing was submitted. Fix or remove them and submit again.', { n: failed }));
+        if (ids.length === 0) throw new Error(t('Choose at least one file.'));
         await api.submitAssignment(courseId, assignmentId, { submission_type: 'online_upload', file_ids: ids });
         setFiles([]);
         onSubmitted?.();
       } else {
-        if (isEditorEmpty(text)) throw new Error('Write something to submit.');
+        if (isEditorEmpty(text)) throw new Error(t('Write something to submit.'));
         await api.submitAssignment(courseId, assignmentId, { submission_type: 'online_text_entry', body: cleanEditorHtml(text) });
         setText('');
         onSubmitted?.();
@@ -110,16 +111,16 @@ export function SubmissionForm({ courseId, assignmentId, assignment, onSubmitted
   const canSubmit = activeTab === 'upload' ? files.length > 0 : !isEditorEmpty(text);
 
   return (
-    <Card title="Submit assignment">
+    <Card title={t('Submit assignment')}>
       <div className="mb-4 flex gap-2 border-b border-neutral-200 dark:border-neutral-800">
         {canUpload && (
           <button type="button" onClick={() => setTab('upload')} className={tabClass(activeTab === 'upload')}>
-            📁 File upload
+            📁 {t('File upload')}
           </button>
         )}
         {canText && (
           <button type="button" onClick={() => setTab('text')} className={tabClass(activeTab === 'text')}>
-            📝 Text entry
+            📝 {t('Text entry')}
           </button>
         )}
       </div>
@@ -128,11 +129,11 @@ export function SubmissionForm({ courseId, assignmentId, assignment, onSubmitted
         {activeTab === 'upload' && (
           <>
             <label className="block cursor-pointer rounded-lg border-2 border-dashed border-neutral-300 p-6 text-center text-sm text-neutral-600 dark:border-neutral-700 dark:text-neutral-400">
-              <span className="font-medium text-accent-600 dark:text-accent-400">Click to choose files</span>
+              <span className="font-medium text-accent-600 dark:text-accent-400">{t('Click to choose files')}</span>
               <input
                 type="file"
                 multiple
-                aria-label="Choose files to submit"
+                aria-label={t('Choose files to submit')}
                 onChange={(e) => {
                   addFiles(e.target.files);
                   e.target.value = ''; // lets the same file be picked again after removing it
@@ -151,15 +152,15 @@ export function SubmissionForm({ courseId, assignmentId, assignment, onSubmitted
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{item.file.name}</p>
                       <p className="text-xs text-neutral-500 dark:text-neutral-400">{megabytes(item.file.size)} MB</p>
-                      {item.status === 'uploading' && <p className="text-xs text-accent-600 dark:text-accent-400">Uploading…</p>}
-                      {item.status === 'uploaded' && <p className="text-xs text-green-700 dark:text-green-400">✓ Uploaded</p>}
+                      {item.status === 'uploading' && <p className="text-xs text-accent-600 dark:text-accent-400">{t('Uploading…')}</p>}
+                      {item.status === 'uploaded' && <p className="text-xs text-green-700 dark:text-green-400">✓ {t('Uploaded')}</p>}
                       {item.status === 'error' && <p className="text-xs text-red-700 dark:text-red-400">{item.error}</p>}
                     </div>
                     <button
                       type="button"
                       onClick={() => removeFile(item.key)}
                       disabled={item.status === 'uploading'}
-                      aria-label={`Remove ${item.file.name}`}
+                      aria-label={t('Remove {name}', { name: item.file.name })}
                       className="ml-2 shrink-0 rounded-sm px-2 py-1 text-sm text-neutral-500 hover:bg-neutral-200 disabled:opacity-50 dark:hover:bg-neutral-700"
                     >
                       ✕
@@ -172,7 +173,7 @@ export function SubmissionForm({ courseId, assignmentId, assignment, onSubmitted
         )}
 
         {activeTab === 'text' && (
-          <RichTextEditor value={text} onChange={setText} ariaLabel="Your submission" placeholder="Write your submission here…" />
+          <RichTextEditor value={text} onChange={setText} ariaLabel={t('Your submission')} placeholder={t('Write your submission here…')} />
         )}
 
         {error && <ErrorMessage error={error} />}
@@ -183,10 +184,10 @@ export function SubmissionForm({ courseId, assignmentId, assignment, onSubmitted
             disabled={submitting || !canSubmit}
             className="rounded-md bg-accent-600 px-4 py-2 text-sm font-medium text-white hover:bg-accent-700 disabled:opacity-50"
           >
-            {submitting ? 'Submitting…' : 'Submit'}
+            {submitting ? t('Submitting…') : t('Submit')}
           </button>
           {activeTab === 'upload' && allowed.length > 0 && (
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">Allowed: {allowed.join(', ')}</p>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">{t('Allowed: {allowed}', { allowed: allowed.join(', ') })}</p>
           )}
         </div>
       </form>

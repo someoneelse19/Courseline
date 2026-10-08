@@ -3,6 +3,7 @@ import DOMPurify from 'dompurify';
 import { CanvasApiError } from '../api/client';
 import { useApi } from '../context/AuthContext';
 import { ErrorMessage, Spinner } from './ui';
+import { t } from '../i18n';
 
 const Editor = lazy(() => import('@monaco-editor/react').then(m => ({ default: m.default })));
 
@@ -67,7 +68,7 @@ function CodeViewer({ fileUrl, fileName, zoom }: { fileUrl: string; fileName: st
     const fetchCode = async () => {
       try {
         const res = await fetch(fileUrl);
-        if (!res.ok) throw new Error('Failed to load file');
+        if (!res.ok) throw new Error(t('Failed to load file'));
         const text = await res.text();
         setCode(text);
       } catch (err) {
@@ -114,7 +115,7 @@ function ImageViewer({ fileUrl, fileName, zoom }: { fileUrl: string; fileName: s
           // At 100% the image fits the panel (never upscaled); zoom scales from there.
           setNatural({ w, fit: Math.min(1, ((boxRef.current?.clientWidth ?? w) - 32) / w) });
         }}
-        onError={() => setError(new Error('Failed to load image'))}
+        onError={() => setError(new Error(t('Failed to load image')))}
         className="mx-auto block h-auto max-w-none rounded-sm"
         style={natural ? { width: natural.w * natural.fit * zoom } : { visibility: 'hidden', width: 0 }}
       />
@@ -149,7 +150,7 @@ type PdfState = { status: 'loading'; stage: string } | { status: 'error'; messag
 function PdfViewer({ fileUrl, zoom }: { fileUrl: string; zoom: number }) {
   // Width of a page at 100%: 800px, or less on a narrow screen.
   const baseWidth = useMemo(() => Math.min(800, Math.max(280, window.innerWidth - 96)), []);
-  const [state, setState] = useState<PdfState>({ status: 'loading', stage: 'Reading the file…' });
+  const [state, setState] = useState<PdfState>({ status: 'loading', stage: t('Reading the file…') });
 
   useEffect(() => {
     let settled = false;
@@ -171,15 +172,15 @@ function PdfViewer({ fileUrl, zoom }: { fileUrl: string; zoom: number }) {
         const data = new Uint8Array(await (await fetch(fileUrl)).arrayBuffer());
         // Canvas (or the dev proxy) can answer with a login/error page instead of the file.
         if (String.fromCharCode(...data.slice(0, 5)) !== '%PDF-') throw new Error("the download wasn't a PDF (Canvas may have returned an error page)");
-        step('Loading the PDF viewer…', 'loading the PDF viewer');
+        step(t('Loading the PDF viewer…'), 'loading the PDF viewer');
         const pdfjs = await import('pdfjs-dist/legacy/build/pdf.min.mjs');
         pdfjs.GlobalWorkerOptions.workerSrc = (await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')).default;
-        step('Opening the document…', 'opening the document');
+        step(t('Opening the document…'), 'opening the document');
         // PDF.js parses in a background worker. If that never answers (blocked, or a browser/extension
         // quirk), PDF.js waits forever, so after a few seconds redo it on the main thread instead
         // (setting globalThis.pdfjsWorker makes PDF.js use the worker code in-page).
         const openOnMainThread = async () => {
-          step('Opening the document (compatibility mode)…', 'opening the document in compatibility mode');
+          step(t('Opening the document (compatibility mode)…'), 'opening the document in compatibility mode');
           (globalThis as { pdfjsWorker?: unknown }).pdfjsWorker = await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs');
           return pdfjs.getDocument({ data }).promise;
         };
@@ -214,7 +215,7 @@ function PdfViewer({ fileUrl, zoom }: { fileUrl: string; zoom: number }) {
   }, [fileUrl]);
 
   if (state.status === 'loading') return <Spinner label={state.stage} />;
-  if (state.status === 'error') return <p className="p-4 text-sm text-neutral-600 dark:text-neutral-400">Couldn't render this PDF: {state.message}.</p>;
+  if (state.status === 'error') return <p className="p-4 text-sm text-neutral-600 dark:text-neutral-400">{t("Couldn't render this PDF: {message}.", { message: state.message })}</p>;
   return (
     <div data-scroll-frame className="h-full space-y-3 overflow-auto rounded-lg bg-neutral-200 p-3 dark:bg-neutral-800">
       {Array.from({ length: state.pdf.numPages }, (_, i) => (
@@ -335,8 +336,8 @@ function useOfficeRender(fileUrl: string, draw: (bytes: ArrayBuffer, host: HTMLE
 }
 
 function OfficeStatus({ status, what }: { status: { state: string; message?: string }; what: string }) {
-  if (status.state === 'loading') return <Spinner label={`Rendering ${what}…`} />;
-  if (status.state === 'error') return <p className="p-4 text-sm text-neutral-600 dark:text-neutral-400">Couldn't render this {what}: {status.message}.</p>;
+  if (status.state === 'loading') return <Spinner label={t('Rendering {what}…', { what: t(what) })} />;
+  if (status.state === 'error') return <p className="p-4 text-sm text-neutral-600 dark:text-neutral-400">{t("Couldn't render this file ({what}): {message}.", { what: t(what), message: status.message ?? '' })}</p>;
   return null;
 }
 
@@ -434,7 +435,7 @@ function ExcelViewer({ fileUrl, zoom }: { fileUrl: string; zoom: number }) {
       </div>
       {sheet.cut > 0 && (
         <p className="shrink-0 text-xs text-neutral-500 dark:text-neutral-400">
-          Showing the first {MAX_SHEET_ROWS.toLocaleString()} of {sheet.cut.toLocaleString()} rows.
+          {t('Showing the first {shown} of {total} rows.', { shown: MAX_SHEET_ROWS.toLocaleString(), total: sheet.cut.toLocaleString() })}
         </p>
       )}
     </div>
@@ -520,7 +521,7 @@ function UnsupportedViewer({ fileUrl, fileName, note }: { fileUrl: string; fileN
         download={fileName}
         className="rounded-md bg-accent-600 px-4 py-2 text-sm font-medium text-white hover:bg-accent-700"
       >
-        Download file
+        {t('Download file')}
       </a>
     </div>
   );
@@ -542,12 +543,12 @@ type ViewerState =
 function describeFailure(err: unknown): string {
   if (err instanceof CanvasApiError) {
     if (err.status === 0)
-      return 'Your browser blocked the download (CORS). Setting VITE_USE_DEV_PROXY=true in .env and restarting npm run dev usually fixes this.';
-    if (err.status === 401 || err.status === 403) return 'Canvas denied access to this file (it may be locked or hidden).';
-    if (err.status === 404) return "Canvas couldn't find this file (it may have been deleted).";
-    return `Canvas returned an error (${err.status}).`;
+      return t('Your browser blocked the download (CORS). Setting VITE_USE_DEV_PROXY=true in .env and restarting npm run dev usually fixes this.');
+    if (err.status === 401 || err.status === 403) return t('Canvas denied access to this file (it may be locked or hidden).');
+    if (err.status === 404) return t("Canvas couldn't find this file (it may have been deleted).");
+    return t('Canvas returned an error ({status}).', { status: err.status });
   }
-  return `The file could not be loaded${err instanceof Error && err.message ? ` (${err.message})` : ''}.`;
+  return t('The file could not be loaded{detail}.', { detail: err instanceof Error && err.message ? ` (${err.message})` : '' });
 }
 
 // Canvas links in page/assignment HTML point at its web UI (/courses/1/files/2), which needs a
@@ -565,7 +566,7 @@ function useResolvedFile(fileUrl: string, fileName: string, contentType?: string
     (async () => {
       const id = fileUrl.match(/\/files\/(\d+)/)?.[1];
       if (!id) {
-        setState({ status: 'error', reason: 'This link is not a Canvas file.' });
+        setState({ status: 'error', reason: t('This link is not a Canvas file.') });
         return;
       }
 
@@ -659,15 +660,15 @@ function NumberField({ value, onCommit, ariaLabel, title, width = 'w-10' }: { va
 
 function ZoomControls({ zoom, setZoom }: { zoom: number; setZoom: (z: number) => void }) {
   return (
-    <div className="flex items-center gap-1" role="group" aria-label="Zoom">
-      <button type="button" aria-label="Zoom out" title="Zoom out (-)" disabled={zoom <= MIN_ZOOM + 1e-6} onClick={() => setZoom(stepZoom(zoom, -1))} className={toolbarButton}>
+    <div className="flex items-center gap-1" role="group" aria-label={t('Zoom')}>
+      <button type="button" aria-label={t('Zoom out')} title={t('Zoom out (-)')} disabled={zoom <= MIN_ZOOM + 1e-6} onClick={() => setZoom(stepZoom(zoom, -1))} className={toolbarButton}>
         −
       </button>
       <div className={fieldBox}>
-        <NumberField ariaLabel="Zoom percent" title="Type a zoom from 25 to 500, then press Enter (0 resets to 100%)" value={Math.round(zoom * 100)} onCommit={(n) => setZoom(clampZoom(n / 100))} />
+        <NumberField ariaLabel={t('Zoom percent')} title={t('Type a zoom from 25 to 500, then press Enter (0 resets to 100%)')} value={Math.round(zoom * 100)} onCommit={(n) => setZoom(clampZoom(n / 100))} />
         <span className="text-neutral-500 dark:text-neutral-400">%</span>
       </div>
-      <button type="button" aria-label="Zoom in" title="Zoom in (+)" disabled={zoom >= MAX_ZOOM - 1e-6} onClick={() => setZoom(stepZoom(zoom, 1))} className={toolbarButton}>
+      <button type="button" aria-label={t('Zoom in')} title={t('Zoom in (+)')} disabled={zoom >= MAX_ZOOM - 1e-6} onClick={() => setZoom(stepZoom(zoom, 1))} className={toolbarButton}>
         +
       </button>
     </div>
@@ -675,13 +676,14 @@ function ZoomControls({ zoom, setZoom }: { zoom: number; setZoom: (z: number) =>
 }
 
 function PageControls({ label, current, total, goTo }: { label: string; current: number; total: number; goTo: (n: number) => void }) {
+  const name = t(label);
   return (
-    <div className="flex items-center gap-1.5 text-sm" role="group" aria-label={`${label} navigation`}>
-      <span className="text-neutral-500 dark:text-neutral-400">{label}</span>
+    <div className="flex items-center gap-1.5 text-sm" role="group" aria-label={t('{label} navigation', { label: name })}>
+      <span className="text-neutral-500 dark:text-neutral-400">{name}</span>
       <div className={fieldBox}>
-        <NumberField ariaLabel={`${label} number`} title={`Type a ${label.toLowerCase()} number and press Enter to jump to it`} value={current} onCommit={(n) => goTo(Math.min(total, Math.max(1, n)))} width="w-8" />
+        <NumberField ariaLabel={t('{label} number', { label: name })} title={t('Type a {label} number and press Enter to jump to it', { label: name.toLowerCase() })} value={current} onCommit={(n) => goTo(Math.min(total, Math.max(1, n)))} width="w-8" />
       </div>
-      <span className="text-neutral-500 dark:text-neutral-400">of {total}</span>
+      <span className="text-neutral-500 dark:text-neutral-400">{t('of {total}', { total })}</span>
     </div>
   );
 }
@@ -798,8 +800,8 @@ function Shell({ title, onClose, toolbar, tall, children }: { title: string; onC
           {title}
         </h2>
         {toolbar}
-        <button type="button" onClick={onClose} aria-label="Close" className={toolbarButton}>
-          ✕ Close
+        <button type="button" onClick={onClose} aria-label={t('Close')} className={toolbarButton}>
+          ✕ {t('Close')}
         </button>
       </header>
       <div className={`min-h-0 p-3 ${tall ? 'flex-1' : 'overflow-auto'}`}>{children}</div>
@@ -846,7 +848,7 @@ export function FileViewer({ fileUrl, fileName, contentType, onClose }: FileView
   if (state.status === 'loading')
     return (
       <Shell title={fileName} onClose={onClose}>
-        <Spinner label="Loading file…" />
+        <Spinner label={t('Loading file…')} />
       </Shell>
     );
 
@@ -855,7 +857,7 @@ export function FileViewer({ fileUrl, fileName, contentType, onClose }: FileView
       <Shell title={fileName} onClose={onClose}>
         <div className="flex flex-col items-center gap-3 p-6 text-center">
           <div className="text-4xl">📄</div>
-          <p className="text-sm text-neutral-600 dark:text-neutral-400">This file can't be previewed here.</p>
+          <p className="text-sm text-neutral-600 dark:text-neutral-400">{t("This file can't be previewed here.")}</p>
           <p className="max-w-md text-xs text-neutral-500 dark:text-neutral-400">{state.reason}</p>
           {state.download && (
             <a
@@ -863,7 +865,7 @@ export function FileViewer({ fileUrl, fileName, contentType, onClose }: FileView
               download={state.download.name}
               className="rounded-md bg-accent-600 px-4 py-2 text-sm font-medium text-white hover:bg-accent-700"
             >
-              Download file
+              {t('Download file')}
             </a>
           )}
         </div>
@@ -885,7 +887,7 @@ export function FileViewer({ fileUrl, fileName, contentType, onClose }: FileView
             <ZoomControls zoom={zoom} setZoom={setZoom} />
             {/* The only way a file is ever saved: an explicit click. Saves the local copy under its real name. */}
             <a href={url} download={name} className={`${toolbarButton} bg-accent-600 text-white hover:bg-accent-700 dark:border-accent-600`}>
-              ⬇ Download
+              ⬇ {t('Download')}
             </a>
           </>
         )
@@ -902,7 +904,7 @@ export function FileViewer({ fileUrl, fileName, contentType, onClose }: FileView
           <UnsupportedViewer
             fileUrl={url}
             fileName={name}
-            note="This is an older Office format (.doc / .ppt) that browsers can't preview. Download it, or ask for a .docx / .pptx."
+            note={t("This is an older Office format (.doc / .ppt) that browsers can't preview. Download it, or ask for a .docx / .pptx.")}
           />
         )}
         {category === 'unsupported' && <UnsupportedViewer fileUrl={url} fileName={name} />}

@@ -10,6 +10,7 @@ import { useFileViewer } from '../context/FileViewerContext';
 import { useAssignment, useMySubmission } from '../hooks/useCanvasData';
 import { formatDue } from '../lib/format';
 import { htmlText, linkedFiles } from '../lib/html';
+import { t } from '../i18n';
 
 // Header + course tabs come from CourseLayout. Layout: instructions on the left;
 // details, submission form, your submission and feedback (with reply) on the right.
@@ -47,13 +48,13 @@ export function AssignmentDetailPage() {
   // Prefer the richer standalone submission; fall back to the one embedded in the assignment.
   const sub = submission.data ?? a.submission;
   const st = assignmentStatus({ ...a, submission: sub });
-  const types = (a.submission_types ?? []).map((t) => typeLabels[t] ?? t);
+  const types = (a.submission_types ?? []).map((ty) => t(typeLabels[ty] ?? ty));
   const comments = sub?.submission_comments ?? [];
 
   return (
     <>
       <Link to={`/courses/${courseId}/assignments`} className="text-sm text-accent-600 hover:underline dark:text-accent-400">
-        ← All assignments
+        {t('← All assignments')}
       </Link>
       <div className="mb-4 mt-1 flex flex-wrap items-start justify-between gap-3">
         <h2 className="text-xl font-bold tracking-tight">{a.name}</h2>
@@ -64,17 +65,17 @@ export function AssignmentDetailPage() {
         <div className="space-y-6 lg:col-span-2">
           {a.locked_for_user && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
-              <p className="font-medium">Locked</p>
+              <p className="font-medium">{t('Locked')}</p>
               {a.lock_explanation && <HtmlContent html={a.lock_explanation} />}
             </div>
           )}
 
-          <Card title="Instructions">
-            {a.description ? <HtmlContent html={a.description} /> : <EmptyState>No instructions provided.</EmptyState>}
+          <Card title={t('Instructions')}>
+            {a.description ? <HtmlContent html={a.description} /> : <EmptyState>{t('No instructions provided.')}</EmptyState>}
           </Card>
 
           {attachedFiles.length > 0 && (
-            <Card title="Files">
+            <Card title={t('Files')}>
               <ul className="space-y-2">
                 {attachedFiles.map((file) => (
                   <li key={file.id} className="flex items-center gap-2">
@@ -93,14 +94,14 @@ export function AssignmentDetailPage() {
           )}
 
           {a.rubric && a.rubric.length > 0 && (
-            <Card title="Rubric">
+            <Card title={t('Rubric')}>
               <Rubric criteria={a.rubric} sub={sub} />
             </Card>
           )}
         </div>
 
         <div className="space-y-6">
-          <Card title="Details">
+          <Card title={t('Details')}>
             <Details a={a} types={types} />
             <a
               href={a.html_url}
@@ -108,7 +109,7 @@ export function AssignmentDetailPage() {
               rel="noreferrer"
               className="mt-4 block rounded-md bg-accent-600 px-3 py-2 text-center text-sm font-medium text-white hover:bg-accent-700"
             >
-              {sub?.workflow_state === 'unsubmitted' || !sub ? 'Submit in Canvas ↗' : 'Open in Canvas ↗'}
+              {sub?.workflow_state === 'unsubmitted' || !sub ? t('Submit in Canvas ↗') : t('Open in Canvas ↗')}
             </a>
           </Card>
 
@@ -119,7 +120,7 @@ export function AssignmentDetailPage() {
             onSubmitted={submission.refetch}
           />
 
-          <Card title="Your submission">
+          <Card title={t('Your submission')}>
             {submission.error && !a.submission ? (
               <ErrorMessage error={submission.error} onRetry={submission.refetch} />
             ) : !sub && submission.loading ? (
@@ -129,15 +130,15 @@ export function AssignmentDetailPage() {
             )}
           </Card>
 
-          <Card title="Feedback">
+          <Card title={t('Feedback')}>
             {comments.length === 0 ? (
-              <EmptyState>No messages yet.</EmptyState>
+              <EmptyState>{t('No messages yet.')}</EmptyState>
             ) : (
               <ul className="space-y-3">
                 {comments.map((c) => (
                   <li key={c.id} className="text-sm">
                     <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                      {c.author_id === user?.id ? 'You' : c.author_name} · {formatDue(c.created_at)}
+                      {c.author_id === user?.id ? t('You') : c.author_name} · {formatDue(c.created_at)}
                     </p>
                     {/* Comments are plain text: whitespace-pre-wrap keeps line breaks, React escapes the rest. */}
                     <p className="whitespace-pre-wrap">{c.comment}</p>
@@ -193,7 +194,7 @@ function ReplyBox({ courseId, assignmentId, onSent }: { courseId: number; assign
         value={text}
         onChange={(e) => setText(e.target.value)}
         rows={3}
-        placeholder="Write a reply…"
+        placeholder={t('Write a reply…')}
         className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-950"
       />
       {error && <ErrorMessage error={error} />}
@@ -201,7 +202,7 @@ function ReplyBox({ courseId, assignmentId, onSent }: { courseId: number; assign
         disabled={sending || !text.trim()}
         className="rounded-md bg-accent-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-accent-700 disabled:opacity-50"
       >
-        {sending ? 'Sending…' : 'Reply'}
+        {sending ? t('Sending…') : t('Reply')}
       </button>
     </form>
   );
@@ -216,12 +217,12 @@ function Details({ a, types }: { a: Assignment; types: string[] }) {
   );
   return (
     <dl className="divide-y divide-neutral-200 dark:divide-neutral-800">
-      {row('Due', formatDue(a.due_at))}
-      {row('Points', a.points_possible != null ? String(a.points_possible) : '—')}
-      {types.length > 0 && row('Submit via', types.join(', '))}
-      {a.allowed_extensions && a.allowed_extensions.length > 0 && row('File types', a.allowed_extensions.join(', '))}
-      {a.unlock_at && row('Available from', formatDue(a.unlock_at))}
-      {a.lock_at && row('Closes', formatDue(a.lock_at))}
+      {row(t('Due'), formatDue(a.due_at))}
+      {row(t('Points'), a.points_possible != null ? String(a.points_possible) : '—')}
+      {types.length > 0 && row(t('Submit via'), types.join(', '))}
+      {a.allowed_extensions && a.allowed_extensions.length > 0 && row(t('File types'), a.allowed_extensions.join(', '))}
+      {a.unlock_at && row(t('Available from'), formatDue(a.unlock_at))}
+      {a.lock_at && row(t('Closes'), formatDue(a.lock_at))}
     </dl>
   );
 }
@@ -241,7 +242,7 @@ function SubmissionView({
   const body = sub?.body ?? '';
   const bodyText = useMemo(() => (body ? htmlText(body) : ''), [body]);
   if (!sub || sub.workflow_state === 'unsubmitted') {
-    return <EmptyState>{sub?.missing ? 'Marked missing.' : 'Nothing submitted yet.'}</EmptyState>;
+    return <EmptyState>{sub?.missing ? t('Marked missing.') : t('Nothing submitted yet.')}</EmptyState>;
   }
 
   const graded = sub.score != null;
@@ -258,9 +259,9 @@ function SubmissionView({
         </p>
       )}
       <p className="text-neutral-500 dark:text-neutral-400">
-        Submitted {formatDue(sub.submitted_at)}
-        {sub.late ? ' (late)' : ''}
-        {sub.attempt ? ` · attempt ${sub.attempt}` : ''}
+        {t('Submitted {date}', { date: formatDue(sub.submitted_at) })}
+        {sub.late ? ` ${t('(late)')}` : ''}
+        {sub.attempt ? ` · ${t('attempt {n}', { n: sub.attempt })}` : ''}
       </p>
       {sub.url && !isTruncated && (
         <a href={sub.url} target="_blank" rel="noreferrer" className="block break-all text-accent-600 underline dark:text-accent-400">
@@ -281,12 +282,12 @@ function SubmissionView({
       {isTruncated && (
         <>
           {truncatedBody && <p className="text-neutral-700 dark:text-neutral-300">{truncatedBody}</p>}
-          {sub.attachments?.length ? <p className="text-neutral-600 dark:text-neutral-400">+ {sub.attachments.length} attachment(s)</p> : null}
+          {sub.attachments?.length ? <p className="text-neutral-600 dark:text-neutral-400">{t('+ {n} attachment(s)', { n: sub.attachments.length })}</p> : null}
           <Link
             to={`/courses/${courseId}/assignments/${assignmentId}/submission`}
             className="text-accent-600 hover:underline dark:text-accent-400"
           >
-            ...view full submission
+            {t('...view full submission')}
           </Link>
         </>
       )}
@@ -305,7 +306,7 @@ function Rubric({ criteria, sub }: { criteria: RubricCriterion[]; sub: Submissio
               <p className="font-medium">{c.description}</p>
               <p className="shrink-0 font-medium">
                 {result?.points != null ? `${result.points} / ` : ''}
-                {c.points} pts
+                {t('{n} pts', { n: c.points })}
               </p>
             </div>
             <div className="mt-1.5 flex flex-wrap gap-1.5">

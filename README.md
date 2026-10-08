@@ -16,6 +16,7 @@ React · TypeScript · Vite · Tailwind CSS 4
 - **In-depth grades page.** Grade over time, assignment-group breakdown with weights and drop rules, what-if scores
   and a "what do I need to reach X%" calculator.
 - **Dark mode and a custom accent color**, plus a setting to pick which courses to show.
+- **English and Spanish**, switchable in Settings (defaults to your browser's language).
 
 ## Screenshots
 

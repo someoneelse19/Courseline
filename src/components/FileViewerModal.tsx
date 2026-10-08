@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { Spinner } from './ui';
+import { t } from '../i18n';
 
 // The viewer (and the document libraries it loads) is only fetched the first time a file is opened.
 const FileViewer = lazy(() => import('./FileViewer').then((m) => ({ default: m.FileViewer })));
@@ -38,7 +39,7 @@ export function FileViewerModal({ isOpen, fileUrl, fileName, contentType, onClos
         <Suspense
           fallback={
             <div className="rounded-lg border border-neutral-200 bg-white px-4 shadow-xl dark:border-neutral-800 dark:bg-neutral-900">
-              <Spinner label="Opening viewer…" />
+              <Spinner label={t('Opening viewer…')} />
             </div>
           }
         >

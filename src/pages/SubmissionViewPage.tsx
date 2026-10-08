@@ -4,6 +4,7 @@ import { Card, EmptyState, ErrorMessage, Spinner } from '../components/ui';
 import { useFileViewer } from '../context/FileViewerContext';
 import { useAssignment, useMySubmission } from '../hooks/useCanvasData';
 import { formatDue } from '../lib/format';
+import { t } from '../i18n';
 
 export function SubmissionViewPage() {
   const params = useParams();
@@ -18,19 +19,19 @@ export function SubmissionViewPage() {
 
   const sub = submission.data;
   if (sub.workflow_state === 'unsubmitted')
-    return <EmptyState>Nothing submitted yet.</EmptyState>;
+    return <EmptyState>{t('Nothing submitted yet.')}</EmptyState>;
 
   return (
     <>
       <Link to={`/courses/${courseId}/assignments/${assignmentId}`} className="text-sm text-accent-600 hover:underline dark:text-accent-400">
-        ← Back to assignment
+        {t('← Back to assignment')}
       </Link>
 
-      <h2 className="mt-4 mb-6 text-2xl font-bold">Your submission</h2>
+      <h2 className="mt-4 mb-6 text-2xl font-bold">{t('Your submission')}</h2>
 
       <div className="space-y-6">
         {sub.score != null && (
-          <Card title="Score">
+          <Card title={t('Score')}>
             <p className="text-3xl font-bold">
               {sub.score}
               <span className="text-base font-normal text-neutral-500 dark:text-neutral-400"> / {assignment.data?.points_possible ?? '?'}</span>
@@ -39,16 +40,16 @@ export function SubmissionViewPage() {
           </Card>
         )}
 
-        <Card title="Submitted">
+        <Card title={t('Submitted')}>
           <p className="text-neutral-600 dark:text-neutral-400">
             {formatDue(sub.submitted_at)}
-            {sub.late ? ' (late)' : ''}
-            {sub.attempt ? ` · attempt ${sub.attempt}` : ''}
+            {sub.late ? ` ${t('(late)')}` : ''}
+            {sub.attempt ? ` · ${t('attempt {n}', { n: sub.attempt })}` : ''}
           </p>
         </Card>
 
         {sub.url && (
-          <Card title="Submitted URL">
+          <Card title={t('Submitted URL')}>
             <a href={sub.url} target="_blank" rel="noreferrer" className="block break-all text-accent-600 underline dark:text-accent-400">
               {sub.url}
             </a>
@@ -56,7 +57,7 @@ export function SubmissionViewPage() {
         )}
 
         {sub.attachments && sub.attachments.length > 0 && (
-          <Card title="Attachments">
+          <Card title={t('Attachments')}>
             <ul className="space-y-2">
               {sub.attachments.map((f) => (
                 <li key={f.id}>
@@ -73,7 +74,7 @@ export function SubmissionViewPage() {
         )}
 
         {sub.body && (
-          <Card title="Submission text">
+          <Card title={t('Submission text')}>
             <HtmlContent html={sub.body} />
           </Card>
         )}

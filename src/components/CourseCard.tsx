@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import type { Course } from '../api/types';
 import { formatGrade, getGrade } from '../lib/format';
+import { t } from '../i18n';
 
 // Canvas has no per-course color via this endpoint (that's /users/self/colors),
 // so derive a stable accent from the course id. TODO: use /users/self/colors.
@@ -19,7 +20,7 @@ export function CourseCard({ course }: { course: Course }) {
         <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">
           {[course.course_code, course.term?.name].filter(Boolean).join(' · ')}
         </p>
-        <p className="mt-3 text-sm text-neutral-600 dark:text-neutral-300">Grade: {formatGrade(grade)}</p>
+        <p className="mt-3 text-sm text-neutral-600 dark:text-neutral-300">{t('Grade: {grade}', { grade: formatGrade(grade) })}</p>
       </div>
     </Link>
   );

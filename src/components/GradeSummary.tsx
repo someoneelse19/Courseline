@@ -2,9 +2,10 @@ import { Link } from 'react-router-dom';
 import type { Course } from '../api/types';
 import { formatGrade, getGrade } from '../lib/format';
 import { EmptyState } from './ui';
+import { t } from '../i18n';
 
 export function GradeSummary({ courses }: { courses: Course[] }) {
-  if (courses.length === 0) return <EmptyState>No courses yet.</EmptyState>;
+  if (courses.length === 0) return <EmptyState>{t('No courses yet.')}</EmptyState>;
 
   return (
     <ul className="space-y-3">
@@ -19,7 +20,7 @@ export function GradeSummary({ courses }: { courses: Course[] }) {
               <span className="flex shrink-0 items-baseline gap-3">
                 <span className="font-medium">{formatGrade(g)}</span>
                 <Link to={`/courses/${c.id}/grades`} className="text-xs text-accent-600 hover:underline dark:text-accent-400">
-                  Breakdown →
+                  {t('Breakdown →')}
                 </Link>
               </span>
             </div>

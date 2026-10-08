@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import DOMPurify from 'dompurify';
+import { t } from '../i18n';
 
 // A small contentEditable editor (no editor library). Uses document.execCommand: deprecated on
 // paper, but still implemented by every browser and the simplest way to get bold/lists/links.
@@ -59,10 +60,10 @@ export function RichTextEditor({ value, onChange, ariaLabel, placeholder }: Rich
   };
 
   const addLink = () => {
-    const url = window.prompt('Link address (https://…)')?.trim();
+    const url = window.prompt(t('Link address (https://…)'))?.trim();
     if (!url) return;
     if (!/^(https?:\/\/|mailto:)/i.test(url)) {
-      window.alert('Links must start with https://, http:// or mailto:');
+      window.alert(t('Links must start with https://, http:// or mailto:'));
       return;
     }
     run('createLink', url);
@@ -72,22 +73,22 @@ export function RichTextEditor({ value, onChange, ariaLabel, placeholder }: Rich
 
   return (
     <div className="rounded-md border border-neutral-300 bg-white dark:border-neutral-700 dark:bg-neutral-950">
-      <div role="toolbar" aria-label="Text formatting" className="flex flex-wrap gap-1 border-b border-neutral-200 p-1 dark:border-neutral-800">
+      <div role="toolbar" aria-label={t('Text formatting')} className="flex flex-wrap gap-1 border-b border-neutral-200 p-1 dark:border-neutral-800">
         {COMMANDS.map((c) => (
           <button
             key={c.label}
             type="button"
-            title={c.title}
-            aria-label={c.label}
+            title={t(c.title)}
+            aria-label={t(c.label)}
             // mousedown would move focus (and the selection) out of the editor before the click fires.
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => run(c.command, c.arg)}
             className={button}
           >
-            {c.content}
+            {typeof c.content === 'string' ? t(c.content) : c.content}
           </button>
         ))}
-        <button type="button" title="Link" aria-label="Link" onMouseDown={(e) => e.preventDefault()} onClick={addLink} className={button}>
+        <button type="button" title={t('Link')} aria-label={t('Link')} onMouseDown={(e) => e.preventDefault()} onClick={addLink} className={button}>
           🔗
         </button>
       </div>

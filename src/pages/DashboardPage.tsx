@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { useCourseFilter } from '../context/CourseFilterContext';
 import { useVisibleCourses, useUpcoming } from '../hooks/useCanvasData';
 import { courseIdFromContext, formatDue } from '../lib/format';
+import { t } from '../i18n';
 
 export function DashboardPage() {
   const { user } = useAuth();
@@ -21,17 +22,17 @@ export function DashboardPage() {
 
   return (
     <>
-      <PageTitle>Welcome{user ? `, ${user.short_name ?? user.name}` : ''}</PageTitle>
+      <PageTitle>{user ? t('Welcome, {name}', { name: user.short_name ?? user.name }) : t('Welcome')}</PageTitle>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <Card title="Upcoming assignments">
+          <Card title={t('Upcoming assignments')}>
             {upcoming.error ? (
               <ErrorMessage error={upcoming.error} onRetry={upcoming.refetch} />
             ) : !upcomingVisible ? (
               <Spinner />
             ) : upcomingVisible.length === 0 ? (
-              <EmptyState>Nothing due soon 🎉</EmptyState>
+              <EmptyState>{t('Nothing due soon 🎉')}</EmptyState>
             ) : (
               <ul className="divide-y divide-neutral-200 dark:divide-neutral-800">
                 {upcomingVisible.map((e) => (
@@ -54,13 +55,13 @@ export function DashboardPage() {
             )}
           </Card>
 
-          <Card title="Courses" action={<Link to="/courses" className="text-sm text-accent-600 hover:underline dark:text-accent-400">View all</Link>}>
+          <Card title={t('Courses')} action={<Link to="/courses" className="text-sm text-accent-600 hover:underline dark:text-accent-400">{t('View all')}</Link>}>
             {courses.error ? (
               <ErrorMessage error={courses.error} onRetry={courses.refetch} />
             ) : !courses.data ? (
               <Spinner />
             ) : courses.data.length === 0 ? (
-              <EmptyState>No active courses.</EmptyState>
+              <EmptyState>{t('No active courses.')}</EmptyState>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">
                 {courses.data.slice(0, 4).map((c) => (
@@ -71,7 +72,7 @@ export function DashboardPage() {
           </Card>
         </div>
 
-        <Card title="Grades">
+        <Card title={t('Grades')}>
           {courses.error ? (
             <ErrorMessage error={courses.error} onRetry={courses.refetch} />
           ) : !courses.data ? (

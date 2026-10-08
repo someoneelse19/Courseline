@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { t } from '../i18n';
 
 // Catches render-time crashes only. API failures are NOT thrown — they come back
 // as `error` from useQuery and are shown with <ErrorMessage>.
@@ -26,13 +27,13 @@ export class ErrorBoundary extends Component<Props, State> {
     if (!this.state.error) return this.props.children;
     return (
       <div className="m-6 rounded-lg border border-red-200 bg-red-50 p-6 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
-        <h2 className="text-lg font-semibold">This page crashed</h2>
+        <h2 className="text-lg font-semibold">{t('This page crashed')}</h2>
         <p className="mt-1 text-sm">{this.state.error.message}</p>
         <button
           onClick={() => this.setState({ error: null })}
           className="mt-4 rounded-md bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700"
         >
-          Try again
+          {t('Try again')}
         </button>
       </div>
     );

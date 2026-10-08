@@ -4,6 +4,8 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { AuthProvider } from './context/AuthContext';
+import { LanguageProvider } from './context/LanguageContext';
+import { setLanguage } from './i18n';
 import { ThemeProvider } from './context/ThemeContext';
 import { installFetch, json, type Call } from './test/fakeFetch';
 
@@ -86,7 +88,9 @@ const show = (at: string) =>
       <ThemeProvider>
         <AuthProvider>
           <MemoryRouter initialEntries={[at]}>
-            <App />
+            <LanguageProvider>
+              <App />
+            </LanguageProvider>
           </MemoryRouter>
         </AuthProvider>
       </ThemeProvider>,
@@ -118,6 +122,32 @@ describe('screens', () => {
     await show(at);
     await until(...texts);
   }, 15_000);
+});
+
+describe('language', () => {
+  afterEach(() => {
+    localStorage.removeItem('courseline.language');
+    setLanguage('en');
+  });
+
+  it('shows Spanish when it is the saved language', async () => {
+    localStorage.setItem('courseline.language', 'es');
+    await show('/settings');
+    await until('Color de acento', 'Elige tus cursos', '1 de 1 seleccionados');
+    expect(document.documentElement.lang).toBe('es');
+  });
+
+  it('switching language in Settings translates the page and is remembered', async () => {
+    await show('/settings');
+    await until('Accent color');
+    const picker = host.querySelector<HTMLSelectElement>('select[aria-label="Language"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(picker, 'es');
+      picker.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await until('Color de acento');
+    expect(localStorage.getItem('courseline.language')).toBe('es');
+  });
 });
 
 describe('data loading', () => {

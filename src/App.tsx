@@ -1,4 +1,5 @@
 import { lazy, type ComponentType } from 'react';
+import { t } from './i18n';
 import { Link, Navigate, Route, Routes } from 'react-router-dom';
 import { CourseLayout } from './components/CourseLayout';
 import { Layout } from './components/Layout';
@@ -32,7 +33,7 @@ export default function App() {
   if (status === 'loading') {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <Spinner label="Signing in…" />
+        <Spinner label={t('Signing in…')} />
       </div>
     );
   }
@@ -62,7 +63,7 @@ export default function App() {
             path="*"
             element={
               <p>
-                Page not found. <Link to="/" className="text-accent-600 underline">Go home</Link>
+                {t('Page not found.')} <Link to="/" className="text-accent-600 underline">{t('Go home')}</Link>
               </p>
             }
           />

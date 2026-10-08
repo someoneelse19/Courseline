@@ -4,6 +4,7 @@ import { useCourse } from '../hooks/useCanvasData';
 import { formatGrade, getGrade } from '../lib/format';
 import { CourseTabs } from './CourseTabs';
 import { ErrorMessage, PageTitle, Spinner } from './ui';
+import { t } from '../i18n';
 
 /** Shared header for everything inside one course: title, grade, tabs. Child routes render below. */
 export function CourseLayout() {
@@ -16,7 +17,7 @@ export function CourseLayout() {
   return (
     <>
       <PageTitle>{course.data.name}</PageTitle>
-      <p className="-mt-3 mb-4 text-sm text-neutral-500 dark:text-neutral-400">Current grade: {formatGrade(getGrade(course.data))}</p>
+      <p className="-mt-3 mb-4 text-sm text-neutral-500 dark:text-neutral-400">{t('Current grade: {grade}', { grade: formatGrade(getGrade(course.data)) })}</p>
       <CourseTabs courseId={courseId} />
       {/* Tabs load on first visit; keep the course header up meanwhile. */}
       <Suspense fallback={<Spinner />}>

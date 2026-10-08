@@ -3,6 +3,7 @@ import type { Assignment, Course } from '../api/types';
 import { AssignmentList } from '../components/AssignmentList';
 import { Card, EmptyState, ErrorMessage, PageTitle, Spinner } from '../components/ui';
 import { useAllAssignments, useVisibleCourses } from '../hooks/useCanvasData';
+import { t } from '../i18n';
 
 // Canvas has no "all my assignments" endpoint, so this fans out one request per
 // visible course (in parallel) and merges the results.
@@ -11,11 +12,11 @@ export function AssignmentsPage() {
 
   if (courses.error) return <ErrorMessage error={courses.error} onRetry={courses.refetch} />;
   if (!courses.data) return <Spinner />;
-  if (courses.data.length === 0) return <EmptyState>No courses to show. Pick some under “Choose courses”.</EmptyState>;
+  if (courses.data.length === 0) return <EmptyState>{t('No courses to show. Pick some under “Choose courses”.')}</EmptyState>;
 
   return (
     <>
-      <PageTitle>Assignments</PageTitle>
+      <PageTitle>{t('Assignments')}</PageTitle>
       <Card>
         <AllAssignments courses={courses.data} />
       </Card>
@@ -44,25 +45,25 @@ function AllAssignments({ courses }: { courses: Course[] }) {
   if (!data) return <Spinner />;
 
   const tabs: { id: Tab; label: string; count: number }[] = [
-    { id: 'pending', label: 'Pending', count: pending.length },
-    { id: 'done', label: 'Done', count: done.length },
+    { id: 'pending', label: t('Pending'), count: pending.length },
+    { id: 'done', label: t('Done'), count: done.length },
   ];
   return (
     <>
       <div role="tablist" className="mb-2 flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
-        {tabs.map((t) => (
+        {tabs.map((tb) => (
           <button
-            key={t.id}
+            key={tb.id}
             role="tab"
-            aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
+            aria-selected={tab === tb.id}
+            onClick={() => setTab(tb.id)}
             className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
-              tab === t.id
+              tab === tb.id
                 ? 'border-accent-600 text-accent-700 dark:border-accent-400 dark:text-accent-300'
                 : 'border-transparent text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100'
             }`}
           >
-            {t.label} ({t.count})
+            {tb.label} ({tb.count})
           </button>
         ))}
       </div>

@@ -4,12 +4,15 @@ import { useCourseFilter } from '../context/CourseFilterContext';
 import { useTheme } from '../context/ThemeContext';
 import { ACCENT_PRESETS, DEFAULT_ACCENT } from '../lib/accent';
 import { useCourses } from '../hooks/useCanvasData';
+import { t, LANGUAGES, type Language } from '../i18n';
+import { useLanguage } from '../context/LanguageContext';
 
 export function SettingsPage() {
   return (
     <>
-      <PageTitle>Settings</PageTitle>
+      <PageTitle>{t('Settings')}</PageTitle>
       <div className="space-y-6">
+        <LanguagePicker />
         <ThemePicker />
         <AccentPicker />
         <CoursePicker />
@@ -18,19 +21,42 @@ export function SettingsPage() {
   );
 }
 
+function LanguagePicker() {
+  const { language, setLanguage } = useLanguage();
+  return (
+    <Card title={t('Language')}>
+      <p className="-mt-1 mb-3 text-sm text-neutral-500 dark:text-neutral-400">
+        {t('Saved in this browser. Defaults to your browser’s language.')}
+      </p>
+      <select
+        value={language}
+        onChange={(e) => setLanguage(e.target.value as Language)}
+        aria-label={t('Language')}
+        className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+      >
+        {LANGUAGES.map((l) => (
+          <option key={l.code} value={l.code}>
+            {l.label}
+          </option>
+        ))}
+      </select>
+    </Card>
+  );
+}
+
 function ThemePicker() {
   const { theme, toggle } = useTheme();
   return (
-    <Card title="Theme">
+    <Card title={t('Theme')}>
       <p className="-mt-1 mb-3 text-sm text-neutral-500 dark:text-neutral-400">
-        Saved in this browser. Defaults to your system setting.
+        {t('Saved in this browser. Defaults to your system setting.')}
       </p>
       <button
         type="button"
         onClick={toggle}
         className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
       >
-        {theme === 'dark' ? '☀️ Light mode' : '🌙 Dark mode'}
+        {theme === 'dark' ? t('☀️ Light mode') : t('🌙 Dark mode')}
       </button>
     </Card>
   );
@@ -40,17 +66,17 @@ function AccentPicker() {
   const { accent, setAccent } = useTheme();
   const current = (accent ?? DEFAULT_ACCENT).toLowerCase();
   return (
-    <Card title="Accent color">
+    <Card title={t('Accent color')}>
       <p className="-mt-1 mb-3 text-sm text-neutral-500 dark:text-neutral-400">
-        Used for links, buttons and the active tab. Saved in this browser.
+        {t('Used for links, buttons and the active tab. Saved in this browser.')}
       </p>
       <div className="flex flex-wrap items-center gap-2">
         {ACCENT_PRESETS.map((p) => (
           <button
             key={p.hex}
             type="button"
-            title={p.name}
-            aria-label={p.name}
+            title={t(p.name)}
+            aria-label={t(p.name)}
             aria-pressed={current === p.hex}
             onClick={() => setAccent(p.hex === DEFAULT_ACCENT ? null : p.hex)}
             style={{ backgroundColor: p.hex }}
@@ -62,12 +88,12 @@ function AccentPicker() {
         <label className="ml-2 flex cursor-pointer items-center gap-2 text-sm">
           <input
             type="color"
-            aria-label="Custom accent color"
+            aria-label={t('Custom accent color')}
             value={current}
             onChange={(e) => setAccent(e.target.value)}
             className="h-8 w-10 cursor-pointer rounded-sm border border-neutral-300 bg-transparent p-0.5 dark:border-neutral-700"
           />
-          Custom
+          {t('Custom')}
         </label>
         {accent && (
           <button
@@ -75,7 +101,7 @@ function AccentPicker() {
             onClick={() => setAccent(null)}
             className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
           >
-            Reset
+            {t('Reset')}
           </button>
         )}
       </div>
@@ -108,35 +134,35 @@ function CoursePicker() {
   const btn = 'rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800';
 
   return (
-    <Card title="Choose your courses">
+    <Card title={t('Choose your courses')}>
       <p className="-mt-1 mb-3 text-sm text-neutral-500 dark:text-neutral-400">
-        Only ticked courses appear on the dashboard, courses, assignments and grades pages. Saved in this browser.
+        {t('Only ticked courses appear on the dashboard, courses, assignments and grades pages. Saved in this browser.')}
       </p>
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search courses…"
+            placeholder={t('Search courses…')}
             className="min-w-0 flex-1 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-950"
           />
           {/* Select all / none act on the search results, so you can bulk-pick e.g. a term. */}
           <button className={btn} onClick={() => setSelected([...current, ...shown.map((c) => c.id)])}>
-            Select {q ? 'matching' : 'all'}
+            {q ? t('Select matching') : t('Select all')}
           </button>
           <button className={btn} onClick={() => { const drop = new Set(shown.map((c) => c.id)); setSelected([...current].filter((id) => !drop.has(id))); }}>
-            Clear {q ? 'matching' : 'all'}
+            {q ? t('Clear matching') : t('Clear all')}
           </button>
           <button className={btn} onClick={() => setSelected(null)}>
-            Show everything
+            {t('Show everything')}
           </button>
         </div>
 
         <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">
-          {count} of {data.length} selected
+          {t('{count} of {total} selected', { count, total: data.length })}
         </p>
 
         {shown.length === 0 ? (
-          <EmptyState>No courses match.</EmptyState>
+          <EmptyState>{t('No courses match.')}</EmptyState>
         ) : (
           <ul className="divide-y divide-neutral-200 dark:divide-neutral-800">
             {shown.map((c) => (

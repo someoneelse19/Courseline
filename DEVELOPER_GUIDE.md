@@ -235,6 +235,8 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `AuthContext.tsx` | Credentials (localStorage), current user, login/logout, builds the `api` object. `useAuth()`, `useApi()`. |
 | `DataContext.tsx` | The keyed response cache behind `useQuery`. |
 | `ThemeContext.tsx` | Dark/light mode **and** custom accent color. `useTheme()`. |
+| `LanguageContext.tsx` | The app language (English / Spanish): saved choice, else the browser's. `useLanguage()`. Changing it remounts the tree so every `t()` call re-renders. |
+| `i18n/index.ts`, `i18n/es.ts` | `t('English text', { vars })` and the Spanish dictionary. English text is the key; a missing key falls back to English. |
 | `CourseFilterContext.tsx` | Which courses to show (Settings). `useCourseFilter()`. |
 | `FileViewerContext.tsx` | The shared viewer modal. `useFileViewer().openFile(...)`. |
 
@@ -299,6 +301,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `components/HtmlContent.test.ts` | Sanitizer: scripts/handlers/iframes removed, links made absolute, Canvas file links made inert. |
 | `components/SubmissionForm.test.tsx` | Upload-then-submit order, failure submits nothing, retry skips already-uploaded files, allowed extensions, rich-text tab (HTML body, sanitizing, empty check, reset). |
 | `context/DataContext.test.tsx` | Cache: single request per key, error capture, 5-minute freshness, refetch keeps old data visible, only the changed key re-renders, `ensure` and `prime`. |
+| `i18n/i18n.test.ts` | `t()` in both languages, placeholders, saved-language detection, and that every Spanish string keeps the English `{placeholders}`. |
 | `firstPaint.test.ts` | The inline script in `index.html`: old `better-canvas.*` keys move to `courseline.*` without overwriting newer ones; theme and accent apply. |
 | `App.test.tsx` | Smoke test: every route renders its data through the real providers, cache and lazy-loaded screens; sidebar navigation; the Pages tab makes no per-page requests. |
 | `test/fakeFetch.ts` | Helper (not a test): replaces `fetch` with a router so tests never touch the network. |
@@ -699,6 +702,15 @@ first paint, mirror it in the inline script in `index.html`.
 
 In `pages/SettingsPage.tsx`, write a `function MySection()` returning a `<Card title="...">` and add it to the list in
 `SettingsPage`.
+
+### Add or change a translatable string
+
+Wrap user-visible text in `t('English text')` (`import { t } from '../i18n'`; use `{name}` placeholders and pass values as the
+second argument, never string concatenation, so word order can differ). Then add the same English text as a key in
+`i18n/es.ts`. Separate strings for singular and plural. Error messages from `api/client.ts` and Canvas's own content are not
+translated. Dates follow the app language through `lib/format.ts`.
+
+To add a language: add it to `Language`/`LANGUAGES` and `dictionaries` in `i18n/index.ts`, and create its dictionary file.
 
 ### Change the sidebar or header
 

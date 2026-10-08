@@ -1,15 +1,20 @@
 import type { Course } from '../api/types';
+import { getLanguage, t } from '../i18n';
 
-const dateFmt = new Intl.DateTimeFormat(undefined, {
-  weekday: 'short',
-  month: 'short',
-  day: 'numeric',
-  hour: 'numeric',
-  minute: '2-digit',
-});
+// Formatters follow the app language (not just the browser's), cached per language.
+const formatters = new Map<string, Intl.DateTimeFormat>();
+function dateFmt(): Intl.DateTimeFormat {
+  const locale = getLanguage();
+  let fmt = formatters.get(locale);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat(locale, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    formatters.set(locale, fmt);
+  }
+  return fmt;
+}
 
 export function formatDue(iso: string | null | undefined): string {
-  return iso ? dateFmt.format(new Date(iso)) : 'No due date';
+  return iso ? dateFmt().format(new Date(iso)) : t('No due date');
 }
 
 export function isPast(iso: string | null | undefined): boolean {
@@ -50,5 +55,5 @@ export function formatBytes(bytes: number | undefined): string {
 }
 
 export function formatDay(iso: string | null | undefined): string {
-  return iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+  return iso ? new Date(iso).toLocaleDateString(getLanguage(), { month: 'short', day: 'numeric', year: 'numeric' }) : '';
 }

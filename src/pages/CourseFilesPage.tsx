@@ -7,6 +7,7 @@ import { useCourseFiles, useModules, usePage } from '../hooks/useCanvasData';
 import { useFileViewer } from '../context/FileViewerContext';
 import { formatBytes, formatDay } from '../lib/format';
 import { linkedFiles } from '../lib/html';
+import { t } from '../i18n';
 
 // The "Files by unit" tab. Header + tabs come from CourseLayout.
 // "Units" are Canvas modules. Unit order and item order are the instructor's own
@@ -59,7 +60,7 @@ export function CourseFilesPage() {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search…"
+          placeholder={t('Search…')}
           className="min-w-0 flex-1 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-950"
         />
         <select
@@ -67,15 +68,15 @@ export function CourseFilesPage() {
           onChange={(e) => setMode(e.target.value as Mode)}
           className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
         >
-          <option value="files">Files only</option>
-          <option value="all">Everything in each unit</option>
+          <option value="files">{t('Files only')}</option>
+          <option value="all">{t('Everything in each unit')}</option>
         </select>
       </div>
 
-      {modules.data.length === 0 && <EmptyState>This course doesn’t use units (modules), so there’s nothing to group by.</EmptyState>}
+      {modules.data.length === 0 && <EmptyState>{t('This course doesn’t use units (modules), so there’s nothing to group by.')}</EmptyState>}
       {files.data === null && (
         <p className="mb-3 rounded-md bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-          This course hides its Files area, so only files linked from units are shown (without size/date details).
+          {t('This course hides its Files area, so only files linked from units are shown (without size/date details).')}
         </p>
       )}
 
@@ -87,7 +88,7 @@ export function CourseFilesPage() {
         {mode === 'files' && loose.length > 0 && (
           <details open className="rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
             <summary className="cursor-pointer px-4 py-3 font-semibold">
-              Not in a unit <span className="font-normal text-neutral-500 dark:text-neutral-400">· {loose.length}</span>
+              {t('Not in a unit')} <span className="font-normal text-neutral-500 dark:text-neutral-400">· {loose.length}</span>
             </summary>
             <ul className="divide-y divide-neutral-200 px-4 dark:divide-neutral-800">
               {loose.map((f) => (
@@ -98,10 +99,12 @@ export function CourseFilesPage() {
         )}
       </div>
 
-      {modules.data.length > 0 && units.length === 0 && loose.length === 0 && <EmptyState>Nothing matches.</EmptyState>}
+      {modules.data.length > 0 && units.length === 0 && loose.length === 0 && <EmptyState>{t('Nothing matches.')}</EmptyState>}
       {hiddenUnits > 0 && units.length > 0 && !q && (
         <p className="mt-3 text-xs text-neutral-500 dark:text-neutral-400">
-          {hiddenUnits} unit{hiddenUnits !== 1 ? 's' : ''} hidden because they contain no files. Switch to “Everything” to see them.
+          {hiddenUnits === 1
+            ? t('1 unit hidden because it contains no files. Switch to “Everything” to see it.')
+            : t('{n} units hidden because they contain no files. Switch to “Everything” to see them.', { n: hiddenUnits })}
         </p>
       )}
     </>
@@ -114,7 +117,7 @@ function Unit({ module, items, courseId, fileById }: { module: Module; items: Mo
     <details open className="rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
       <summary className="cursor-pointer px-4 py-3 font-semibold">
         {module.name} <span className="font-normal text-neutral-500 dark:text-neutral-400">· {count}</span>
-        {module.state === 'locked' && <span className="ml-2 text-xs font-normal text-amber-700 dark:text-amber-400">🔒 locked</span>}
+        {module.state === 'locked' && <span className="ml-2 text-xs font-normal text-amber-700 dark:text-amber-400">🔒 {t('locked')}</span>}
       </summary>
       <UnitItems items={items} courseId={courseId} fileById={fileById} className="px-4" />
     </details>

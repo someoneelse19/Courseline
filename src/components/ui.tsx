@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { CanvasApiError } from '../api/client';
+import { t } from '../i18n';
 
-export function Spinner({ label = 'Loading…' }: { label?: string }) {
+export function Spinner({ label = t('Loading…') }: { label?: string }) {
   return (
     <div className="flex items-center gap-2 py-6 text-sm text-neutral-500 dark:text-neutral-400" role="status">
       <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
@@ -13,16 +14,16 @@ export function Spinner({ label = 'Loading…' }: { label?: string }) {
 export function ErrorMessage({ error, onRetry }: { error: Error; onRetry?: () => void }) {
   const hint =
     error instanceof CanvasApiError && error.kind === 'rate_limit'
-      ? 'Canvas throttles heavy usage — give it a few seconds.'
+      ? t('Canvas throttles heavy usage — give it a few seconds.')
       : null;
   return (
     <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
-      <p className="font-medium">Something went wrong</p>
+      <p className="font-medium">{t('Something went wrong')}</p>
       <p className="mt-1">{error.message}</p>
       {hint && <p className="mt-1 opacity-80">{hint}</p>}
       {onRetry && (
         <button onClick={onRetry} className="mt-3 rounded-md bg-red-600 px-3 py-1.5 text-white hover:bg-red-700">
-          Try again
+          {t('Try again')}
         </button>
       )}
     </div>

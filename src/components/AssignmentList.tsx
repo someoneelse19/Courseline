@@ -2,17 +2,18 @@ import { Link } from 'react-router-dom';
 import type { Assignment } from '../api/types';
 import { formatDue, isPast } from '../lib/format';
 import { EmptyState } from './ui';
+import { t } from '../i18n';
 
 export function assignmentStatus(a: Assignment): { label: string; className: string } {
   const s = a.submission;
-  if (s?.excused) return { label: 'Excused', className: 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300' };
+  if (s?.excused) return { label: t('Excused'), className: 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300' };
   if (s?.workflow_state === 'graded' && s.score != null)
     return { label: `${s.score}/${a.points_possible ?? '?'}`, className: 'bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300' };
-  if (s?.missing) return { label: 'Missing', className: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300' };
+  if (s?.missing) return { label: t('Missing'), className: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300' };
   if (s?.workflow_state === 'submitted' || s?.workflow_state === 'pending_review')
-    return { label: s.late ? 'Submitted (late)' : 'Submitted', className: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300' };
-  if (isPast(a.due_at)) return { label: 'Past due', className: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' };
-  return { label: 'To do', className: 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300' };
+    return { label: s.late ? t('Submitted (late)') : t('Submitted'), className: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300' };
+  if (isPast(a.due_at)) return { label: t('Past due'), className: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' };
+  return { label: t('To do'), className: 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300' };
 }
 
 /** Sorted: dated assignments by due date first, undated last. */
@@ -24,7 +25,7 @@ export function AssignmentList({
   /** When given, each row shows its course name (for lists spanning several courses). */
   courseNames?: ReadonlyMap<number, string>;
 }) {
-  if (assignments.length === 0) return <EmptyState>No assignments.</EmptyState>;
+  if (assignments.length === 0) return <EmptyState>{t('No assignments.')}</EmptyState>;
 
   const sorted = [...assignments].sort((a, b) => {
     if (!a.due_at) return 1;

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useVisibleCourses } from '../hooks/useCanvasData';
 import { Spinner } from './ui';
+import { t } from '../i18n';
 
 // Layout: Dashboard (+ cross-course views) at the top, your courses in the middle,
 // Settings pinned to the bottom. Fixed column on desktop, slide-over drawer on mobile.
@@ -79,21 +80,21 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         <nav className="flex-1 space-y-1 overflow-y-auto p-3">
           <NavLink to="/" end className={({ isActive }) => item(isActive)}>
             {icons.dashboard}
-            <span className="truncate">Dashboard</span>
+            <span className="truncate">{t('Dashboard')}</span>
           </NavLink>
           <NavLink to="/assignments" className={({ isActive }) => item(isActive)}>
             {icons.assignments}
-            <span className="truncate">All assignments</span>
+            <span className="truncate">{t('All assignments')}</span>
           </NavLink>
 
-          <h3 className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Courses</h3>
+          <h3 className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">{t('Courses')}</h3>
           {error ? (
-            <p className="px-3 text-xs text-red-600 dark:text-red-400">Couldn’t load courses.</p>
+            <p className="px-3 text-xs text-red-600 dark:text-red-400">{t('Couldn’t load courses.')}</p>
           ) : !courses ? (
             <Spinner label="" />
           ) : courses.length === 0 ? (
             <p className="px-3 text-xs text-neutral-500 dark:text-neutral-400">
-              None selected. <Link to="/settings" className="underline">Choose courses</Link>
+              {t('None selected.')} <Link to="/settings" className="underline">{t('Choose courses')}</Link>
             </p>
           ) : (
             courses.map((c) => (
@@ -108,7 +109,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         <div className="border-t border-neutral-200 p-3 dark:border-neutral-800">
           <NavLink to="/settings" className={({ isActive }) => item(isActive)}>
             {icons.settings}
-            <span className="truncate">Settings</span>
+            <span className="truncate">{t('Settings')}</span>
           </NavLink>
         </div>
       </aside>

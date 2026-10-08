@@ -5,6 +5,7 @@ import { HtmlContent } from '../components/HtmlContent';
 import { Card, EmptyState, ErrorMessage, Spinner } from '../components/ui';
 import { useCourseFiles, useModules, usePages } from '../hooks/useCanvasData';
 import { UnitItems } from './CourseFilesPage';
+import { t } from '../i18n';
 
 // The "Pages" tab: a course's content however the teacher built it. Units (modules) and
 // wiki pages are shown side by side as collapsible, reorderable sections, so a course
@@ -46,7 +47,7 @@ export function CoursePagesPage() {
       .map((m) => ({ key: `module:${m.id}`, title: m.name, kind: 'module', module: m }));
     const pgs: Section[] = (pages.data ?? []).map((p) => ({
       key: p.url ?? String(p.page_id),
-      title: p.title ?? p.url ?? 'Untitled page',
+      title: p.title ?? p.url ?? t('Untitled page'),
       html_url: p.html_url,
       kind: 'page',
       page: p,
@@ -63,7 +64,7 @@ export function CoursePagesPage() {
   // Either source can legitimately be unavailable (hidden Pages tab, no modules); only fail if both are.
   if (pages.error && modules.error) return <ErrorMessage error={pages.error} onRetry={() => (pages.refetch(), modules.refetch())} />;
   if ((!pages.data && !pages.error) || (!modules.data && !modules.error)) return <Spinner />;
-  if (sections.length === 0) return <EmptyState>No pages or units found for this course.</EmptyState>;
+  if (sections.length === 0) return <EmptyState>{t('No pages or units found for this course.')}</EmptyState>;
 
   const save = (next: Prefs) => {
     setPrefs(next);
@@ -91,7 +92,7 @@ export function CoursePagesPage() {
           onClick={() => save({ ...prefs, collapsed: allCollapsed ? [] : keys })}
           className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
         >
-          {allCollapsed ? 'Expand all' : 'Collapse all'}
+          {allCollapsed ? t('Expand all') : t('Collapse all')}
         </button>
       </div>
       <div className="space-y-4">
@@ -107,7 +108,7 @@ export function CoursePagesPage() {
             onDown={i < sections.length - 1 ? () => move(i, 1) : undefined}
           >
             {s.kind === 'page' ? (
-              s.page.body ? <HtmlContent html={s.page.body} /> : <EmptyState>This page is empty.</EmptyState>
+              s.page.body ? <HtmlContent html={s.page.body} /> : <EmptyState>{t('This page is empty.')}</EmptyState>
             ) : (
               <UnitItems items={s.module.items ?? []} courseId={courseId} fileById={fileById} />
             )}
@@ -148,11 +149,11 @@ function SectionCard({
         </button>
         {htmlUrl && (
           <a href={htmlUrl} target="_blank" rel="noreferrer" className="shrink-0 text-xs text-accent-600 hover:underline dark:text-accent-400">
-            Open in Canvas ↗
+            {t('Open in Canvas ↗')}
           </a>
         )}
-        <button onClick={onUp} disabled={!onUp} aria-label={`Move ${title} up`} className={arrow}>↑</button>
-        <button onClick={onDown} disabled={!onDown} aria-label={`Move ${title} down`} className={arrow}>↓</button>
+        <button onClick={onUp} disabled={!onUp} aria-label={t('Move {title} up', { title })} className={arrow}>↑</button>
+        <button onClick={onDown} disabled={!onDown} aria-label={t('Move {title} down', { title })} className={arrow}>↓</button>
       </div>
       {!collapsed && <div className="mt-3 border-t border-neutral-200 pt-3 dark:border-neutral-800">{children}</div>}
     </Card>
