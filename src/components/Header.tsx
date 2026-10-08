@@ -10,7 +10,7 @@ export function Header({ onMenu }: { onMenu: () => void }) {
       <button onClick={onMenu} className="rounded-md p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 md:hidden" aria-label="Toggle menu">
         ☰
       </button>
-      <span className="text-lg font-bold">Better Canvas</span>
+      <span className="text-lg font-bold">Courseline</span>
       <div className="flex-1" />
       <button
         onClick={toggle}

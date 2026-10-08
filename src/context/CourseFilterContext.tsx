@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 // Persisted in localStorage. Applied by useVisibleCourses() and the dashboard's
 // upcoming list; the Settings page edits it against the full course list.
 // Note: courses added to Canvas later stay hidden once a selection exists.
-const STORAGE_KEY = 'better-canvas.selected-courses';
+const STORAGE_KEY = 'courseline.selected-courses';
 
 interface CourseFilterValue {
   selected: ReadonlySet<number> | null;

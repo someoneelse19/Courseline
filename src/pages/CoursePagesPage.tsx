@@ -18,7 +18,7 @@ interface Prefs {
   collapsed: string[];
 }
 
-const storageKey = (courseId: number) => `better-canvas.pages.${courseId}`;
+const storageKey = (courseId: number) => `courseline.pages.${courseId}`;
 
 function loadPrefs(courseId: number): Prefs {
   try {

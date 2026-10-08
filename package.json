@@ -1,5 +1,5 @@
 {
-  "name": "better-canvas",
+  "name": "courseline",
   "private": true,
   "version": "0.1.0",
   "description": "A faster, cleaner web client for Canvas LMS: course pages and modules in one view, an in-app file viewer, and an in-depth grades page.",

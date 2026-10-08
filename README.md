@@ -1,11 +1,11 @@
-# Better Canvas
+# Courseline
 
 A faster, cleaner web client for [Canvas LMS](https://www.instructure.com/canvas). It runs entirely in your browser and
 talks directly to your school's Canvas API with a personal access token. There is no server of its own.
 
 React · TypeScript · Vite · Tailwind CSS 4
 
-![Better Canvas dashboard](docs/screenshots/dashboard.png)
+![Courseline dashboard](docs/screenshots/dashboard.png)
 
 ## What it does
 
@@ -66,7 +66,7 @@ because Tailwind 4 uses modern CSS.
 1. Log in to your school's Canvas in a browser.
 2. **Account** (left rail) → **Settings**.
 3. Scroll to **Approved Integrations** → **+ New Access Token**.
-4. Give it a purpose ("Better Canvas") and an expiry date (set one), then **Generate Token**.
+4. Give it a purpose ("Courseline") and an expiry date (set one), then **Generate Token**.
 5. **Copy it immediately.** Canvas never shows it again.
 
 Paste it into the app's login screen together with your school's address (what you see in the address bar when logged
@@ -132,4 +132,3 @@ npm run typecheck && npm test && npm run build
 
 All three must pass (CI runs them on every push and pull request). Read
 [DEVELOPER_GUIDE.md § Conventions](DEVELOPER_GUIDE.md#12-conventions) first.
-# Better_Canvas

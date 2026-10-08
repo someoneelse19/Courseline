@@ -13,9 +13,9 @@ interface ThemeValue {
 
 const ThemeContext = createContext<ThemeValue | null>(null);
 
-const ACCENT_KEY = 'better-canvas.accent';
+const ACCENT_KEY = 'courseline.accent';
 // Computed palette, so the inline script in index.html can apply it before first paint.
-const ACCENT_VARS_KEY = 'better-canvas.accent-vars';
+const ACCENT_VARS_KEY = 'courseline.accent-vars';
 
 function initialAccent(): string | null {
   try {

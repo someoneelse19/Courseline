@@ -3,10 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Better Canvas</title>
+    <title>Courseline</title>
     <meta name="description" content="A faster, cleaner web client for Canvas LMS: course pages and modules in one view, an in-app file viewer, and an in-depth grades page." />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <script>
+      // This app was called Better Canvas: move settings saved under its old key names (better-canvas.*) to the
+      // new ones (courseline.*), once, before anything below or in src/ reads them. Keeps you signed in.
+      try {
+        var oldKeys = [];
+        for (var i = 0; i < localStorage.length; i++) {
+          var key = localStorage.key(i);
+          if (key && key.indexOf('better-canvas.') === 0) oldKeys.push(key);
+        }
+        oldKeys.forEach(function (key) {
+          var renamed = 'courseline.' + key.slice('better-canvas.'.length);
+          if (localStorage.getItem(renamed) === null) localStorage.setItem(renamed, localStorage.getItem(key));
+          localStorage.removeItem(key);
+        });
+      } catch (e) {}
       // Apply the saved/system theme before first paint to avoid a light-mode flash.
       // Keep in sync with src/context/ThemeContext.tsx.
       try {
@@ -16,7 +30,7 @@
       } catch (e) {}
       // Same for the custom accent color (palette precomputed by ThemeContext).
       try {
-        var v = JSON.parse(localStorage.getItem('better-canvas.accent-vars') || 'null');
+        var v = JSON.parse(localStorage.getItem('courseline.accent-vars') || 'null');
         if (v) for (var k in v) document.documentElement.style.setProperty(k, v[k]);
       } catch (e) {}
     </script>

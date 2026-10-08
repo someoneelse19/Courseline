@@ -17,7 +17,7 @@ export function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
       <form onSubmit={submit} className="w-full max-w-md space-y-4 rounded-xl border border-neutral-200 bg-white p-6 shadow-xs dark:border-neutral-800 dark:bg-neutral-900">
-        <h1 className="text-2xl font-bold">Better Canvas</h1>
+        <h1 className="text-2xl font-bold">Courseline</h1>
 
         {error && (
           <p className="rounded-md bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>

@@ -1,4 +1,4 @@
-# Better Canvas — Developer Guide
+# Courseline — Developer Guide
 
 The complete map of this project: what it does, how it is built, why it is built that way, and exactly where to
 change things. Read this top to bottom once, then use the table of contents and the **Cookbook** (section 7) as a
@@ -30,7 +30,7 @@ or of this project is assumed. Basic React + TypeScript is.
 
 ## 1. What this is
 
-Better Canvas is a **browser app that replaces the Canvas LMS student interface**. It is a React single-page app that
+Courseline is a **browser app that replaces the Canvas LMS student interface**. It is a React single-page app that
 talks directly to your school's Canvas REST API (`https://<school>/api/v1/...`) using a personal access token. There is
 **no backend of our own**: everything runs in the browser, and the only server is the Vite dev server during
 development.
@@ -62,7 +62,7 @@ Stack: React 18, TypeScript (strict), Vite 6, Tailwind CSS 4, React Router 7. Te
 | Assignment detail page, rubric, comments, **Reply box** | Works; in use by the author on real coursework; unit-tested |
 | **Submitting text** | Works; in use by the author on real coursework; unit-tested |
 | **Submitting files (upload)** | Implements Canvas's documented three-step flow; in use by the author on real coursework; tested in a real browser against a fake Canvas (three confirmation styles, CORS, retry). **File-storage hosts differ between schools**, so another school's Canvas may refuse browser uploads (the app says so and points to "Submit in Canvas") |
-| Automated tests | **122 tests** (Vitest): API client, endpoints, grades, HTML sanitizing and parsing, cache, accent colors, submission form, and a smoke test that renders every screen against a fake Canvas. CI runs them on every push |
+| Automated tests | **125 tests** (Vitest): API client, endpoints, grades, HTML sanitizing and parsing, cache, accent colors, submission form, and a smoke test that renders every screen against a fake Canvas. CI runs them on every push |
 | Deployment | **Not supported** as-is (token lives in the browser; dev proxy is dev-only) |
 
 The author uses the app day to day against a real school's Canvas. The automated tests (`src/**/*.test.ts(x)`) use a fake
@@ -128,7 +128,7 @@ git add -A
 git status                              # read the list: no .env, no node_modules, no .claude
 git commit -m "Initial commit"
 # create an EMPTY repository on github.com (start Private), then:
-git remote add origin git@github.com:<you>/better-canvas.git
+git remote add origin git@github.com:<you>/courseline.git
 git push -u origin main
 ```
 
@@ -207,7 +207,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 
 | File | Purpose |
 |---|---|
-| `index.html` | HTML shell. Contains an **inline script** that applies the saved dark mode and accent color *before first paint* (prevents a flash). Keep it in sync with `ThemeContext.tsx`. |
+| `index.html` | HTML shell. Contains an **inline script** that applies the saved dark mode and accent color *before first paint* (prevents a flash), after moving settings saved under the app's old name (`better-canvas.*` keys) to `courseline.*`. Keep it in sync with `ThemeContext.tsx`. |
 | `vite.config.ts` | Vite + React + Tailwind plugins. Defines the **dev proxy** (`/canvas-proxy` → `VITE_CANVAS_BASE_URL`, with `followRedirects`). |
 | *(no `tailwind.config.js`)* | Tailwind 4 is configured in CSS, in `src/index.css` (`@theme`, `@custom-variant`, `@source`), and runs as a Vite plugin. There is no PostCSS config either. |
 | `tsconfig.json` | Strict TypeScript, **`noUnusedLocals` and `noUnusedParameters` on** (an unused import fails the build). |
@@ -298,6 +298,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `components/HtmlContent.test.ts` | Sanitizer: scripts/handlers/iframes removed, links made absolute, Canvas file links made inert. |
 | `components/SubmissionForm.test.tsx` | Upload-then-submit order, failure submits nothing, retry skips already-uploaded files, allowed extensions, text tab. |
 | `context/DataContext.test.tsx` | Cache: single request per key, error capture, 5-minute freshness, refetch keeps old data visible, only the changed key re-renders, `ensure` and `prime`. |
+| `firstPaint.test.ts` | The inline script in `index.html`: old `better-canvas.*` keys move to `courseline.*` without overwriting newer ones; theme and accent apply. |
 | `App.test.tsx` | Smoke test: every route renders its data through the real providers, cache and lazy-loaded screens; sidebar navigation; the Pages tab makes no per-page requests. |
 | `test/fakeFetch.ts` | Helper (not a test): replaces `fetch` with a router so tests never touch the network. |
 
@@ -319,7 +320,7 @@ development, but those scripts were not saved).
 
 ### 6.1 Authentication and credentials
 
-- Credentials `{ baseUrl, token }` are stored in `localStorage` under **`better-canvas.credentials`**.
+- Credentials `{ baseUrl, token }` are stored in `localStorage` under **`courseline.credentials`**.
 - If `.env` has both `VITE_CANVAS_BASE_URL` and `VITE_CANVAS_API_TOKEN`, those are used when nothing is stored.
 - On start, `AuthProvider` calls `GET /users/self/profile`. Success → `authenticated`; failure → `unauthenticated`
   (login screen) with an error message.
@@ -421,15 +422,17 @@ Everything the app remembers lives in `localStorage`:
 
 | Key | Holds | Written by |
 |---|---|---|
-| `better-canvas.credentials` | `{baseUrl, token}` | `AuthContext` |
-| `better-canvas.selected-courses` | JSON array of course ids (absent = show all) | `CourseFilterContext` |
+| `courseline.credentials` | `{baseUrl, token}` | `AuthContext` |
+| `courseline.selected-courses` | JSON array of course ids (absent = show all) | `CourseFilterContext` |
 | `theme` | `"light"` or `"dark"` (absent = follow the system) | `ThemeContext` |
-| `better-canvas.accent` | custom accent `#rrggbb` (absent = default) | `ThemeContext` |
-| `better-canvas.accent-vars` | the computed palette, so `index.html` can apply it before first paint | `ThemeContext` |
-| `better-canvas.pages.<courseId>` | `{order: string[], collapsed: string[]}` for the Pages tab | `CoursePagesPage` |
+| `courseline.accent` | custom accent `#rrggbb` (absent = default) | `ThemeContext` |
+| `courseline.accent-vars` | the computed palette, so `index.html` can apply it before first paint | `ThemeContext` |
+| `courseline.pages.<courseId>` | `{order: string[], collapsed: string[]}` for the Pages tab | `CoursePagesPage` |
 
 All reads/writes are wrapped in `try/catch` (storage can be blocked in private windows). Nothing is synced between
-browsers or devices.
+browsers or devices. The app used to be called Better Canvas: on load, the inline script in `index.html` moves any
+`better-canvas.*` key to its `courseline.*` name (unless that already exists) and deletes the old one, so nobody is
+signed out by the rename.
 
 **Dark mode:** class-based: `@custom-variant dark (&:where(.dark, .dark *))` in `src/index.css` makes every `dark:` utility follow the `.dark` class (not the OS setting). `ThemeContext` toggles the `dark` class on `<html>`. `index.html` applies the
 saved/system choice before React loads.
@@ -446,7 +449,7 @@ invisible.
 
 - Sections = every module with items (rendered with `UnitItems`, shared with the Files tab) + every wiki page
   (rendered with `HtmlContent`).
-- Default order: modules first, then pages; the user's saved order (`better-canvas.pages.<courseId>`) wins.
+- Default order: modules first, then pages; the user's saved order (`courseline.pages.<courseId>`) wins.
 - **Page discovery fallback chain** (`getPages` in `canvas.ts`): the index is asked for bodies (`include[]=body`), so
   normally the whole tab is one request; pages that come back without a body (block-editor pages) are fetched one by
   one. Many schools hide the Pages tab, which makes the `/pages` index fail (404 "disabled for this course") even
@@ -687,7 +690,7 @@ automatic download or be blocked from embedding. Read bytes through the API inst
 
 ### Persist a new user setting
 
-Follow `ThemeContext`/`CourseFilterContext`: a context (or local state) with a `better-canvas.<name>` key, wrap
+Follow `ThemeContext`/`CourseFilterContext`: a context (or local state) with a `courseline.<name>` key, wrap
 `localStorage` reads/writes in `try/catch`, and render correctly when storage is unavailable. If it must apply before
 first paint, mirror it in the inline script in `index.html`.
 
@@ -842,7 +845,7 @@ Practical rules:
 - **Data access:** pages → hooks → `useQuery` → `canvas.ts` → `client.ts`. No `fetch` in components.
 - **Untrusted content:** Canvas HTML via `HtmlContent`; file bytes read from the local blob; labels rendered by React.
 - **Naming:** hooks `useThing`; Canvas endpoint functions `getThing`; cache keys `thing:<ids>`; storage keys
-  `better-canvas.<name>`.
+  `courseline.<name>`.
 - **Styling:** `neutral-*` grays, `accent-*` brand, `dark:` twin on every colored class, status colors only for status.
 - **Error handling:** API errors flow through `useQuery.error` → `<ErrorMessage>`. Handle expected failures
   (hidden tabs) in `canvas.ts`, not in components.

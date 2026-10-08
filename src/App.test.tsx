@@ -67,7 +67,7 @@ let calls: Call[];
 
 beforeEach(() => {
   localStorage.clear();
-  localStorage.setItem('better-canvas.credentials', JSON.stringify({ baseUrl: 'https://school.test', token: 'T' }));
+  localStorage.setItem('courseline.credentials', JSON.stringify({ baseUrl: 'https://school.test', token: 'T' }));
   localStorage.setItem('theme', 'light');
   ({ calls } = installFetch((c) => (path(c) in routes ? json(routes[path(c)]) : undefined)));
   host = document.createElement('div');

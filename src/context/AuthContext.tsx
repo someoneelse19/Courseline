@@ -8,7 +8,7 @@ import type { UserProfile } from '../api/types';
 // A Canvas personal token acts as YOU, with full access, until it expires/is revoked.
 // Fine for a local MVP. Before sharing/deploying: move to a backend that holds the
 // token (or use Canvas OAuth2 with a server-side secret), and keep tokens short-lived.
-const STORAGE_KEY = 'better-canvas.credentials';
+const STORAGE_KEY = 'courseline.credentials';
 const USE_PROXY = import.meta.env.VITE_USE_DEV_PROXY === 'true';
 
 interface Credentials {
