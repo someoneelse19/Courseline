@@ -2,6 +2,7 @@ import { useMemo, type MouseEvent } from 'react';
 import DOMPurify from 'dompurify';
 import { useAuth } from '../context/AuthContext';
 import { useFileViewer } from '../context/FileViewerContext';
+import { fileLinkName } from '../lib/html';
 
 // Canvas gives us HTML written by instructors (assignment descriptions, submission
 // bodies). We render it, but ONLY after DOMPurify strips scripts, event handlers,
@@ -68,10 +69,7 @@ export function HtmlContent({ html }: { html: string }) {
     const link = (e.target as HTMLElement).closest('a[data-canvas-file]');
     if (!link) return;
     e.preventDefault();
-    const name = (link.querySelector('.screenreader-only')?.textContent || link.textContent || '')
-      .replace(/^\s*(Descargar|Download)\s+/i, '')
-      .trim();
-    openFile(link.getAttribute('data-canvas-file') ?? '', name || 'File');
+    openFile(link.getAttribute('data-canvas-file') ?? '', fileLinkName(link) || 'File');
   };
 
   return <div className="canvas-html" onClick={onClick} dangerouslySetInnerHTML={{ __html: clean }} />;

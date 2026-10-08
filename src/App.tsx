@@ -1,3 +1,4 @@
+import { lazy, type ComponentType } from 'react';
 import { Link, Navigate, Route, Routes } from 'react-router-dom';
 import { CourseLayout } from './components/CourseLayout';
 import { Layout } from './components/Layout';
@@ -6,17 +7,23 @@ import { useAuth } from './context/AuthContext';
 import { CourseFilterProvider } from './context/CourseFilterContext';
 import { DataProvider } from './context/DataContext';
 import { FileViewerProvider } from './context/FileViewerContext';
-import { AssignmentDetailPage } from './pages/AssignmentDetailPage';
-import { AssignmentsPage } from './pages/AssignmentsPage';
-import { CourseDetailPage } from './pages/CourseDetailPage';
-import { CourseFilesPage } from './pages/CourseFilesPage';
-import { CourseGradesPage } from './pages/CourseGradesPage';
-import { CoursePagesPage } from './pages/CoursePagesPage';
 import { CoursesPage } from './pages/CoursesPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { LoginPage } from './pages/LoginPage';
-import { SettingsPage } from './pages/SettingsPage';
-import { SubmissionViewPage } from './pages/SubmissionViewPage';
+
+// The screens you land on are bundled with the app; the rest load the first time they are opened.
+// Navigation runs in a transition, so the current screen stays up while the next one loads.
+function lazyPage<K extends string, M extends Record<K, ComponentType>>(load: () => Promise<M>, name: K) {
+  return lazy(() => load().then((m) => ({ default: m[name] })));
+}
+const AssignmentDetailPage = lazyPage(() => import('./pages/AssignmentDetailPage'), 'AssignmentDetailPage');
+const AssignmentsPage = lazyPage(() => import('./pages/AssignmentsPage'), 'AssignmentsPage');
+const CourseDetailPage = lazyPage(() => import('./pages/CourseDetailPage'), 'CourseDetailPage');
+const CourseFilesPage = lazyPage(() => import('./pages/CourseFilesPage'), 'CourseFilesPage');
+const CourseGradesPage = lazyPage(() => import('./pages/CourseGradesPage'), 'CourseGradesPage');
+const CoursePagesPage = lazyPage(() => import('./pages/CoursePagesPage'), 'CoursePagesPage');
+const SettingsPage = lazyPage(() => import('./pages/SettingsPage'), 'SettingsPage');
+const SubmissionViewPage = lazyPage(() => import('./pages/SubmissionViewPage'), 'SubmissionViewPage');
 
 export default function App() {
   const { status } = useAuth();

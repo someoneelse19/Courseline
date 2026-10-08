@@ -62,12 +62,12 @@ Stack: React 18, TypeScript (strict), Vite 6, Tailwind CSS 4, React Router 7. Te
 | Assignment detail page, rubric, comments, **Reply box** | Works; in use by the author on real coursework; unit-tested |
 | **Submitting text** | Works; in use by the author on real coursework; unit-tested |
 | **Submitting files (upload)** | Implements Canvas's documented three-step flow; in use by the author on real coursework; tested in a real browser against a fake Canvas (three confirmation styles, CORS, retry). **File-storage hosts differ between schools**, so another school's Canvas may refuse browser uploads (the app says so and points to "Submit in Canvas") |
-| Automated tests | **98 tests** (Vitest): API client, endpoints, grades, HTML sanitizing, cache, accent colors, submission form. CI runs them on every push |
+| Automated tests | **122 tests** (Vitest): API client, endpoints, grades, HTML sanitizing and parsing, cache, accent colors, submission form, and a smoke test that renders every screen against a fake Canvas. CI runs them on every push |
 | Deployment | **Not supported** as-is (token lives in the browser; dev proxy is dev-only) |
 
 The author uses the app day to day against a real school's Canvas. The automated tests (`src/**/*.test.ts(x)`) use a fake
 one. The screens and the file viewer were also checked in a real browser against a fake Canvas during development; those
-browser scripts are **not part of this repository**. Canvas installations differ a little from school to school, so on a
+browser scripts are **not part of this repository** (`App.test.tsx` covers the screens in a simulated browser, not pixels). Canvas installations differ a little from school to school, so on a
 new school try a submission on a throwaway assignment first.
 
 ---
@@ -159,7 +159,8 @@ Every piece of Canvas data follows the same route. Learn this and you can find a
  hooks/useQuery.ts           key + fetcher  →  { data, loading, error, refetch }
       │  asks
       ▼
- context/DataContext.tsx     keyed in-memory cache, 5-minute freshness, de-dupes in-flight requests
+ context/DataContext.tsx     keyed in-memory cache, 5-minute freshness, de-dupes in-flight requests,
+      │                      re-renders only the components reading the key that changed
       │  calls the fetcher, which is
       ▼
  api/canvas.ts               one function per Canvas endpoint (typed with api/types.ts)
@@ -200,7 +201,7 @@ the API, downloads it into memory, and renders that local copy. See [6.9](#69-th
 
 ## 5. File-by-file map
 
-Everything lives in `src/` (about 5,500 lines of app code plus tests). Config files sit in the project root.
+Everything lives in `src/` (about 5,200 lines of app code plus tests). Config files sit in the project root.
 
 ### Root
 
@@ -251,6 +252,7 @@ Everything lives in `src/` (about 5,500 lines of app code plus tests). Config fi
 | `grades.ts` | The grade maths (group weights, drop rules, what-if, trend, goal solver). Fully unit-testable. |
 | `accent.ts` | Accent presets and the function that turns one hex color into a full 11-step palette. |
 | `format.ts` | Dates, grades, byte sizes, `courseIdFromContext`. |
+| `html.ts` | Reading Canvas HTML without rendering it: `linkedFiles` (file links in a description or page), `fileLinkName`, `htmlText`. |
 
 ### `src/pages/` — one file per screen (routes in `App.tsx`)
 
@@ -278,7 +280,7 @@ Everything lives in `src/` (about 5,500 lines of app code plus tests). Config fi
 | `CourseCard.tsx`, `GradeSummary.tsx`, `AssignmentList.tsx` | Reusable list/card pieces. `AssignmentList` also exports `assignmentStatus()`. |
 | `HtmlContent.tsx` | Sanitized rendering of Canvas HTML; intercepts file links. |
 | `FileViewer.tsx` | The viewer: all file-type renderers, zoom, page tracking (the biggest file, ~900 lines). |
-| `FileViewerModal.tsx` | The overlay around the viewer (Esc, click-outside, body scroll lock). |
+| `FileViewerModal.tsx` | The overlay around the viewer (Esc, click-outside, body scroll lock). Loads `FileViewer` the first time a file is opened. |
 | `GradeTrendChart.tsx` | The SVG line chart on the grades page. |
 | `SubmissionForm.tsx` | Text / file submission UI. Uploads every file, then submits all their ids together. |
 | `ErrorBoundary.tsx` | Catches render crashes. |
@@ -292,12 +294,14 @@ Everything lives in `src/` (about 5,500 lines of app code plus tests). Config fi
 | `api/canvas.test.ts` | Endpoint quirks: restricted-course filtering, `score_statistics` retry, hidden Files tab → `null`, >50-item modules, the Pages discovery chain and de-duplication, write payloads. |
 | `lib/grades.test.ts` | Weights, current vs final, every drop rule, excused/omitted/extra credit, what-if, trend replay, goal solver, Canvas→model mapping. |
 | `lib/accent.test.ts`, `lib/format.test.ts` | Palette generation and contrast rule, CSS variable application, grade/byte formatting. |
+| `lib/html.test.ts` | File links found in Canvas HTML: names, `data-id`, duplicates, unnamed links. |
 | `components/HtmlContent.test.ts` | Sanitizer: scripts/handlers/iframes removed, links made absolute, Canvas file links made inert. |
 | `components/SubmissionForm.test.tsx` | Upload-then-submit order, failure submits nothing, retry skips already-uploaded files, allowed extensions, text tab. |
-| `context/DataContext.test.tsx` | Cache: single request per key, error capture, 5-minute freshness, refetch keeps old data visible. |
+| `context/DataContext.test.tsx` | Cache: single request per key, error capture, 5-minute freshness, refetch keeps old data visible, only the changed key re-renders, `ensure` and `prime`. |
+| `App.test.tsx` | Smoke test: every route renders its data through the real providers, cache and lazy-loaded screens; sidebar navigation; the Pages tab makes no per-page requests. |
 | `test/fakeFetch.ts` | Helper (not a test): replaces `fetch` with a router so tests never touch the network. |
 
-**Not** covered by automated tests: the screens and the file viewer (they were checked in a real browser during
+**Not** covered by automated tests: how the screens look, and the file viewer (both were checked in a real browser during
 development, but those scripts were not saved).
 
 ### Other
@@ -360,7 +364,7 @@ All paths are under `/api/v1`. Function names are in `api/canvas.ts`.
 | `getMySubmission` | `GET /courses/:id/assignments/:aid/submissions/self` (+ comments, rubric includes) | assignment page, submission page |
 | `getAssignmentGroups` | `GET /courses/:id/assignment_groups?include[]=assignments&include[]=submission&include[]=score_statistics&scope_assignments_to_student=true` (retries without `score_statistics` on a plain 400) | grades page |
 | `getModules` / `getModuleItems` | `GET /courses/:id/modules?include[]=items&include[]=content_details` / `.../modules/:mid/items` | Pages tab, Files tab |
-| `getPages` / `getPage` | `GET /courses/:id/pages`, `.../pages/:slug`, `.../front_page` | Pages tab, Files tab |
+| `getPages` / `getPage` | `GET /courses/:id/pages?include[]=body`, `.../pages/:slug` (only for pages listed without a body), `.../front_page` | Pages tab, Files tab |
 | `getCourseFiles` | `GET /courses/:id/files` (returns `null` if the Files tab is hidden) | Files tab |
 | `getFile` | `GET /files/:id` (gives the pre-signed `url`) | file viewer |
 | `downloadFile` | fetches that signed URL's bytes | file viewer |
@@ -372,12 +376,17 @@ All paths are under `/api/v1`. Function names are in `api/canvas.ts`.
 
 ### 6.4 Cache and hooks
 
-- `DataContext` holds `{ [key]: { data, loading, error, fetchedAt } }`.
+- `DataContext` provides a `QueryStore` holding `{ data, loading, error, fetchedAt }` per key. `useQuery` subscribes to
+  its own key (`useSyncExternalStore`), so a response re-renders only the components that read that key.
 - **`STALE_MS = 5 minutes`.** Mounting a hook with fresh data does not refetch. Older data is shown immediately and
   refetched in the background (`loading` is true during that, `data` stays — check `data` to tell first load from
   refresh).
 - A request already in flight for a key is not duplicated.
 - `refetch()` forces a reload.
+- Inside a fetcher, `store.ensure(key, fetcher)` reuses another query's fresh or in-flight data (it returns a promise that
+  rejects on failure), and `store.prime(key, data)` fills a slot from a response that already carries it. `usePages`
+  uses both: discovery shares the `modules:<id>` request, and each page lands in `page:<id>:<slug>`, so the module rows
+  on the Pages tab never fetch a page again. Use the same key **and** fetcher as the hook that owns the key.
 - **Cache keys in use:** `courses`, `course:<id>`, `assignments:<id>`, `assignment:<cid>:<aid>`,
   `submission:<cid>:<aid>`, `modules:<id>`, `moduleItems:<cid>:<mid>`, `page:<id>:<slug>`, `pages:<id>`,
   `files:<id>`, `assignmentGroups:<id>`, `upcoming`.
@@ -386,7 +395,10 @@ All paths are under `/api/v1`. Function names are in `api/canvas.ts`.
 
 ### 6.5 Routing
 
-Defined in `App.tsx`. Unauthenticated users always get `LoginPage`.
+Defined in `App.tsx`. Unauthenticated users always get `LoginPage`. The dashboard, course list and course header are
+bundled with the app; every other screen is `lazyPage(...)`, a chunk fetched on first visit. Navigation runs in a
+transition (React Router 7), so the current screen stays up while the next one loads; `Suspense` in `Layout` and
+`CourseLayout` shows a spinner on a direct load.
 
 | URL | Component | Notes |
 |---|---|---|
@@ -435,10 +447,12 @@ invisible.
 - Sections = every module with items (rendered with `UnitItems`, shared with the Files tab) + every wiki page
   (rendered with `HtmlContent`).
 - Default order: modules first, then pages; the user's saved order (`better-canvas.pages.<courseId>`) wins.
-- **Page discovery fallback chain** (`getPages` in `canvas.ts`): many schools hide the Pages tab, which makes the
-  `/pages` index fail (404 "disabled for this course") even though individual pages load. So: try the index; if it is
-  refused, **discover slugs** from module items of type `Page` (`item.page_url`) plus links found in the course front
-  page, fetch each, and **de-duplicate** (different slugs can resolve to the same page).
+- **Page discovery fallback chain** (`getPages` in `canvas.ts`): the index is asked for bodies (`include[]=body`), so
+  normally the whole tab is one request; pages that come back without a body (block-editor pages) are fetched one by
+  one. Many schools hide the Pages tab, which makes the `/pages` index fail (404 "disabled for this course") even
+  though individual pages load. So: try the index; if it is refused, **discover slugs** from module items of type
+  `Page` (`item.page_url`) plus links found in the course front page (both loaded in parallel; the front page itself is
+  reused, not refetched), fetch each, and **de-duplicate** (different slugs can resolve to the same page).
 - Either source may legitimately be unavailable; the tab only errors if both fail.
 
 ### 6.8 Files by unit (`CourseFilesPage.tsx`)
@@ -468,7 +482,7 @@ navigate. They open the viewer.
 
 | Type | How | Notes |
 |---|---|---|
-| PDF | **PDF.js** (`pdfjs-dist`, the *legacy* build) draws each page to a `<canvas>` | Pages render lazily; canvas capped at ~16 megapixels. If the background worker does not answer within 10 s it **falls back to main-thread parsing** (and remembers that for the session). 60 s overall limit. Verifies the bytes start with `%PDF-`. |
+| PDF | **PDF.js** (`pdfjs-dist`, the *legacy* build) draws each page to a `<canvas>` | Only pages within 1,200 px of the view are drawn; pages further away are released (each drawn page is ~13 MB at 100% on a 2x screen) and redrawn on return. Canvas capped at ~16 megapixels. If the background worker does not answer within 10 s it **falls back to main-thread parsing** (and remembers that for the session). 60 s overall limit. Verifies the bytes start with `%PDF-`. |
 | DOCX | `docx-preview` | Hyperlinks restricted to http/https/mailto. |
 | XLSX / XLS / CSV / ODS | SheetJS (`xlsx` 0.20.3) → HTML table → **DOMPurify** | Sheet tabs; hidden sheets skipped; **max 2,000 rows per sheet** (`MAX_SHEET_ROWS`). |
 | PPTX | `pptx-preview` | Slides stacked in one scroll area; slide shape read from `ppt/presentation.xml`. A chart with no title in its file shows no title (the library would draw a Chinese placeholder; the viewer blanks it). |
@@ -571,13 +585,15 @@ component.**
 ### Add a new top-level screen
 
 1. Create `src/pages/MyPage.tsx` exporting a component. Do not add outer padding.
-2. Add `<Route path="my-page" element={<MyPage />} />` inside the `<Route element={<Layout />}>` block in `App.tsx`.
+2. In `App.tsx`, load it on demand: `const MyPage = lazyPage(() => import('./pages/MyPage'), 'MyPage');`, then add
+   `<Route path="my-page" element={<MyPage />} />` inside the `<Route element={<Layout />}>` block.
 3. Add a `<NavLink>` in `components/Sidebar.tsx`.
 
 ### Add a new tab inside a course
 
 1. Create the page component (it renders below the course header, so no title needed).
-2. In `App.tsx`, add a child route under `courses/:courseId`: `<Route path="announcements" element={<AnnouncementsPage />} />`.
+2. In `App.tsx`, declare it with `lazyPage(...)` (as above) and add a child route under `courses/:courseId`:
+   `<Route path="announcements" element={<AnnouncementsPage />} />`.
 3. In `components/CourseTabs.tsx`, add an entry to `tabs`:
    `{ to: \`${base}/announcements\`, label: 'Announcements', active: pathname.startsWith(\`${base}/announcements\`) }`.
    Order in the array is the order on screen. The first tab uses the bare course URL as the default.
@@ -862,9 +878,10 @@ The app is in real use, so treat every change as something a student will hit to
    file-storage host refuses a browser upload (CORS), where the app says so and points to "Submit in Canvas"; (b) the
    confirmation step answers in a shape `uploadFile` does not recognise, where the app says "Canvas did not confirm the
    upload". Try a throwaway assignment on a new school.
-2. **Screens and the file viewer have no saved automated tests.** They were verified in a real browser during
-   development with throwaway scripts (a fake Canvas, Chrome driven over the DevTools protocol, and before/after
-   screenshot comparison for the Tailwind 4 migration). A saved version of that (Playwright + a fake-Canvas fixture)
+2. **The file viewer has no saved automated tests, and nothing checks how screens look.** `App.test.tsx` renders every
+   screen in a simulated browser, but not pixels. Both were verified in a real browser during development with
+   throwaway scripts (a fake Canvas, Chrome driven over the DevTools protocol, and before/after screenshot comparison
+   for the Tailwind 4 migration). A saved version of that (Playwright + a fake-Canvas fixture)
    would be the next level of safety.
 3. **The grade engine** matches Canvas on the cases tested (weights, drops, excused, extra credit) but has not been
    compared with a wide range of real gradebooks. Canvas's own totals remain the headline for that reason.

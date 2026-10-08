@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { Assignment, RubricCriterion, Submission } from '../api/types';
 import { assignmentStatus } from '../components/AssignmentList';
@@ -9,13 +9,11 @@ import { useApi, useAuth } from '../context/AuthContext';
 import { useFileViewer } from '../context/FileViewerContext';
 import { useAssignment, useMySubmission } from '../hooks/useCanvasData';
 import { formatDue } from '../lib/format';
+import { htmlText, linkedFiles } from '../lib/html';
 
 // Header + course tabs come from CourseLayout. Layout: instructions on the left;
-// details, your submission and feedback (with reply) on the right.
-// Submitting work is deliberately left to Canvas (see the button).
-// TODO(submissions): text/URL submissions are one POST to
-//   /courses/:id/assignments/:id/submissions (submission[submission_type]=online_text_entry|online_url).
-//   File uploads are a 3-step flow: request upload slot → POST file to returned URL → confirm.
+// details, submission form, your submission and feedback (with reply) on the right.
+// Types the form doesn't handle (URL, media, quizzes...) go through the "Submit in Canvas" button.
 // TODO: peer reviews, quiz assignments (submission_types includes 'online_quiz'), discussion-type assignments.
 
 const typeLabels: Record<string, string> = {
@@ -30,62 +28,6 @@ const typeLabels: Record<string, string> = {
   none: 'No submission',
 };
 
-interface ExtractedFile {
-  id: string;
-  name: string;
-  url: string;
-}
-
-// Extract downloadable files from assignment description HTML.
-// Finds anchor tags with class="file_download_btn" or similar download links.
-function extractFilesFromHtml(html: string): ExtractedFile[] {
-  if (!html) return [];
-  try {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    const files: ExtractedFile[] = [];
-
-    // Look for download buttons and file links
-    doc.querySelectorAll('a[href*="/files/"]').forEach((link) => {
-      const href = link.getAttribute('href');
-      if (!href) return;
-
-      // Skip if it's not a download or preview link
-      if (!href.includes('/files/')) return;
-
-      // Extract file ID from URL or data-id attribute
-      const dataId = link.getAttribute('data-id');
-      const urlMatch = href.match(/\/files\/(\d+)/);
-      const fileId = dataId || urlMatch?.[1];
-
-      if (!fileId) return;
-
-      // Extract file name from screenreader-only text, aria-label, or link text
-      let name = '';
-      const screenreader = link.querySelector('.screenreader-only');
-      if (screenreader) {
-        name = screenreader.textContent?.trim() || '';
-      }
-      if (!name) {
-        name = link.getAttribute('aria-label') || link.textContent?.trim() || '';
-      }
-      // Remove "Descargar" (Spanish) or "Download" prefixes
-      name = name.replace(/^(Descargar|Download)\s+/i, '').trim();
-
-      if (!name) return;
-
-      // Avoid duplicates
-      if (!files.find((f) => f.id === fileId)) {
-        files.push({ id: fileId, name, url: href });
-      }
-    });
-
-    return files;
-  } catch {
-    return [];
-  }
-}
-
 export function AssignmentDetailPage() {
   const params = useParams();
   const courseId = Number(params.courseId);
@@ -95,6 +37,8 @@ export function AssignmentDetailPage() {
 
   const assignment = useAssignment(courseId, assignmentId);
   const submission = useMySubmission(courseId, assignmentId);
+  const description = assignment.data?.description ?? '';
+  const attachedFiles = useMemo(() => linkedFiles(description), [description]);
 
   if (assignment.error) return <ErrorMessage error={assignment.error} onRetry={assignment.refetch} />;
   if (!assignment.data) return <Spinner />;
@@ -105,8 +49,6 @@ export function AssignmentDetailPage() {
   const st = assignmentStatus({ ...a, submission: sub });
   const types = (a.submission_types ?? []).map((t) => typeLabels[t] ?? t);
   const comments = sub?.submission_comments ?? [];
-
-  const attachedFiles = extractFilesFromHtml(a.description || '');
 
   return (
     <>
@@ -296,12 +238,13 @@ function SubmissionView({
   points: number | null;
 }) {
   const { openFile } = useFileViewer();
+  const body = sub?.body ?? '';
+  const bodyText = useMemo(() => (body ? htmlText(body) : ''), [body]);
   if (!sub || sub.workflow_state === 'unsubmitted') {
     return <EmptyState>{sub?.missing ? 'Marked missing.' : 'Nothing submitted yet.'}</EmptyState>;
   }
 
   const graded = sub.score != null;
-  const bodyText = sub.body ? new DOMParser().parseFromString(sub.body, 'text/html').body.textContent || '' : '';
   const isTruncated = bodyText.length > 300 || (sub.attachments?.length ?? 0) > 2;
   const truncatedBody = bodyText.slice(0, 300) + (bodyText.length > 300 ? '…' : '');
 

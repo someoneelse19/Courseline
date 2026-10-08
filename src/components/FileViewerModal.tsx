@@ -1,5 +1,8 @@
-import { useEffect } from 'react';
-import { FileViewer } from './FileViewer';
+import { lazy, Suspense, useEffect } from 'react';
+import { Spinner } from './ui';
+
+// The viewer (and the document libraries it loads) is only fetched the first time a file is opened.
+const FileViewer = lazy(() => import('./FileViewer').then((m) => ({ default: m.FileViewer })));
 
 interface FileViewerModalProps {
   isOpen: boolean;
@@ -11,17 +14,17 @@ interface FileViewerModalProps {
 
 export function FileViewerModal({ isOpen, fileUrl, fileName, contentType, onClose }: FileViewerModalProps) {
   useEffect(() => {
+    if (!isOpen) return;
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
-    if (isOpen) {
-      document.addEventListener('keydown', handleEscape);
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.removeEventListener('keydown', handleEscape);
-        document.body.style.overflow = 'auto';
-      };
-    }
+    const previousOverflow = document.body.style.overflow;
+    document.addEventListener('keydown', handleEscape);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      document.body.style.overflow = previousOverflow;
+    };
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
@@ -32,7 +35,15 @@ export function FileViewerModal({ isOpen, fileUrl, fileName, contentType, onClos
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="w-full max-w-6xl">
-        <FileViewer fileUrl={fileUrl} fileName={fileName} contentType={contentType} onClose={onClose} />
+        <Suspense
+          fallback={
+            <div className="rounded-lg border border-neutral-200 bg-white px-4 shadow-xl dark:border-neutral-800 dark:bg-neutral-900">
+              <Spinner label="Opening viewer…" />
+            </div>
+          }
+        >
+          <FileViewer fileUrl={fileUrl} fileName={fileName} contentType={contentType} onClose={onClose} />
+        </Suspense>
       </div>
     </div>
   );

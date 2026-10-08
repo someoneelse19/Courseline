@@ -3,7 +3,6 @@ import { useParams } from 'react-router-dom';
 import type { Module, Page } from '../api/types';
 import { HtmlContent } from '../components/HtmlContent';
 import { Card, EmptyState, ErrorMessage, Spinner } from '../components/ui';
-import { useAuth } from '../context/AuthContext';
 import { useCourseFiles, useModules, usePages } from '../hooks/useCanvasData';
 import { UnitItems } from './CourseFilesPage';
 
@@ -35,7 +34,6 @@ function loadPrefs(courseId: number): Prefs {
 
 export function CoursePagesPage() {
   const courseId = Number(useParams().courseId);
-  const { baseUrl } = useAuth();
   const pages = usePages(courseId);
   const modules = useModules(courseId);
   const files = useCourseFiles(courseId);
@@ -61,8 +59,6 @@ export function CoursePagesPage() {
   }, [modules.data, pages.data, prefs.order]);
 
   const fileById = useMemo(() => new Map((files.data ?? []).map((f) => [f.id, f])), [files.data]);
-  const fileHref = (fileId: number, moduleItemId?: number) =>
-    baseUrl ? `${baseUrl}/courses/${courseId}/files/${fileId}${moduleItemId ? `?module_item_id=${moduleItemId}` : ''}` : undefined;
 
   // Either source can legitimately be unavailable (hidden Pages tab, no modules); only fail if both are.
   if (pages.error && modules.error) return <ErrorMessage error={pages.error} onRetry={() => (pages.refetch(), modules.refetch())} />;
@@ -113,7 +109,7 @@ export function CoursePagesPage() {
             {s.kind === 'page' ? (
               s.page.body ? <HtmlContent html={s.page.body} /> : <EmptyState>This page is empty.</EmptyState>
             ) : (
-              <UnitItems items={s.module.items ?? []} courseId={courseId} fileById={fileById} fileHref={fileHref} />
+              <UnitItems items={s.module.items ?? []} courseId={courseId} fileById={fileById} />
             )}
           </SectionCard>
         ))}

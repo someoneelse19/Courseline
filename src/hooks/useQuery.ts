@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { useData } from '../context/DataContext';
+import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
+import { useQueryStore } from '../context/DataContext';
 
 export interface QueryResult<T> {
   data: T | undefined;
@@ -11,20 +11,23 @@ export interface QueryResult<T> {
 
 /** Fetch-and-cache. `key` identifies the data; include every input to the fetcher in it. */
 export function useQuery<T>(key: string, fetcher: () => Promise<T>): QueryResult<T> {
-  const { entries, load } = useData();
+  const store = useQueryStore();
   // Always call the latest fetcher without making it an effect dependency.
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
 
-  useEffect(() => {
-    load(key, () => fetcherRef.current());
-  }, [key, load]);
+  const subscribe = useCallback((onChange: () => void) => store.subscribe(key, onChange), [store, key]);
+  const entry = useSyncExternalStore(subscribe, () => store.get(key));
 
-  const entry = entries[key];
+  useEffect(() => {
+    store.load(key, () => fetcherRef.current());
+  }, [store, key]);
+
+  const refetch = useCallback(() => store.load(key, () => fetcherRef.current(), true), [store, key]);
   return {
     data: entry?.data as T | undefined,
     loading: entry ? entry.loading : true, // no entry yet = about to load
     error: entry?.error,
-    refetch: () => load(key, () => fetcherRef.current(), true),
+    refetch,
   };
 }

@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import { useApi } from '../context/AuthContext';
 import { useCourseFilter } from '../context/CourseFilterContext';
+import { useQueryStore } from '../context/DataContext';
 import { useQuery } from './useQuery';
 
 export function useCourses() {
@@ -63,7 +64,14 @@ export function usePage(courseId: number, pageUrl: string) {
 
 export function usePages(courseId: number) {
   const api = useApi();
-  return useQuery(`pages:${courseId}`, () => api.getPages(courseId));
+  const store = useQueryStore();
+  return useQuery(`pages:${courseId}`, async () => {
+    // Discovery reads the modules list: share useModules' copy (same key and fetcher) instead of fetching it twice.
+    const pages = await api.getPages(courseId, () => store.ensure(`modules:${courseId}`, () => api.getModules(courseId)));
+    // These carry their bodies, so module rows that look a page up (usePage) don't fetch it again.
+    for (const p of pages) if (p.url) store.prime(`page:${courseId}:${p.url}`, p);
+    return pages;
+  });
 }
 
 export function useCourseFiles(courseId: number) {

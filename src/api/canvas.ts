@@ -96,20 +96,22 @@ export function createCanvasApi(config: ClientConfig) {
 
     /**
      * Wiki pages in a course, with bodies.
+     * include[]=body puts every body in the list itself; pages that still come without one (block-editor
+     * pages, or a Canvas that ignores the include) are fetched one by one.
      * QUIRK: many schools hide the Pages tab, which makes the /pages index 404
      * ("that page has been disabled for this course") even though individual pages
      * (/pages/:slug) still load. In that case we discover slugs ourselves: Page items
      * in modules (item.page_url) plus pages linked from the course front page.
+     * `loadModules` lets the caller share a modules list it loads anyway.
      */
-    getPages: async (courseId: number): Promise<Page[]> => {
+    getPages: async (courseId: number, loadModules: () => Promise<Module[]> = () => api.getModules(courseId)): Promise<Page[]> => {
       try {
-        const list = await client.getAll<Page>(`/courses/${courseId}/pages`, { sort: 'title' });
-        return Promise.all(list.map((p) => client.get<Page>(`/courses/${courseId}/pages/${p.url}`)));
+        const list = await client.getAll<Page>(`/courses/${courseId}/pages`, { sort: 'title', include: ['body'] });
+        return Promise.all(list.map((p) => (p.body !== undefined ? p : client.get<Page>(`/courses/${courseId}/pages/${p.url}`))));
       } catch (err) {
         if (!(err instanceof CanvasApiError) || !['not_found', 'forbidden'].includes(err.kind)) throw err;
       }
 
-      const slugs = new Set<string>();
       const orNull = async <T,>(p: Promise<T>): Promise<T | null> => {
         try {
           return await p;
@@ -119,15 +121,15 @@ export function createCanvasApi(config: ClientConfig) {
         }
       };
 
-      const modules = await orNull(api.getModules(courseId));
+      const [modules, front] = await Promise.all([orNull(loadModules()), orNull(client.get<Page>(`/courses/${courseId}/front_page`))]);
+      const slugs = new Set<string>();
       for (const m of modules ?? []) for (const i of m.items ?? []) if (i.type === 'Page' && i.page_url) slugs.add(i.page_url);
-
-      const front = await orNull(client.get<Page>(`/courses/${courseId}/front_page`));
       if (front?.url) slugs.add(front.url);
       for (const m of (front?.body ?? '').matchAll(/\/courses\/\d+\/pages\/([^"'?#\s<>/]+)/g)) slugs.add(decodeURIComponent(m[1]));
 
       const pages = await Promise.all(
         [...slugs].map(async (slug) => {
+          if (slug === front?.url) return front; // already have it, body and all
           const page = await orNull(client.get<Page>(`/courses/${courseId}/pages/${slug}`));
           return page ? { ...page, url: page.url ?? slug } : null;
         }),
@@ -226,11 +228,9 @@ export function createCanvasApi(config: ClientConfig) {
       return events.filter((e) => e.type === 'assignment' && e.assignment);
     },
 
-    // TODO(submissions): POST /courses/:id/assignments/:id/submissions (text/url/file upload is a 3-step flow)
     // TODO(discussions): GET /courses/:id/discussion_topics, and /discussion_topics/:id/view for threaded replies
     // TODO(announcements): GET /announcements?context_codes[]=course_123
     // TODO(calendar): GET /calendar_events?start_date=&end_date=&context_codes[]=
-    // TODO(pages): GET /courses/:id/pages/:url to read wiki pages in-app (module 'Page' items)
     // TODO(folders): GET /courses/:id/folders for a folder-tree view of files
     // TODO(inbox): GET /conversations
   };

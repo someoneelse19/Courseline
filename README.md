@@ -87,8 +87,8 @@ in to Canvas).
 ## Status
 
 In day-to-day use by the author on real school courses. Covered by automated tests: the API client (pagination, error
-mapping, downloads, file upload), grade calculation, HTML sanitizing, the data cache, accent colors, and the submission
-form. The screens and the file viewer were also checked in a real browser, in light and dark mode and at phone width.
+mapping, downloads, file upload), grade calculation, HTML sanitizing, the data cache, accent colors, the submission
+form, and a smoke test that renders every screen against a fake Canvas. The screens and the file viewer were also checked in a real browser, in light and dark mode and at phone width.
 
 Canvas installations differ a little between schools. If you use this at a new school, try a submission on a throwaway
 assignment first. If your school's file storage refuses browser uploads, the app says so and points you to "Submit in

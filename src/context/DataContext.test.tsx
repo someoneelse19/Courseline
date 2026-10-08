@@ -2,7 +2,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useQuery, type QueryResult } from '../hooks/useQuery';
-import { DataProvider } from './DataContext';
+import { DataProvider, QueryStore } from './DataContext';
 
 // useQuery + DataProvider are the cache every screen relies on. These tests render a tiny probe
 // component and watch how many times the fetcher runs and what the hook reports.
@@ -95,5 +95,57 @@ describe('useQuery + DataProvider', () => {
     expect(latest.current).toMatchObject({ data: 'first', loading: true });
     await act(async () => release('second'));
     expect(latest.current).toMatchObject({ data: 'second', loading: false });
+  });
+
+  it('re-renders only the components whose key changed', async () => {
+    let renders = 0;
+    function Counted() {
+      renders++;
+      useQuery('k:quiet', async () => 'q');
+      return null;
+    }
+    let release: (v: string) => void = () => {};
+    await mount(
+      <>
+        <Counted />
+        <Probe id="slow" fetcher={() => new Promise<string>((r) => (release = r))} />
+      </>,
+    );
+    const before = renders;
+    await act(async () => release('done'));
+    expect(latest.current?.data).toBe('done');
+    expect(renders).toBe(before);
+  });
+});
+
+describe('QueryStore', () => {
+  it('ensure() shares a running request and then the cached copy', async () => {
+    const store = new QueryStore();
+    const fetcher = vi.fn().mockResolvedValue([1, 2]);
+    store.load('m', fetcher);
+    await expect(store.ensure('m', fetcher)).resolves.toEqual([1, 2]);
+    await expect(store.ensure('m', fetcher)).resolves.toEqual([1, 2]);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('ensure() rejects when the request fails, and records the error for readers', async () => {
+    const store = new QueryStore();
+    await expect(store.ensure('m', () => Promise.reject(new Error('no')))).rejects.toThrow('no');
+    expect(store.get('m')?.error?.message).toBe('no');
+  });
+
+  it('prime() fills an empty slot, so a later reader does not fetch', async () => {
+    const store = new QueryStore();
+    store.prime('page:1:a', { body: 'x' });
+    const fetcher = vi.fn().mockResolvedValue({ body: 'fetched' });
+    await expect(store.ensure('page:1:a', fetcher)).resolves.toEqual({ body: 'x' });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('prime() never overwrites fresh data', async () => {
+    const store = new QueryStore();
+    await store.ensure('k', async () => 'real');
+    store.prime('k', 'primed');
+    expect(store.get('k')?.data).toBe('real');
   });
 });

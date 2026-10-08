@@ -224,6 +224,9 @@ function PdfViewer({ fileUrl, zoom }: { fileUrl: string; zoom: number }) {
   );
 }
 
+// A drawn page holds a full-resolution bitmap (about 13 MB at 800 px wide on a 2x screen), so only pages
+// near the view are drawn: a page that scrolls well away is released, and redrawn when it comes back.
+// Without this a long PDF read to the end keeps every page in memory, which can blank or crash the tab.
 function PdfPage({ pdf, pageNumber, width }: { pdf: PdfDoc; pageNumber: number; width: number }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -233,20 +236,24 @@ function PdfPage({ pdf, pageNumber, width }: { pdf: PdfDoc; pageNumber: number; 
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
-    const io = new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && setVisible(true), { rootMargin: '800px' });
+    // The margin only stretches the root's own box, not the scroll area clipping the page, so the root must be that area.
+    const io = new IntersectionObserver((entries) => setVisible(entries[entries.length - 1].isIntersecting), {
+      root: el.closest('[data-scroll-frame]'),
+      rootMargin: '1200px 0px',
+    });
     io.observe(el);
     return () => io.disconnect();
   }, []);
 
   // Re-renders at the new size when `width` (zoom) changes, so text stays sharp instead of being stretched.
   useEffect(() => {
-    if (!visible) return;
+    const canvas = canvasRef.current;
+    if (!visible || !canvas) return;
     let cancelled = false;
     let task: import('pdfjs-dist').RenderTask | undefined;
     (async () => {
       const page = await pdf.getPage(pageNumber);
-      const canvas = canvasRef.current;
-      if (cancelled || !canvas) return;
+      if (cancelled) return;
       const base = page.getViewport({ scale: 1 });
       setRatio(base.height / base.width);
       const cssScale = width / base.width;
@@ -265,13 +272,16 @@ function PdfPage({ pdf, pageNumber, width }: { pdf: PdfDoc; pageNumber: number; 
     return () => {
       cancelled = true;
       task?.cancel();
+      // This canvas is being replaced (see its key): drop its bitmap now rather than whenever it is collected.
+      canvas.width = 0;
+      canvas.height = 0;
     };
   }, [visible, pdf, pageNumber, width]);
 
   return (
     <div ref={wrapRef} data-pdf-page className="mx-auto bg-white shadow-sm" style={{ width, aspectRatio: `1 / ${ratio}` }}>
-      {/* keyed by width: every size gets a fresh canvas, so a cancelled render can never collide with the next one */}
-      <canvas key={width} ref={canvasRef} className="block h-full w-full" />
+      {/* keyed by size and visibility: every draw gets a fresh canvas, so a cancelled render can never collide with the next one */}
+      <canvas key={visible ? width : 'off'} ref={canvasRef} className="block h-full w-full" />
     </div>
   );
 }
@@ -683,6 +693,21 @@ const PAGE_SELECTOR: Partial<Record<FileCategory, { selector: string; label: str
   pptx: { selector: '.pptx-preview-slide-wrapper', label: 'Slide' },
 };
 
+/** Index of the page with the most height inside `box`. */
+function mostVisible(pages: HTMLElement[], box: DOMRect): number {
+  let best = 0;
+  let bestOverlap = -Infinity;
+  pages.forEach((p, i) => {
+    const r = p.getBoundingClientRect();
+    const overlap = Math.min(r.bottom, box.bottom) - Math.max(r.top, box.top);
+    if (overlap > bestOverlap + 0.5) {
+      bestOverlap = overlap;
+      best = i;
+    }
+  });
+  return best;
+}
+
 /** Current page = the one most visible in the scroll area; goTo scrolls a page to the top. Re-measures on scroll, zoom, resize and new content. */
 function usePagination(bodyRef: React.RefObject<HTMLElement>, category: FileCategory, zoom: number, ready: boolean) {
   const spec = PAGE_SELECTOR[category];
@@ -693,17 +718,7 @@ function usePagination(bodyRef: React.RefObject<HTMLElement>, category: FileCate
     const frame = frameOf();
     if (!spec || !frame) return setInfo((i) => (i.total === 0 ? i : { current: 1, total: 0 }));
     const pages = Array.from(frame.querySelectorAll<HTMLElement>(spec.selector));
-    const box = frame.getBoundingClientRect();
-    let best = 0;
-    let bestOverlap = -Infinity;
-    pages.forEach((p, i) => {
-      const r = p.getBoundingClientRect();
-      const overlap = Math.min(r.bottom, box.bottom) - Math.max(r.top, box.top);
-      if (overlap > bestOverlap + 0.5) {
-        bestOverlap = overlap;
-        best = i;
-      }
-    });
+    const best = mostVisible(pages, frame.getBoundingClientRect());
     setInfo((i) => (i.current === best + 1 && i.total === pages.length ? i : { current: best + 1, total: pages.length }));
   }, [spec]);
 
@@ -740,16 +755,7 @@ function usePagination(bodyRef: React.RefObject<HTMLElement>, category: FileCate
     const pages = Array.from(frame.querySelectorAll<HTMLElement>(spec.selector));
     if (pages.length === 0) return null;
     const box = frame.getBoundingClientRect();
-    let best = 0;
-    let bestOverlap = -Infinity;
-    pages.forEach((p, i) => {
-      const r = p.getBoundingClientRect();
-      const overlap = Math.min(r.bottom, box.bottom) - Math.max(r.top, box.top);
-      if (overlap > bestOverlap + 0.5) {
-        bestOverlap = overlap;
-        best = i;
-      }
-    });
+    const best = mostVisible(pages, box);
     const r = pages[best].getBoundingClientRect();
     return { index: best, frac: r.height > 0 ? (box.top + box.height / 2 - r.top) / r.height : 0 };
   }, [spec]);
@@ -835,7 +841,7 @@ export function FileViewer({ fileUrl, fileName, contentType, onClose }: FileView
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, []);
+  }, [setZoom]);
 
   if (state.status === 'loading')
     return (

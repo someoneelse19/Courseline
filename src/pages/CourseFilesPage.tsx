@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { CourseFile, Module, ModuleItem } from '../api/types';
 import { EmptyState, ErrorMessage, Spinner } from '../components/ui';
@@ -6,6 +6,7 @@ import { useApi, useAuth } from '../context/AuthContext';
 import { useCourseFiles, useModules, usePage } from '../hooks/useCanvasData';
 import { useFileViewer } from '../context/FileViewerContext';
 import { formatBytes, formatDay } from '../lib/format';
+import { linkedFiles } from '../lib/html';
 
 // The "Files by unit" tab. Header + tabs come from CourseLayout.
 // "Units" are Canvas modules. Unit order and item order are the instructor's own
@@ -27,7 +28,6 @@ const icons: Record<string, string> = {
 
 export function CourseFilesPage() {
   const courseId = Number(useParams().courseId);
-  const { baseUrl } = useAuth();
   const modules = useModules(courseId);
   const files = useCourseFiles(courseId);
   const [mode, setMode] = useState<Mode>('files');
@@ -36,13 +36,6 @@ export function CourseFilesPage() {
   if (modules.error) return <ErrorMessage error={modules.error} onRetry={modules.refetch} />;
   if (files.error) return <ErrorMessage error={files.error} onRetry={files.refetch} />;
   if (!modules.data || files.data === undefined) return <Spinner />;
-
-  // Links go to Canvas's own file page, which previews the file in the browser:
-  //   https://<school>/courses/:courseId/files/:fileId?module_item_id=:itemId
-  // Built from the module item (content_id is the file id), so it works even when the
-  // course hides its Files area and we have no file metadata.
-  const fileHref = (fileId: number, moduleItemId?: number) =>
-    baseUrl ? `${baseUrl}/courses/${courseId}/files/${fileId}${moduleItemId ? `?module_item_id=${moduleItemId}` : ''}` : undefined;
 
   const fileById = new Map((files.data ?? []).map((f) => [f.id, f]));
   const q = query.trim().toLowerCase();
@@ -88,7 +81,7 @@ export function CourseFilesPage() {
 
       <div className="space-y-3">
         {units.map(({ module, items }) => (
-          <Unit key={module.id} module={module} items={items} courseId={courseId} fileById={fileById} fileHref={fileHref} />
+          <Unit key={module.id} module={module} items={items} courseId={courseId} fileById={fileById} />
         ))}
 
         {mode === 'files' && loose.length > 0 && (
@@ -98,7 +91,7 @@ export function CourseFilesPage() {
             </summary>
             <ul className="divide-y divide-neutral-200 px-4 dark:divide-neutral-800">
               {loose.map((f) => (
-                <FileRow key={f.id} courseId={courseId} title={f.display_name} file={f} href={fileHref(f.id)} />
+                <FileRow key={f.id} courseId={courseId} title={f.display_name} file={f} />
               ))}
             </ul>
           </details>
@@ -115,19 +108,7 @@ export function CourseFilesPage() {
   );
 }
 
-function Unit({
-  module,
-  items,
-  courseId,
-  fileById,
-  fileHref,
-}: {
-  module: Module;
-  items: ModuleItem[];
-  courseId: number;
-  fileById: Map<number, CourseFile>;
-  fileHref: (fileId: number, moduleItemId?: number) => string | undefined;
-}) {
+function Unit({ module, items, courseId, fileById }: { module: Module; items: ModuleItem[]; courseId: number; fileById: Map<number, CourseFile> }) {
   const count = items.filter((i) => i.type !== 'SubHeader').length;
   return (
     <details open className="rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
@@ -135,7 +116,7 @@ function Unit({
         {module.name} <span className="font-normal text-neutral-500 dark:text-neutral-400">· {count}</span>
         {module.state === 'locked' && <span className="ml-2 text-xs font-normal text-amber-700 dark:text-amber-400">🔒 locked</span>}
       </summary>
-      <UnitItems items={items} courseId={courseId} fileById={fileById} fileHref={fileHref} className="px-4" />
+      <UnitItems items={items} courseId={courseId} fileById={fileById} className="px-4" />
     </details>
   );
 }
@@ -145,13 +126,11 @@ export function UnitItems({
   items,
   courseId,
   fileById,
-  fileHref,
   className = '',
 }: {
   items: ModuleItem[];
   courseId: number;
   fileById: Map<number, CourseFile>;
-  fileHref: (fileId: number, moduleItemId?: number) => string | undefined;
   className?: string;
 }) {
   return (
@@ -163,10 +142,8 @@ export function UnitItems({
               {item.title}
             </li>
           );
-        if (item.type === 'File') {
-          const href = item.content_id ? fileHref(item.content_id, item.id) : item.html_url;
-          return <FileRow key={item.id} courseId={courseId} title={item.title} file={fileById.get(item.content_id ?? -1)} item={item} href={href} />;
-        }
+        if (item.type === 'File')
+          return <FileRow key={item.id} courseId={courseId} title={item.title} file={fileById.get(item.content_id ?? -1)} item={item} />;
         return <ItemRow key={item.id} item={item} courseId={courseId} />;
       })}
     </ul>
@@ -185,9 +162,15 @@ function rowShell(icon: string, indent: number, body: ReactNode, meta?: string) 
   );
 }
 
-function FileRow({ courseId, title, file, item, href }: { courseId: number; title: string; file?: CourseFile; item?: ModuleItem; href?: string }) {
+// Links go to Canvas's own file page (/courses/:courseId/files/:fileId?module_item_id=:itemId), which
+// the viewer resolves through the API. Built from the module item (content_id is the file id), so it
+// works even when the course hides its Files area and we have no file metadata.
+function FileRow({ courseId, title, file, item }: { courseId: number; title: string; file?: CourseFile; item?: ModuleItem }) {
   const { openFile } = useFileViewer();
+  const { baseUrl } = useAuth();
   const api = useApi();
+  const fileId = item ? item.content_id : file?.id;
+  const href = fileId ? (baseUrl ? `${baseUrl}/courses/${courseId}/files/${fileId}${item ? `?module_item_id=${item.id}` : ''}` : undefined) : item?.html_url;
   const locked = file?.locked || item?.content_details?.locked_for_user;
   const size = file?.size ?? item?.content_details?.size;
   const meta = [formatBytes(size), formatDay(file?.updated_at)].filter(Boolean).join(' · ');
@@ -247,84 +230,28 @@ function ItemRow({ item, courseId }: { item: ModuleItem; courseId: number }) {
 function PageItemRow({ item, courseId, pageUrl, indent }: { item: ModuleItem; courseId: number; pageUrl: string; indent: number }) {
   const { openFile } = useFileViewer();
   const page = usePage(courseId, pageUrl);
-  const icon = icons.Page ?? '📃';
-  const files = page.data ? extractFilesFromPageHtml(page.data.body || '') : [];
-
+  const body = page.data?.body ?? '';
+  const files = useMemo(() => linkedFiles(body), [body]);
 
   return (
     <>
       {rowShell(
-        icon,
+        icons.Page,
         indent,
         <a href={item.html_url} target="_blank" rel="noreferrer" className="font-medium hover:underline">
           {item.title} <span className="text-neutral-400">↗</span>
         </a>,
       )}
-      {files.length > 0 && (
-        <>
-          {files.map((file) => (
-            <li key={file.id} className="flex items-center gap-3 py-2.5 text-sm" style={{ paddingLeft: (indent + 1) * 16 }}>
-              <span aria-hidden>📄</span>
-              <span className="min-w-0 flex-1">
-                <button type="button" onClick={() => openFile(file.url, file.name)} className="text-left font-medium hover:underline">
-                  {file.name}
-                </button>
-              </span>
-            </li>
-          ))}
-        </>
-      )}
+      {files.map((file) => (
+        <li key={file.id} className="flex items-center gap-3 py-2.5 text-sm" style={{ paddingLeft: (indent + 1) * 16 }}>
+          <span aria-hidden>📄</span>
+          <span className="min-w-0 flex-1">
+            <button type="button" onClick={() => openFile(file.url, file.name)} className="text-left font-medium hover:underline">
+              {file.name}
+            </button>
+          </span>
+        </li>
+      ))}
     </>
   );
-}
-
-interface ExtractedPageFile {
-  id: string;
-  name: string;
-  url: string;
-}
-
-// Extract downloadable files from page HTML (looks for file download links/buttons).
-function extractFilesFromPageHtml(html: string): ExtractedPageFile[] {
-  if (!html) return [];
-  try {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    const files: ExtractedPageFile[] = [];
-
-    // Look for download buttons and file links
-    doc.querySelectorAll('a[href*="/files/"]').forEach((link) => {
-      const href = link.getAttribute('href');
-      if (!href || !href.includes('/files/')) return;
-
-      // Extract file ID from URL or data-id attribute
-      const dataId = link.getAttribute('data-id');
-      const urlMatch = href.match(/\/files\/(\d+)/);
-      const fileId = dataId || urlMatch?.[1];
-
-      if (!fileId) return;
-
-      // Extract file name from link text or screenreader text
-      let name = '';
-      const screenreader = link.querySelector('.screenreader-only');
-      if (screenreader) {
-        name = screenreader.textContent?.trim() || '';
-      }
-      if (!name) {
-        name = link.getAttribute('aria-label') || link.textContent?.trim() || '';
-      }
-      name = name.replace(/^(Descargar|Download)\s+/i, '').trim();
-
-      if (!name) return;
-
-      // Avoid duplicates
-      if (!files.find((f) => f.id === fileId)) {
-        files.push({ id: fileId, name, url: href });
-      }
-    });
-
-    return files;
-  } catch {
-    return [];
-  }
 }

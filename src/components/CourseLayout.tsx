@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { Outlet, useParams } from 'react-router-dom';
 import { useCourse } from '../hooks/useCanvasData';
 import { formatGrade, getGrade } from '../lib/format';
@@ -17,7 +18,10 @@ export function CourseLayout() {
       <PageTitle>{course.data.name}</PageTitle>
       <p className="-mt-3 mb-4 text-sm text-neutral-500 dark:text-neutral-400">Current grade: {formatGrade(getGrade(course.data))}</p>
       <CourseTabs courseId={courseId} />
-      <Outlet />
+      {/* Tabs load on first visit; keep the course header up meanwhile. */}
+      <Suspense fallback={<Spinner />}>
+        <Outlet />
+      </Suspense>
     </>
   );
 }

@@ -1,8 +1,8 @@
 import { Link, useParams } from 'react-router-dom';
 import { HtmlContent } from '../components/HtmlContent';
-import { Card, EmptyState, Spinner } from '../components/ui';
+import { Card, EmptyState, ErrorMessage, Spinner } from '../components/ui';
 import { useFileViewer } from '../context/FileViewerContext';
-import { useMySubmission } from '../hooks/useCanvasData';
+import { useAssignment, useMySubmission } from '../hooks/useCanvasData';
 import { formatDue } from '../lib/format';
 
 export function SubmissionViewPage() {
@@ -10,12 +10,14 @@ export function SubmissionViewPage() {
   const courseId = Number(params.courseId);
   const assignmentId = Number(params.assignmentId);
   const submission = useMySubmission(courseId, assignmentId);
+  const assignment = useAssignment(courseId, assignmentId); // for points possible; usually cached by the assignment page
   const { openFile } = useFileViewer();
 
+  if (submission.error) return <ErrorMessage error={submission.error} onRetry={submission.refetch} />;
   if (!submission.data) return <Spinner />;
 
   const sub = submission.data;
-  if (!sub || sub.workflow_state === 'unsubmitted')
+  if (sub.workflow_state === 'unsubmitted')
     return <EmptyState>Nothing submitted yet.</EmptyState>;
 
   return (
@@ -31,7 +33,7 @@ export function SubmissionViewPage() {
           <Card title="Score">
             <p className="text-3xl font-bold">
               {sub.score}
-              <span className="text-base font-normal text-neutral-500 dark:text-neutral-400"> / {sub.score ?? '?'}</span>
+              <span className="text-base font-normal text-neutral-500 dark:text-neutral-400"> / {assignment.data?.points_possible ?? '?'}</span>
               {sub.grade && sub.grade !== String(sub.score) && <span className="ml-2 text-lg font-medium">({sub.grade})</span>}
             </p>
           </Card>

@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { ErrorBoundary } from './ErrorBoundary';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
+import { Spinner } from './ui';
 
 /**
  * App shell: header on top, sidebar (dashboard / courses / settings) on the left,
@@ -24,7 +25,10 @@ export function Layout() {
         <main className="min-w-0 flex-1 overflow-y-auto p-4 md:p-6">
           {/* key=pathname resets the boundary when navigating away from a crashed page */}
           <ErrorBoundary key={pathname}>
-            <Outlet />
+            {/* Most screens load on first visit (App.tsx). */}
+            <Suspense fallback={<Spinner />}>
+              <Outlet />
+            </Suspense>
           </ErrorBoundary>
         </main>
       </div>

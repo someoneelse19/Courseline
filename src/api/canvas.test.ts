@@ -79,6 +79,30 @@ describe('getPages', () => {
     expect((await api().getPages(1)).map((p) => p.url)).toEqual(['a', 'b']);
   });
 
+  it('takes bodies from the index (include[]=body) and fetches only the pages that come without one', async () => {
+    const { calls } = installFetch(
+      ({ url }) => (url.pathname === '/api/v1/courses/1/pages' ? json([page('a', 1), { title: 'b', url: 'b', page_id: 2 }]) : undefined),
+      ({ url }) => (url.pathname === '/api/v1/courses/1/pages/b' ? json(page('b', 2)) : undefined),
+    );
+    const pages = await api().getPages(1);
+    expect(pages.map((p) => p.body)).toEqual(['<p>a</p>', '<p>b</p>']);
+    expect(calls[0].url.searchParams.getAll('include[]')).toEqual(['body']);
+    expect(calls.map((c) => c.url.pathname)).toEqual(['/api/v1/courses/1/pages', '/api/v1/courses/1/pages/b']);
+  });
+
+  it('in discovery mode, uses the modules list it is given and does not refetch the front page', async () => {
+    const { calls } = installFetch(
+      ({ url }) => (url.pathname === '/api/v1/courses/1/pages' ? err(404, 'disabled') : undefined),
+      ({ url }) => (url.pathname === '/api/v1/courses/1/front_page' ? json(page('home', 1)) : undefined),
+      ({ url }) => (url.pathname === '/api/v1/courses/1/pages/intro' ? json(page('intro', 10)) : undefined),
+    );
+    const modules = [{ id: 1, name: 'U1', position: 1, items: [{ id: 1, module_id: 1, position: 1, title: 'Intro', type: 'Page', page_url: 'intro' }] }];
+    const pages = await api().getPages(1, async () => modules);
+    expect(pages.map((p) => p.page_id).sort()).toEqual([1, 10]);
+    expect(calls.some((c) => c.url.pathname.endsWith('/modules'))).toBe(false);
+    expect(calls.some((c) => c.url.pathname.endsWith('/pages/home'))).toBe(false);
+  });
+
   it('discovers pages itself when the Pages tab is disabled (index 404s), and de-duplicates', async () => {
     const { calls } = installFetch(
       ({ url }) => (url.pathname === '/api/v1/courses/1/pages' ? err(404, 'That page has been disabled for this course') : undefined),

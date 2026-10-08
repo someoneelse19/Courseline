@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { applyAccent, isHex } from '../lib/accent';
 
 type Theme = 'light' | 'dark';
@@ -62,8 +62,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
   }, [accent]);
 
-  const toggle = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
-  return <ThemeContext.Provider value={{ theme, toggle, accent, setAccent }}>{children}</ThemeContext.Provider>;
+  const toggle = useCallback(() => setTheme((t) => (t === 'dark' ? 'light' : 'dark')), []);
+  const value = useMemo(() => ({ theme, toggle, accent, setAccent }), [theme, toggle, accent]);
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
 export function useTheme(): ThemeValue {
