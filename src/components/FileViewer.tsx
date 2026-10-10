@@ -4,6 +4,7 @@ import { CanvasApiError } from '../api/client';
 import { useApi } from '../context/AuthContext';
 import { ErrorMessage, Spinner } from './ui';
 import { t } from '../i18n';
+import { applyMasterBodyStyles } from '../lib/pptxFix';
 
 const Editor = lazy(() => import('@monaco-editor/react').then(m => ({ default: m.default })));
 
@@ -480,13 +481,14 @@ function PptxViewer({ fileUrl, zoom }: { fileUrl: string; zoom: number }) {
     const width = Math.max(320, Math.min(host.clientWidth || 800, 1100));
     const height = Math.round(width * (await slideAspect(bytes)));
     const previewer = init(host, { width, height, mode: 'list' });
-    await previewer.preview(bytes);
+    await previewer.preview(await applyMasterBodyStyles(bytes));
     // The library boxes all slides into a wrapper one slide tall that scrolls on its own. Let the
     // slides stack instead, so the viewer's single scroll area (and its page tracking) covers them all.
     const wrapper = host.querySelector<HTMLElement>('.pptx-preview-wrapper');
     if (wrapper) {
       wrapper.style.height = 'auto';
       wrapper.style.overflow = 'visible';
+      wrapper.style.background = 'transparent'; // the library paints the gaps between slides black
     }
     // For a chart whose file has no title, the slide library draws a Chinese placeholder ("chart title").
     // PowerPoint shows nothing there, so blank it (charts render a moment later, hence the observer).

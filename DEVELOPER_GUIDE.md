@@ -254,6 +254,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 |---|---|
 | `grades.ts` | The grade maths (group weights, drop rules, what-if, trend, goal solver). Fully unit-testable. |
 | `accent.ts` | Accent presets and the function that turns one hex color into a full 11-step palette. |
+| `pptxFix.ts` | `applyMasterBodyStyles()`: before a PowerPoint file is previewed, copies the master's body text style (bullets, sizes) into empty body placeholders and top-anchors them, because pptx-preview never reads `<p:bodyStyle>` (it only does titles). Returns the original bytes if there is nothing to do or the file can't be read. |
 | `htmlToMarkdown.ts` | Canvas HTML → Markdown (headings, lists, tables, links, equations as LaTeX, image descriptions). |
 | `extractText.ts` | Text out of downloaded files: plain/code/HTML, PDF (pdf.js), Word and PowerPoint (zip + XML, including speaker notes), spreadsheets. Returns null when there is none. |
 | `courseExport.ts` | Pure: turns the gathered course data into the export's documents (README, ALL_TEXT, syllabus, units, pages, assignments, file text, manifest) and rewrites Canvas links to the local copies. |
@@ -314,6 +315,7 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `context/CourseStyleContext.test.tsx` | Per-course color/icon: save, merge, reset, ignore invalid saved values. |
 | `lib/courseColor.test.ts` | Colors are unique at any count, order-independent, and stable when a course is added. |
 | `lib/assignmentState.test.ts` | The one color scheme for assignments (red missing / pastel blue to do / pastel green handed in), which finished work fades, and that the list badges use it. |
+| `lib/pptxFix.test.ts` | Body style copied onto masters and layouts, titles and placeholders with their own style untouched, top anchoring, same bytes back when nothing to do or on garbage. |
 | `lib/htmlToMarkdown.test.ts`, `lib/extractText.test.ts`, `lib/courseExport.test.ts`, `lib/courseExportRunner.test.ts` | The AI export: Markdown conversion, text from Word/PowerPoint/plain files, the document set and link rewriting, scanning, packing, size limits, failures and cancelling (with a fake Canvas API). |
 | `lib/calendar.test.ts` | Month grid (week start, whole weeks, year rollover) and local date keys. |
 | `i18n/i18n.test.ts` | `t()` in both languages, placeholders, saved-language detection, and that every Spanish string keeps the English `{placeholders}`. |
