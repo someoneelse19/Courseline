@@ -64,7 +64,7 @@ async function pptxText(bytes: ArrayBuffer): Promise<string | null> {
       ?.getAttribute('Target');
     const notes = target ? linesOf(await parse(`ppt/notesSlides/${target.split('/').pop()}`)) : [];
     if (body.length === 0 && notes.length === 0) continue;
-    out.push([`## Slide ${n}`, ...body, ...(notes.length ? ['', '**Speaker notes:**', ...notes] : [])].join('\n\n'));
+    out.push([`## Slide ${n}`, ...body, ...(notes.length ? ['**Speaker notes:**', ...notes] : [])].join('\n\n'));
   }
   return out.length ? out.join('\n\n') : null;
 }
@@ -117,7 +117,7 @@ async function pdfText(bytes: ArrayBuffer): Promise<string | null> {
     }
     return pages.length ? pages.join('\n\n') : null; // null: probably scanned images
   } finally {
-    void doc.destroy();
+    void doc.loadingTask.destroy();
   }
 }
 
