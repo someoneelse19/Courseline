@@ -28,6 +28,8 @@ Screenshots use made-up course data.
 | ![Course pages, dark mode](docs/screenshots/course-pages.png) | ![Grades page](docs/screenshots/grades.png) |
 | **PDF viewer** | **PowerPoint viewer** |
 | ![PDF in the in-app viewer](docs/screenshots/viewer-pdf.png) | ![A slide deck in the in-app viewer](docs/screenshots/viewer-slides.png) |
+| **Calendar, colored by course and status** | |
+| ![Calendar](docs/screenshots/calendar.png) | |
 
 Developer documentation (architecture, every file, how to change anything, known gaps):
 **[DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md)**.
