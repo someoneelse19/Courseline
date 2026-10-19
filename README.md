@@ -17,6 +17,9 @@ React · TypeScript · Vite · Tailwind CSS 4
   and a "what do I need to reach X%" calculator.
 - **Dark mode and a custom accent color**, plus a setting to pick which courses to show.
 - **AI export tab in every course**: packs the syllabus, units, pages, assignments and file text into a zip an AI can use as a tutor (stays on your computer).
+- **No access token needed, optionally.** A Chrome-based browser extension (in `extension/`) saves the data your own
+  Canvas pages load, and Courseline reads it, with a live preview, per-course freshness and one-click refresh of any
+  page. See [Use it without a token](#use-it-without-a-token).
 - **English, Spanish and Brazilian Portuguese**, switchable in Settings (defaults to your browser's language).
 
 ## Screenshots
@@ -34,6 +37,25 @@ Screenshots use made-up course data.
 Developer documentation (architecture, every file, how to change anything, known gaps):
 **[DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md)**.
 
+## Use it without a token
+
+Canvas is making access tokens harder to get, so Courseline can also work from the browser extension in `extension/`.
+It works in Chrome, Arc, Edge, Brave and other Chromium browsers.
+
+1. Open `chrome://extensions` (in Arc: the same address), turn on **Developer mode**, choose **Load unpacked**, and
+   pick the `extension/` folder of this project.
+2. Start the app (`npm run dev`) and open <http://localhost:5173>.
+3. On the login page, type your Canvas address and press **Connect and load my courses**. A panel at the bottom right
+   shows your Canvas pages loading one at a time in background tabs; you are signed in as soon as data arrives.
+4. **Settings → Connection** has the whole setup: the extension, your Canvas address, Sync now, pulling any single page,
+   and everything that was captured.
+
+What it can and cannot do: it shows courses, assignments, grades (worked out from the scores it saw), units, pages,
+announcements and discussions. Opening files, submitting work and replying to feedback need a token (those buttons say
+so and send you to Canvas). It only reads what your own Canvas pages load, only from the address you saved, and keeps
+it on your computer. Read the security notes in [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md#9-security-model) before
+sharing it with anyone.
+
 ## Run it
 
 Requires **Node 22.13 or newer** (22 LTS recommended). Node 20 can run the app with an `EBADENGINE` warning (the PDF
@@ -45,13 +67,19 @@ cp .env.example .env      # then edit it (see below)
 npm run dev               # prints the address, usually http://localhost:5173
 ```
 
-If port 5173 is busy, Vite moves to the next one and prints it. Use the address it prints.
+**Or just double-click `start-courseline.command`** (macOS; or run `./start-courseline.command`). It finds a Node 22.13+
+on its own, starts the server on <http://localhost:5173>, and opens it in your browser; run it again and it says it is
+already running. Stop it with Ctrl-C. It uses port 5173 only (the browser extension talks to 5173-5180 and 4173), so
+it stops with a message if something else has that port, rather than moving to another one.
+
+If you start it with `npm run dev` and port 5173 is busy, Vite moves to the next one and prints it. Use the address it prints.
 
 Needs a current browser (Chrome/Edge 111+, Safari 16.4+, Firefox 128+; Word/PowerPoint zoom needs Firefox 126+),
 because Tailwind 4 uses modern CSS.
 
 | Command | What it does |
 |---|---|
+| `start-courseline.command` | Starts the dev server and opens the app (double-click it) |
 | `npm run dev` | Dev server |
 | `npm test` | Unit and component tests (Vitest) |
 | `npm run typecheck` | TypeScript check (strict) |

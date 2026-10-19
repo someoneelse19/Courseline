@@ -62,7 +62,9 @@ Stack: React 18, TypeScript (strict), Vite 6, Tailwind CSS 4, React Router 7. Te
 | Assignment detail page, rubric, comments, **Reply box** | Works; in use by the author on real coursework; unit-tested |
 | **Submitting text** | Works; in use by the author on real coursework; unit-tested |
 | **Submitting files (upload)** | Implements Canvas's documented three-step flow; in use by the author on real coursework; tested in a real browser against a fake Canvas (three confirmation styles, CORS, retry). **File-storage hosts differ between schools**, so another school's Canvas may refuse browser uploads (the app says so and points to "Submit in Canvas") |
-| Automated tests | **125 tests** (Vitest): API client, endpoints, grades, HTML sanitizing and parsing, cache, accent colors, submission form, and a smoke test that renders every screen against a fake Canvas. CI runs them on every push |
+| Browser extension (capture, background-tab sync, preview, link following) | Works, tested in a **real Chrome against a mock Canvas** (`npm run e2e`, 38 checks, also run by hand against nothing but the mock). **Not yet tried against a real school's Canvas**: real pages load data in ways the mock only approximates (see Pending) |
+| Announcements and discussions per course | Works in both modes (token: Canvas API; extension: from captured pages) |
+| Automated tests | **~410 unit tests** (Vitest): API client, endpoints, grades, HTML sanitizing, cache, accent colors, the submission form, the extension's logic, the app's extension mode, and a smoke test that renders every screen against a fake Canvas. **`npm run e2e`** drives a real Chrome with the unpacked extension through sign-in, sync, preview, stop, refresh, pull-a-page, linked pages and switching address. CI runs the unit tests on every push (the e2e needs a local Chrome, so it is run by hand) |
 | Deployment | **Not supported** as-is (token lives in the browser; dev proxy is dev-only) |
 
 The author uses the app day to day against a real school's Canvas. The automated tests (`src/**/*.test.ts(x)`) use a fake
@@ -273,8 +275,8 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `AssignmentsPage.tsx` | `/assignments` — pending/done tabs across all visible courses. |
 | `CourseExportPage.tsx` | `/courses/:id/export` — the **AI export** tab: scan the course, choose options (file text, original files, size limit), build and download a zip. All in the browser; nothing is uploaded. |
 | `CalendarPage.tsx` | `/calendar` — month grid of assignments due across the visible courses (via `useAllAssignments`); click a day to list it. Weeks start Monday in Spanish. Pure date maths in `lib/calendar.ts`; item colors come from `lib/assignmentState.ts` (red = missing, pastel blue = to do, pastel green = submitted/graded/excused; submitted work past its due date is faded). Lists are ordered by `sortAssignments()` (upcoming soonest first, then past most recent first; an undated assignment is placed by its post date, one handed in with no due date by when it was handed in and shown grayed out, fully undated ones last). The same scheme colors the status badges in every assignment list and the per-course grades table. |
-| `SettingsPage.tsx` | `/settings` — tabs (open one kept in `?tab=`): **Appearance** (Language, Theme, Accent color) and **Courses** (course colors and icons, then course selection). Add a section to a tab, or a tab to `TABS`. |
-| `LoginPage.tsx` | Shown whenever there are no valid credentials. |
+| `SettingsPage.tsx` | `/settings` — tabs (open one kept in `?tab=`): **Connection** (how data arrives; the extension checklist; Canvas address; Sync now; switch to or from an access token; log out; the default tab when the extension is installed), **Appearance** (Language, Theme, Accent color) and **Courses** (course colors and icons, then course selection). Add a section to a tab, or a tab to `TABS`. |
+| `LoginPage.tsx` | Shown whenever there are no valid credentials. With the extension installed it leads with **Your Canvas address → Connect** (saves the address, switches to the extension, loads the essentials in background tabs with a preview in the page when nothing is captured, and signs in by itself when data arrives); the token form is one click below. Without the extension it leads with the token form. Both use `components/CanvasConnection.tsx` and `components/TokenForm.tsx`. |
 | `CoursePagesPage.tsx` | `/courses/:id` (default tab, "Pages") — pages and modules merged. |
 | `CourseDetailPage.tsx` | `/courses/:id/assignments` — the "Assignments" tab. |
 | `CourseFilesPage.tsx` | `/courses/:id/files` — "Files by unit"; also exports `UnitItems`, reused by the Pages tab. |
@@ -299,6 +301,44 @@ Everything lives in `src/` (about 5,200 lines of app code plus tests). Config fi
 | `RichTextEditor.tsx` | Dependency-free rich text box (contentEditable + `execCommand`): bold/italic/underline, lists, quote, link. Pastes as plain text. Exports `cleanEditorHtml()` (DOMPurify allow-list; always run output through it) and `isEditorEmpty()`. |
 | `ErrorBoundary.tsx` | Catches render crashes. |
 | `ui.tsx` | `Spinner`, `ErrorMessage`, `Card`, `EmptyState`, `PageTitle`. |
+
+### `extension/` — the browser extension (plain JS, no build step; load unpacked in Chrome)
+
+| File | Purpose |
+|---|---|
+| `manifest.json` | MV3 manifest. Capture scripts run on every https page and decide for themselves whether it is Canvas; `bridge.js` runs only on localhost. The description ends with the time it was last changed, to tell which copy Chrome loaded. |
+| `inject.js` (page world) / `relay.js` | Passive capture: wraps `fetch`/XHR, keeps every Canvas `/api/` read (REST and GraphQL; never a write or a mutation) the page itself asked for, buffers them until the page is recognised as Canvas (body class `ic-app` or an `ENV` object), then forwards. Reads no cookies, starts no requests. |
+| `background.js` | Classifies each response (`lib/capture.js`), stores it as `cap:<key>` in `chrome.storage.local` (a route Courseline reads keeps its `kind`; every other one is saved in full as kind `other` with its `route`), counts unexpected shapes in `health`, and notes the address shapes in `unmapped`/`shapes`. Credential endpoints are never saved. |
+| `lib/capture.js`, `lib/readers.js`, `lib/summary.js`, `lib/shape.js`, `lib/pullRunner.js`, `lib/peek.js` | Pure logic with tests: routes and shape checks, readers (course lists), popup summary, value-free response skeletons, the page-by-page runner with its hourly cap, and the short name samples shown in the preview. |
+| `popup.html/js` | Per-course freshness, "N of M courses synced", health, unread addresses, Sync now, copy shapes, clear. |
+| *(linked pages)* | **Pull linked pages** follows internal links. `src/extension/linkDiscovery.ts` scans everything captured (including HTML inside bodies and every `html_url`) for links to assignments, pages, discussions, announcements, quizzes, files, module items and the syllabus on the student's own Canvas and chosen courses. `pendingLinks` skips pages opened in the last day (the extension keeps `visited`), and `PullContext.requestDeepSync` opens them 80 at a time, with the count left shown after each run. The extension also caps 300 pages an hour. `extensionApi.ts` finds an opened assignment again by id in Canvas's newer GraphQL form (`assignmentFromObjects`) so instructions and rubrics fill in without a reader per query. |
+| *(no sync window)* | Sync now has no extension window. The plan, **Start**, the live preview and **Stop** are in the app (`context/PullContext.tsx`, `components/PullPanel.tsx`). `bridge.js` runs the page-by-page loop in the app's own tab, and `background.js` opens each page in a **background tab** of the same window (`openPage`), waits for it, closes it, and reports what it brought in. It moves to the next page as soon as the page reports it has gone quiet (`inject.js` counts requests in flight; the load event has fired and none has been pending for 0.7 s), cut off at 12 s, with a 0.4 s pause between pages. See "Deviations from the design doc". |
+| `bridge.js` | Lets the app read the captured data and tell the extension which courses it chose (see below). Answers only a page on an allowed port that declares `<meta name="courseline-app">`. |
+
+**Extension mode (app side).** With no saved token and the extension installed (it sets `data-courselineExtension` on
+`<html>`), `AuthContext` loads a snapshot through `src/extension/bridge.ts` and builds the API from it with
+`src/extension/extensionApi.ts` (`createExtensionApi` returns the same `CanvasApi` type as `createCanvasApi`, so pages
+do not change). Differences: ids are normalised to numbers; grades are worked out by `lib/grades.ts` from captured
+scores unless Canvas's own totals were on the page; lists for courses that were never visited are empty, not an
+error; anything that writes to Canvas or downloads a file rejects with "needs a Canvas access token". New captures
+arrive as a `changed` message, and `App.tsx` rebuilds `DataProvider` (keyed on `dataVersion`). `ExtensionStatus`
+(in `Layout`) shows coverage, freshness, failing data kinds and a Sync now button. Freshness is shown per kind of
+data (assignments, grades, units, pages, files, announcements, upcoming work, course info) through `freshnessByType`
+in `extensionApi.ts`: scoped to the open course on a course page, and to the pinned courses elsewhere. A kind every
+course should have but that was never captured reads "not synced yet"; anything older than a day is marked stale. Logging out of extension mode
+sets `courseline.skip-extension` so the token form shows. `enableExtension()` (Connect, and Settings → Use the extension
+instead) clears the skip flag **and any saved token**, then loads the extension's data. The Canvas address is typed in
+the app (`CanvasConnection`) or the popup; both go through `applyCanvasAddress` in `extension/lib/canvasAddress.js`
+(the app sends a `setCanvasHost` bridge message, which `background.js` answers).
+
+**Pinned courses.** "Pinned" means the courses the student chose in the app (Settings → Choose your courses,
+sent over the bridge as `appPinned`); until they have chosen, the courses on their Canvas dashboard (the latest
+captured `dashboardCards`, stored as `pinned`). `ExtensionPinnedSync` keeps the extension's copy equal to the app's.
+In the app, until the student chooses, `useVisibleCourses` shows only the captured (pinned) courses. Once a set is known, Sync now plans pages only for those courses, the popup and the app
+count and list only those, and `background.js` stops keeping data for any other course (it remembers the set as
+`pinned` in `chrome.storage.local`). Before a dashboard has been seen nothing is filtered. Data already stored for a
+course that is later unpinned stays until **Clear captured data**, but nothing shows it. There is deliberately no
+"include concluded courses" option for Sync now.
 
 ### Tests (`*.test.ts` / `*.test.tsx`, next to the code they cover)
 
@@ -822,6 +862,51 @@ Practical rules:
 - Revoke tokens you no longer use (Canvas → Settings → Approved Integrations).
 - Each person must use **their own** token.
 
+### Deviations from the design doc
+
+The "Courseline Canvas Sync — Design Doc" (Oct 10, 2026) says Sync now should open Canvas pages in **foreground** tabs
+the student can watch, and lists "hidden background tabs auto-opening dozens or hundreds of Canvas pages" as
+something not to build. The product now does this differently, by the owner's decision (Oct 13, 2026):
+
+| Doc | Now | Why |
+|---|---|---|
+| Foreground tabs the student watches | Background tabs in the current window, each closed by the extension, with a live preview inside Courseline | No new windows or focus changes; works the same in Arc and other Chromium browsers (popup windows behave badly in Arc) |
+| Confirmation in the extension | **Start** and **Stop** are inside the Courseline page | One place for the student to look |
+| One bulk "Sync now" | Also refresh one course, one kind of data (click a freshness chip) or any single page address | Pull exactly what is wanted, quickly |
+
+What is kept from the doc: nothing runs unless the student clicked in Courseline (enforced by the bridge), every page
+is shown in the preview as it loads, Stop works between pages, pages are paced one at a time, scope is the student's
+chosen courses, and nothing is scheduled or repeats. What is **not** kept: the student does not see the tabs
+themselves. If that matters for a school's terms, it is the first thing to revisit. The doc itself still describes
+the earlier design and should be updated to match.
+
+### Risk register
+
+Everything known to be risky, in one place. **Status:** *Open* = not addressed; *Mitigated* = reduced, with what is left
+stated; *Accepted* = deliberately left, fine for a personal tool. "Before sharing" means it must be resolved before
+anyone other than the author uses the app or the extension.
+
+| # | Risk | Where | Status | Notes / what would fix it |
+|---|---|---|---|---|
+| 1 | **The Canvas token is readable by any script on the app's page** (it lives in `localStorage` and acts as the user until revoked). | `AuthContext.tsx` | Accepted, **before sharing** | Backend that holds the token, or Canvas OAuth2. See the top of this section. |
+| 2 | **Any script running on the app's page can ask the extension bridge for the captured data** (grades, course names, submissions) and can ask it to open Canvas pages in background tabs (see risk 8). Same exposure as the token in `localStorage`: fine for a personal tool; it needs a proper boundary before the app is deployed for anyone else. | `extension/bridge.js`, `src/extension/bridge.ts` | Accepted, **before sharing** | The bridge now answers only the Courseline app (risk 3), but a script *inside* that page is still trusted. Fix: an exact-origin grant per site, or `externally_connectable` with a fixed origin. A script cannot start a run by itself: `bridge.js` refuses unless the page has a live user click (`navigator.userActivation.isActive`), and the extension caps pages at 300 per hour. A script *can* start one while the student is clicking something. |
+| 3 | **The bridge could answer any `localhost` page**, so another project running on the machine could read the captured data. | `extension/bridge.js` | Mitigated | It now answers only on a short list of ports (5173–5180, 4173) **and** only if the page declares `<meta name="courseline-app">`. Match patterns cannot restrict ports, so this is checked at runtime. Another local page could still add that tag and use one of those ports. |
+| 4 | **Captured responses are stored unencrypted** in `chrome.storage.local`: grades, names, assignment and page text. Anyone with access to the browser profile, or malware running as the user, can read it. | `extension/background.js` | Mitigated | Email, login id and avatar fields, credential fields and **capability URLs** (calendar feed links, file links carrying a `verifier`, which work for anyone who holds them) are removed before saving (`stripSensitive`); anything older than 90 days is deleted (checked hourly). Still unencrypted at rest. **Clear captured data** removes the captures and what is derived from them (`keysToClear`) but deliberately keeps the student's own settings (the saved Canvas address, the courses chosen in the app, where the app lives). |
+| 5 | **The capture scripts run on every https page** (the extension asks for access to all sites so it can recognise a Canvas on any domain). A bug in `inject.js` could interfere with an unrelated site, and while a page is undecided, up to 200 same-origin `/api/v1/` responses wait in memory. | `extension/inject.js`, `manifest.json` | Mitigated | Non-Canvas pages are dropped after 4 s and nothing leaves the page. Alternative: ask once per school domain instead of all sites (costs one click). |
+| 6 | **A page can forge captures.** `relay.js` accepts any message with the right tag from the page's own window, so any script on that page (a school-added LTI tool, an analytics snippet, a compromised dependency) can post fake records. | `extension/relay.js`, `background.js` | Mitigated | `background.js` drops a record whose URL is not on the page that sent it (`sameOrigin`), and keeps nothing at all unless the student has **saved their Canvas address** (risk 7). So another website cannot add records, and cannot pose as Canvas. A script on the saved Canvas host's own pages can still forge records for that host. |
+| 7 | **The Canvas host could be chosen by a page.** The "is this Canvas?" check runs inside the page, where any website can fake it, so an automatic "first Canvas wins" pin would let a hostile site claim the extension and redirect links and Sync. | `background.js`, `src/context/PullContext.tsx`, `src/extension/extensionApi.ts` | Mitigated | Nothing chooses the host for the student any more: records are kept only from the address saved in the popup or in Settings → Connection, and changing it clears the old address's data. Found in code review and fixed. |
+| 8 | **Sync now automates page loads using the student's session, now in background tabs.** The student confirms inside the app and sees a live preview, can stop at any time, pages are opened one at a time, a run is capped at 200 pages (80 per batch of linked pages) and the extension at 300 an hour (counted in session storage, so it survives the worker restarting), and nothing is scheduled. A run can only start from a real click on the app's page; a confirmed plan may continue once (the dashboard first, then the courses it showed), and that continuation cannot be chained. But the pages are no longer in a window the student watches, and Instructure or a school could still treat it as automated access under its terms. A student's account, not Courseline, carries that risk. | `extension/bridge.js`, `background.js`, `src/context/PullContext.tsx` | Accepted | This is a deliberate change from the design doc (see below). Keep the guardrails; do not add scheduled, repeating or fully hidden sync. |
+| 9 | **Canvas changes its pages or response shapes without notice**, so capture silently stops matching and the app shows old data as if it were current. | `extension/lib/capture.js`, `ExtensionStatus.tsx` | Mitigated | Unexpected shapes are counted, kept as value-free skeletons, and shown as a warning; every dataset shows a "last updated" time. Still open: telling the student what to do about it. |
+| 10 | **Grades shown in extension mode are calculated by Courseline**, not Canvas's own totals, and can differ (hidden totals, rules not modelled). | `src/extension/extensionApi.ts`, `lib/grades.ts` | Mitigated | The status bar says so. Do not use them for decisions that matter without checking Canvas. |
+| 11 | **Pasting the "Copy response shapes" output elsewhere.** It has field names and types only, no values, but a field name can reveal what a school's Canvas contains. | `extension/lib/shape.js` | Accepted | Read it before pasting. |
+| 12 | **The extension is loaded unpacked.** Whatever is in the `extension/` folder runs with the extension's permissions, and there is no signing or update channel. Anything that can write to that folder can change what it does. | repository / local disk | Accepted | Keep the folder in a place only you can write to. A signed build is a distribution question, not a coding one. |
+| 13 | **Content-Security-Policy on the app is partial.** `'unsafe-inline'` scripts are allowed (the first-paint script and Vite's dev client need them) and `connect-src` allows any https host (the Canvas address is user-typed), so an injected inline script is not blocked and can still send data to an https site. | `index.html` via `vite.config.ts`, `src/lib/csp.ts` | Mitigated (partly) | The policy blocks plugins, base-URL changes, form posts elsewhere, `eval`, and scripts from anywhere but this site and the Monaco CDN. **Not yet checked in a browser for the PDF viewer and Monaco**: if either breaks, relax `src/lib/csp.ts`. A real fix needs a backend. |
+| 14 | **Dependencies**: known advisories, accepted ones are listed in [10](#10-dependencies). | `package.json` | Mitigated | Do not run `npm audit fix --force` blindly. |
+| 15 | **The extension now saves every read a Canvas page makes**, not only the routes Courseline has a screen for. That includes things other people wrote or that concern them: inbox messages and names, discussion posts, class lists, quiz details. It is all kept unencrypted on this computer (the extension has `unlimitedStorage`), and anything that can read it (risk 2, 4) gets all of it. | `extension/inject.js`, `background.js`, `lib/capture.js` | Mitigated | Credential responses (`/jwts`, tokens, login and OAuth) are never saved, and `token`-type fields and capability URLs are stripped along with email, login id and avatar. Only reads are kept (no writes, no GraphQL mutations). Limits: one response over 3 MB is counted, not kept; at most 6,000 responses (oldest dropped first); nothing older than 90 days. The explorer in Settings → Connection shows it all, and **Clear captured data** deletes it. |
+| 16 | **Opening a page in Canvas is a visit.** The pages a pull opens load exactly as if the student had opened them, so Canvas may record the view: marking module items "viewed" (which can satisfy a "must view" requirement), clearing unread flags on discussions and announcements, and logging page views that an instructor can see. The extension never writes anything itself (no POST, PUT or mutation is captured or sent), but Canvas does these things on its own when a page loads. | `src/context/PullContext.tsx`, `src/components/PullPanel.tsx` | Accepted | The confirmation says so ("Canvas may record the visit"). Module-item and discussion pages are among the links followed by **Pull linked pages**; leave that button alone for a course where a recorded view would matter. |
+
+**Before the app or extension is shared with anyone:** resolve 1 and 2 at a minimum, and decide on 4, 13, 15 and 16. (3, 6 and 7 were reduced; re-check them against whatever the app is deployed on.)
+
 ---
 
 ## 10. Dependencies
@@ -917,8 +1002,8 @@ The app is in real use, so treat every change as something a student will hit to
 2. **The file viewer has no saved automated tests, and nothing checks how screens look.** `App.test.tsx` renders every
    screen in a simulated browser, but not pixels. Both were verified in a real browser during development with
    throwaway scripts (a fake Canvas, Chrome driven over the DevTools protocol, and before/after screenshot comparison
-   for the Tailwind 4 migration). A saved version of that (Playwright + a fake-Canvas fixture)
-   would be the next level of safety.
+   for the Tailwind 4 migration). `e2e/` is that for the extension and the
+   screens it feeds (a real Chrome, a mock Canvas); the file viewer and pixel comparisons are still not covered.
 3. **The grade engine** matches Canvas on the cases tested (weights, drops, excused, extra credit) but has not been
    compared with a wide range of real gradebooks. Canvas's own totals remain the headline for that reason.
 
@@ -933,6 +1018,36 @@ The app is in real use, so treat every change as something a student will hit to
 - Spreadsheet previews cap at 2,000 rows per sheet; very large decks/documents render fully in the browser (memory).
 - No i18n: all text is English (the Canvas content itself may be in any language).
 - Monaco and PDF.js worker assets: Monaco comes from a CDN, so the code viewer needs internet.
+
+### Pending
+
+Work that is decided but not done.
+
+1. **Try the extension against a real school's Canvas, and write down what differs from the mock.** The end-to-end
+   test covers the extension, the app and the whole sync loop in a real Chrome, but the Canvas it talks to is
+   `e2e/mock-canvas.mjs`. Things only the real Canvas can show: pages that load part of their data only when the tab
+   is visible (background tabs may load less), GraphQL operations that carry data the mock does not, and which pages
+   need to be opened to fill which screen. Use `extension/TESTING.md`, then `Settings → Connection → Everything
+   captured` to see what each page really returned.
+2. **Check the Content-Security-Policy against the PDF viewer and the code viewer** (Monaco). The login page, dashboard,
+   settings and every screen the e2e opens run under it with no violations, but files cannot be opened in extension
+   mode, so the viewers were not exercised. `src/lib/csp.ts` says what to loosen if either breaks.
+3. **Decide the sanctioned-access question** below, in parallel, with a person at the school.
+4. **Before sharing with anyone:** risks 1 and 2 in the [risk register](#risk-register) (token in the browser, and any
+   script on the app's page can use the bridge), and the unencrypted store (4).
+
+#### Sanctioned access options (to research, not decided)
+
+The extension works from the student's side without anyone's approval. If a school wants more, the routes Instructure
+and the school would have to agree to are below. Confirm each with the school's Canvas administrator or Instructure
+before relying on it; this list is from general knowledge of Canvas, not from a conversation with either.
+
+| Route | What it needs | What it would give |
+|---|---|---|
+| A developer key with OAuth2 | The school's Canvas administrator creates the key and approves the app | Per-student sign-in, no personal tokens, revocable; the app still needs a backend for the client secret |
+| An LTI 1.3 tool installed in the school's Canvas | The school installs it | Launches from inside Canvas with course context; limited data unless extra services are enabled |
+| A school-issued or institution-approved token | The school's policy | Same as personal tokens, with the school's knowledge |
+| Instructure's partner or data programs | An agreement with Instructure | Depends on the program |
 
 ### Reasonable next steps
 
