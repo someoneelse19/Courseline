@@ -15,3 +15,9 @@ coverage
 .vscode
 *.log
 *.tsbuildinfo
+
+# End-to-end test artifacts (generated certificate, the test browser's profile, screenshots)
+e2e/*.pem
+e2e/.san.cnf
+e2e/.profile/
+e2e/screenshots/
