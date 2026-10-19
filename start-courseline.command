@@ -48,7 +48,8 @@ find_node() {
 # --- Already running? Then just open it. ---
 # Both checks: the page carries the app marker AND Vite's dev client is served (a plain file server would also show
 # index.html, but only the dev server answers /@vite/client).
-if curl -s -m 2 "$URL/" 2>/dev/null | grep -q "$APP_MARKER" && [ "$(curl -s -o /dev/null -m 2 -w '%{http_code}' "$URL/@vite/client" 2>/dev/null)" = "200" ]; then
+# (10 s each: a busy machine can make even the dev server slow to answer, and being slow is not being someone else's.)
+if curl -s -m 10 "$URL/" 2>/dev/null | grep -q "$APP_MARKER" && [ "$(curl -s -o /dev/null -m 10 -w '%{http_code}' "$URL/@vite/client" 2>/dev/null)" = "200" ]; then
   say "✓ Courseline is already running at $URL"
   [ -n "${OPEN:-}" ] && open "$URL"
   exit 0
@@ -56,7 +57,7 @@ fi
 
 # Something else on the port would make Vite pick a different one, which the extension would not recognise.
 if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
-  fail "Port $PORT is in use by something that is not Courseline. Close it, or run:  PORT=5174 ./start-courseline.command"
+  fail "Port $PORT is in use, and what is there did not answer like Courseline (it may just be slow right now: if it is Courseline, open $URL). Otherwise close the other program, or run:  PORT=5174 ./start-courseline.command"
 fi
 
 NODE="$(find_node)" || fail "Could not find Node 22.13 or newer. Install it from https://nodejs.org (the LTS 22 version), then run this again."
