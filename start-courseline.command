@@ -1,11 +1,11 @@
 #!/bin/bash
-# Starts Courseline on http://localhost:5173 and opens it in your browser.
+# Starts Courseline on http://localhost:5173. It does not open a browser tab: go to that address yourself.
 #
 #   Double-click this file in Finder, or run:  ./start-courseline.command
 #   Stop it with Ctrl-C (or by closing the Terminal window).
 #
 # Options (environment variables):
-#   NO_OPEN=1   do not open the browser
+#   OPEN=1      also open it in your default browser once it is ready (off by default)
 #   PORT=5174   use another port (the browser extension only talks to 5173-5180 and 4173)
 
 set -u
@@ -50,7 +50,7 @@ find_node() {
 # index.html, but only the dev server answers /@vite/client).
 if curl -s -m 2 "$URL/" 2>/dev/null | grep -q "$APP_MARKER" && [ "$(curl -s -o /dev/null -m 2 -w '%{http_code}' "$URL/@vite/client" 2>/dev/null)" = "200" ]; then
   say "✓ Courseline is already running at $URL"
-  [ -z "${NO_OPEN:-}" ] && open "$URL"
+  [ -n "${OPEN:-}" ] && open "$URL"
   exit 0
 fi
 
@@ -63,10 +63,10 @@ NODE="$(find_node)" || fail "Could not find Node 22.13 or newer. Install it from
 
 [ -f node_modules/vite/bin/vite.js ] || fail "The project's packages are not installed yet. In this folder run:  npm install   (then run this again)."
 
-say "Starting Courseline with Node $("$NODE" -v) on $URL ..."
+say "Starting Courseline with Node $("$NODE" -v). Open $URL in your browser when it says ready."
 
-# Open the browser once the server answers (in the background, so Vite keeps this window).
-if [ -z "${NO_OPEN:-}" ]; then
+# Only when asked (OPEN=1): open the browser once the server answers, in the background so Vite keeps this window.
+if [ -n "${OPEN:-}" ]; then
   (
     for _ in $(seq 1 80); do
       if curl -s -o /dev/null -m 1 "$URL/" 2>/dev/null; then

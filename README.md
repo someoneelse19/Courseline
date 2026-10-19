@@ -68,8 +68,8 @@ npm run dev               # prints the address, usually http://localhost:5173
 ```
 
 **Or just double-click `start-courseline.command`** (macOS; or run `./start-courseline.command`). It finds a Node 22.13+
-on its own, starts the server on <http://localhost:5173>, and opens it in your browser; run it again and it says it is
-already running. Stop it with Ctrl-C. It uses port 5173 only (the browser extension talks to 5173-5180 and 4173), so
+on its own, starts the server on <http://localhost:5173> (it does not open a tab; add `OPEN=1` if you want it to); run it again
+and it says it is already running. Stop it with Ctrl-C. It uses port 5173 only (the browser extension talks to 5173-5180 and 4173), so
 it stops with a message if something else has that port, rather than moving to another one.
 
 If you start it with `npm run dev` and port 5173 is busy, Vite moves to the next one and prints it. Use the address it prints.
@@ -79,7 +79,7 @@ because Tailwind 4 uses modern CSS.
 
 | Command | What it does |
 |---|---|
-| `start-courseline.command` | Starts the dev server and opens the app (double-click it) |
+| `start-courseline.command` | Starts the dev server (double-click it); `OPEN=1` also opens a tab |
 | `npm run dev` | Dev server |
 | `npm test` | Unit and component tests (Vitest) |
 | `npm run typecheck` | TypeScript check (strict) |
