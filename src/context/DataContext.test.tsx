@@ -149,3 +149,46 @@ describe('QueryStore', () => {
     expect(store.get('k')?.data).toBe('real');
   });
 });
+
+describe('QueryStore.refreshAll', () => {
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+
+  it('reloads what is on screen in place, keeping the old data visible meanwhile', async () => {
+    const store = new QueryStore();
+    let n = 0;
+    const fetcher = vi.fn(async () => `v${++n}`);
+    await store.ensure('shown', fetcher);
+    const unsubscribe = store.subscribe('shown', () => {});
+    store.refreshAll();
+    expect(store.get('shown')).toMatchObject({ data: 'v1', loading: true }); // old data still there
+    await tick();
+    expect(store.get('shown')).toMatchObject({ data: 'v2', loading: false });
+    unsubscribe();
+  });
+
+  it('makes data nobody is showing stale, so it loads the next time it is shown', async () => {
+    const store = new QueryStore();
+    const fetcher = vi.fn(async () => 'x');
+    await store.ensure('hidden', fetcher);
+    store.refreshAll();
+    expect(fetcher).toHaveBeenCalledTimes(1); // not fetched now
+    await store.ensure('hidden', fetcher);
+    expect(fetcher).toHaveBeenCalledTimes(2); // fetched when asked for again
+  });
+
+  it('goes again after a request that was already running, which may have held old data', async () => {
+    const store = new QueryStore();
+    let resolveFirst!: (v: string) => void;
+    const fetcher = vi.fn().mockImplementationOnce(() => new Promise<string>((r) => (resolveFirst = r))).mockResolvedValue('fresh');
+    store.load('k', fetcher);
+    const unsubscribe = store.subscribe('k', () => {});
+    store.refreshAll();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    resolveFirst('old');
+    await tick();
+    await tick();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(store.get('k')?.data).toBe('fresh');
+    unsubscribe();
+  });
+});

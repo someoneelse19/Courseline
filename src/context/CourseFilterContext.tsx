@@ -51,6 +51,11 @@ export function CourseFilterProvider({ children }: { children: ReactNode }) {
   return <CourseFilterContext.Provider value={value}>{children}</CourseFilterContext.Provider>;
 }
 
+/** Like useCourseFilter, but null instead of throwing when there is no provider (the login page is outside it). */
+export function useOptionalCourseFilter(): CourseFilterValue | null {
+  return useContext(CourseFilterContext);
+}
+
 export function useCourseFilter(): CourseFilterValue {
   const ctx = useContext(CourseFilterContext);
   if (!ctx) throw new Error('useCourseFilter must be used inside <CourseFilterProvider>');

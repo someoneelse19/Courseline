@@ -19,6 +19,8 @@ export class QueryStore {
   private entries = new Map<string, Entry>();
   private listeners = new Map<string, Set<() => void>>();
   private inflight = new Map<string, Promise<unknown>>();
+  private fetchers = new Map<string, () => Promise<unknown>>(); // the latest fetcher per key, for refreshAll
+  private dirty = new Set<string>(); // keys that were told to refresh while a request was already running
 
   get(key: string): Entry | undefined {
     return this.entries.get(key);
@@ -59,7 +61,25 @@ export class QueryStore {
     this.listeners.get(key)?.forEach((notify) => notify());
   }
 
+  /**
+   * The data behind every query has changed (the extension captured something new): reload what is on screen in
+   * place, and make everything else stale so it reloads the next time it is shown. Nothing is thrown away, so
+   * screens keep their state and their old data stays visible until the new data arrives.
+   */
+  refreshAll(): void {
+    for (const key of [...this.entries.keys()]) {
+      const fetcher = this.fetchers.get(key);
+      if (this.listeners.has(key) && fetcher) {
+        if (this.inflight.has(key)) this.dirty.add(key); // the running request may hold old data: go again after it
+        else this.load(key, fetcher, true);
+      } else {
+        this.entries.set(key, { ...this.entries.get(key)!, fetchedAt: 0 });
+      }
+    }
+  }
+
   private request(key: string, fetcher: () => Promise<unknown>, force: boolean): Promise<unknown> {
+    this.fetchers.set(key, fetcher);
     const running = this.inflight.get(key); // de-dupe concurrent requests for one key
     if (running) return running;
     if (!force && this.isFresh(key)) return Promise.resolve(this.entries.get(key)!.data);
@@ -77,7 +97,10 @@ export class QueryStore {
           throw error;
         },
       )
-      .finally(() => this.inflight.delete(key));
+      .finally(() => {
+        this.inflight.delete(key);
+        if (this.dirty.delete(key)) this.load(key, this.fetchers.get(key)!, true);
+      });
     this.inflight.set(key, request);
     return request;
   }

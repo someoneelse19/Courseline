@@ -1,6 +1,7 @@
 import { Suspense, useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { ErrorBoundary } from './ErrorBoundary';
+import { ExtensionStatus } from './ExtensionStatus';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import { Spinner } from './ui';
@@ -23,6 +24,7 @@ export function Layout() {
       <div className="relative flex flex-1 overflow-hidden">
         <Sidebar open={menuOpen} onClose={() => setMenuOpen(false)} />
         <main className="min-w-0 flex-1 overflow-y-auto p-4 md:p-6">
+          <ExtensionStatus />
           {/* key=pathname resets the boundary when navigating away from a crashed page */}
           <ErrorBoundary key={pathname}>
             {/* Most screens load on first visit (App.tsx). */}

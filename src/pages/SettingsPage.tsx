@@ -1,4 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { CanvasConnection } from '../components/CanvasConnection';
+import { CapturedDataBrowser } from '../components/CapturedDataBrowser';
+import { TokenForm } from '../components/TokenForm';
+import { useAuth } from '../context/AuthContext';
+import { usePull } from '../context/PullContext';
+import { extensionInstalled } from '../extension/bridge';
+import { useExtensionSetup } from '../extension/useExtensionSetup';
 import { useSearchParams } from 'react-router-dom';
 import { Card, EmptyState, ErrorMessage, PageTitle, Spinner } from '../components/ui';
 import { useCourseFilter } from '../context/CourseFilterContext';
@@ -14,15 +21,19 @@ import { useLanguage } from '../context/LanguageContext';
 // Sections are grouped into tabs so the page stays short. The open tab lives in the URL
 // (/settings?tab=courses) so it can be linked to and survives a reload. Add a section: put its
 // card in the right tab below, or add a tab to TABS.
-type Tab = 'appearance' | 'courses';
+type Tab = 'connection' | 'appearance' | 'courses';
 const TABS: { id: Tab; label: string }[] = [
+  { id: 'connection', label: 'Connection' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'courses', label: 'Courses' },
 ];
 
 export function SettingsPage() {
   const [params, setParams] = useSearchParams();
-  const tab: Tab = params.get('tab') === 'courses' ? 'courses' : 'appearance';
+  // With the extension installed, the first thing to look at is the connection; otherwise Appearance, as before.
+  const fallback: Tab = extensionInstalled() ? 'connection' : 'appearance';
+  const asked = params.get('tab');
+  const tab: Tab = TABS.some((x) => x.id === asked) ? (asked as Tab) : fallback;
 
   return (
     <>
@@ -34,7 +45,7 @@ export function SettingsPage() {
             type="button"
             role="tab"
             aria-selected={tab === x.id}
-            onClick={() => setParams(x.id === 'appearance' ? {} : { tab: x.id }, { replace: true })}
+            onClick={() => setParams(x.id === fallback ? {} : { tab: x.id }, { replace: true })}
             className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
               tab === x.id
                 ? 'border-accent-600 text-accent-700 dark:border-accent-400 dark:text-accent-300'
@@ -46,7 +57,9 @@ export function SettingsPage() {
         ))}
       </div>
       <div className="space-y-6">
-        {tab === 'appearance' ? (
+        {tab === 'connection' ? (
+          <ConnectionTab />
+        ) : tab === 'appearance' ? (
           <>
             <LanguagePicker />
             <ThemePicker />
@@ -59,6 +72,121 @@ export function SettingsPage() {
           </>
         )}
       </div>
+    </>
+  );
+}
+
+// How Courseline gets your Canvas data, and everything to set it up: the extension, the Canvas address, a sync, and
+// the alternative of an access token.
+function PullAPage() {
+  const { pullAddress, running } = usePull();
+  const [address, setAddress] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <Card title={t('Pull a page')}>
+      <p className="-mt-1 mb-3 text-sm text-neutral-500 dark:text-neutral-400">
+        {t('Paste any page from your Canvas (or a path like /courses/12/announcements). It loads in a background tab and what it brings in is saved.')}
+      </p>
+      <form
+        className="flex gap-2"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setError(await pullAddress(address));
+        }}
+      >
+        <input
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          placeholder="https://yourschool.instructure.com/courses/12/announcements"
+          aria-label={t('Canvas page address')}
+          className="min-w-0 flex-1 rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+        />
+        <button
+          disabled={running || !address.trim()}
+          className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
+        >
+          {t('Pull')}
+        </button>
+      </form>
+      {error && <p role="alert" className="mt-2 text-xs text-red-700 dark:text-red-300">{error}</p>}
+    </Card>
+  );
+}
+
+function ConnectionTab() {
+  const { source, baseUrl, enableExtension, logout } = useAuth();
+  const setup = useExtensionSetup();
+  const { requestSync } = usePull();
+  const [params, setParams] = useSearchParams();
+  const usingExtension = source === 'extension';
+
+  // The extension's "Sync in Courseline" button lands here with ?sync=1: show the plan to confirm.
+  useEffect(() => {
+    if (params.get('sync') !== '1') return;
+    requestSync();
+    const next = new URLSearchParams(params);
+    next.delete('sync');
+    setParams(next, { replace: true });
+  }, [params, requestSync, setParams]);
+
+  return (
+    <>
+      <Card title={t('How Courseline gets your data')}>
+        <p className="text-sm">
+          {usingExtension
+            ? t('Right now: the Courseline browser extension. No access token is stored.')
+            : t('Right now: an access token for {host}.', { host: baseUrl ?? '—' })}
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {!usingExtension && (
+            <button
+              type="button"
+              disabled={!setup.installed || setup.recordCount === 0}
+              onClick={enableExtension}
+              className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
+            >
+              {t('Use the extension instead')}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={logout}
+            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+          >
+            {t('Log out')}
+          </button>
+        </div>
+        {!usingExtension && (!setup.installed || setup.recordCount === 0) && (
+          <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
+            {t('Set up the extension below first; this switches as soon as it has your data.')}
+          </p>
+        )}
+      </Card>
+
+      <Card title={t('Browser extension')}>
+        <CanvasConnection variant="settings" />
+      </Card>
+
+      {setup.installed && <PullAPage />}
+
+      {setup.installed && setup.snapshot && (
+        <Card title={t('Everything captured')}>
+          <p className="-mt-1 mb-3 text-sm text-neutral-500 dark:text-neutral-400">
+            {t('Every response Canvas’s own pages loaded, saved on this computer. Courseline shows some of it; the rest is kept so nothing is lost.')}
+          </p>
+          <CapturedDataBrowser snapshot={setup.snapshot} />
+        </Card>
+      )}
+
+      {usingExtension && (
+        <Card title={t('Use an access token instead')}>
+          <p className="-mt-1 mb-3 text-sm text-neutral-500 dark:text-neutral-400">
+            {t('A token gives full access, including opening files and submitting work, which the extension cannot do.')}
+          </p>
+          <TokenForm />
+        </Card>
+      )}
     </>
   );
 }

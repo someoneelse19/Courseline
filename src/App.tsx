@@ -1,13 +1,14 @@
-import { lazy, type ComponentType } from 'react';
+import { lazy, useEffect, useRef, type ComponentType } from 'react';
 import { t } from './i18n';
 import { Link, Navigate, Route, Routes } from 'react-router-dom';
 import { CourseLayout } from './components/CourseLayout';
 import { Layout } from './components/Layout';
 import { Spinner } from './components/ui';
+import { ExtensionPinnedSync } from './components/ExtensionPinnedSync';
 import { useAuth } from './context/AuthContext';
 import { CourseFilterProvider } from './context/CourseFilterContext';
 import { CourseStyleProvider } from './context/CourseStyleContext';
-import { DataProvider } from './context/DataContext';
+import { DataProvider, useQueryStore } from './context/DataContext';
 import { FileViewerProvider } from './context/FileViewerContext';
 import { CoursesPage } from './pages/CoursesPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -21,6 +22,7 @@ function lazyPage<K extends string, M extends Record<K, ComponentType>>(load: ()
 const AssignmentDetailPage = lazyPage(() => import('./pages/AssignmentDetailPage'), 'AssignmentDetailPage');
 const AssignmentsPage = lazyPage(() => import('./pages/AssignmentsPage'), 'AssignmentsPage');
 const CalendarPage = lazyPage(() => import('./pages/CalendarPage'), 'CalendarPage');
+const CourseAnnouncementsPage = lazyPage(() => import('./pages/CourseAnnouncementsPage'), 'CourseAnnouncementsPage');
 const CourseDetailPage = lazyPage(() => import('./pages/CourseDetailPage'), 'CourseDetailPage');
 const CourseExportPage = lazyPage(() => import('./pages/CourseExportPage'), 'CourseExportPage');
 const CourseFilesPage = lazyPage(() => import('./pages/CourseFilesPage'), 'CourseFilesPage');
@@ -29,8 +31,22 @@ const CoursePagesPage = lazyPage(() => import('./pages/CoursePagesPage'), 'Cours
 const SettingsPage = lazyPage(() => import('./pages/SettingsPage'), 'SettingsPage');
 const SubmissionViewPage = lazyPage(() => import('./pages/SubmissionViewPage'), 'SubmissionViewPage');
 
+/** New data arrived (the extension captured something): reload what is on screen in place, without remounting. */
+function RefreshOnNewData({ version }: { version: string }) {
+  const store = useQueryStore();
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    store.refreshAll();
+  }, [store, version]);
+  return null;
+}
+
 export default function App() {
-  const { status } = useAuth();
+  const { status, dataVersion, source, baseUrl } = useAuth();
 
   if (status === 'unauthenticated') return <LoginPage />;
   if (status === 'loading') {
@@ -42,11 +58,15 @@ export default function App() {
   }
 
   return (
-    // DataProvider lives inside the auth gate so logout wipes the cache.
-    <DataProvider>
+    // DataProvider lives inside the auth gate so logout wipes the cache, and is rebuilt when the way data arrives
+    // changes (extension <-> token, or another Canvas). New captured data does NOT rebuild it: RefreshOnNewData
+    // reloads what is on screen in place, so forms and scroll positions survive.
+    <DataProvider key={`${source}:${baseUrl}`}>
+      <RefreshOnNewData version={dataVersion} />
       <CourseFilterProvider>
       <CourseStyleProvider>
       <FileViewerProvider>
+      <ExtensionPinnedSync />
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<DashboardPage />} />
@@ -56,6 +76,7 @@ export default function App() {
             <Route index element={<CoursePagesPage />} />
             <Route path="pages" element={<Navigate to=".." relative="path" replace />} />
             <Route path="assignments" element={<CourseDetailPage />} />
+            <Route path="announcements" element={<CourseAnnouncementsPage />} />
             <Route path="files" element={<CourseFilesPage />} />
             <Route path="export" element={<CourseExportPage />} />
             <Route path="grades" element={<CourseGradesPage />} />

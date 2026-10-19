@@ -1,7 +1,8 @@
 // One-liner hooks per resource. Adding a feature = adding a function here
 // (plus the endpoint in api/canvas.ts). Keys must include every fetcher input.
 import { useMemo } from 'react';
-import { useApi } from '../context/AuthContext';
+import { useApi, useAuth } from '../context/AuthContext';
+import { pinnedIds } from '../extension/extensionApi';
 import { useCourseFilter } from '../context/CourseFilterContext';
 import { useQueryStore } from '../context/DataContext';
 import { useCourseStyles } from '../context/CourseStyleContext';
@@ -17,8 +18,18 @@ export function useCourses() {
 /** Courses limited to the user's selection (Settings page). Use this in views; useCourses() is the full list. */
 export function useVisibleCourses() {
   const result = useCourses();
-  const { isVisible } = useCourseFilter();
-  const data = useMemo(() => result.data?.filter((c) => isVisible(c.id)), [result.data, isVisible]);
+  const { isVisible, selected } = useCourseFilter();
+  const { source, snapshot } = useAuth();
+  // With the extension and no choice made in Settings yet, show the courses that were captured (the pinned ones),
+  // not every course Canvas lists, most of which would be empty.
+  const captured = useMemo(
+    () => (source === 'extension' && snapshot && selected === null ? pinnedIds(snapshot) : null),
+    [source, snapshot, selected],
+  );
+  const data = useMemo(
+    () => result.data?.filter((c) => isVisible(c.id) && (!captured || captured.has(c.id))),
+    [result.data, isVisible, captured],
+  );
   return { ...result, data };
 }
 
@@ -99,6 +110,16 @@ export function useCourseFiles(courseId: number) {
 export function useUpcoming() {
   const api = useApi();
   return useQuery('upcoming', api.getUpcoming);
+}
+
+export function useAnnouncements(courseId: number) {
+  const api = useApi();
+  return useQuery(`announcements:${courseId}`, () => api.getAnnouncements(courseId));
+}
+
+export function useDiscussions(courseId: number) {
+  const api = useApi();
+  return useQuery(`discussions:${courseId}`, () => api.getDiscussions(courseId));
 }
 
 export function useAssignmentGroups(courseId: number) {

@@ -57,3 +57,14 @@ export function formatBytes(bytes: number | undefined): string {
 export function formatDay(iso: string | null | undefined): string {
   return iso ? new Date(iso).toLocaleDateString(getLocale(), { month: 'short', day: 'numeric', year: 'numeric' }) : '';
 }
+
+/** "5 minutes ago", "yesterday": relative time in the app's language. */
+export function formatAgo(thenMs: number, nowMs: number = Date.now()): string {
+  const rtf = new Intl.RelativeTimeFormat(getLocale(), { numeric: 'auto' });
+  const seconds = Math.round((thenMs - nowMs) / 1000);
+  const abs = Math.abs(seconds);
+  if (abs < 45) return rtf.format(0, 'second');
+  if (abs < 3600) return rtf.format(Math.round(seconds / 60), 'minute');
+  if (abs < 86400) return rtf.format(Math.round(seconds / 3600), 'hour');
+  return rtf.format(Math.round(seconds / 86400), 'day');
+}

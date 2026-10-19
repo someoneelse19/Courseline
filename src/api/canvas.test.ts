@@ -131,6 +131,18 @@ describe('getPages', () => {
   });
 });
 
+describe('announcements and discussions', () => {
+  it('asks the course\'s own topic list for announcements (the account-wide endpoint only returns a short window)', async () => {
+    const { calls } = installFetch(({ url }) => json(url.searchParams.get('only_announcements') === 'true' ? [{ id: 1, title: 'A' }] : [{ id: 2, title: 'D' }]));
+    expect((await api().getAnnouncements(7))[0].title).toBe('A');
+    expect(calls[0].url.pathname).toBe('/api/v1/courses/7/discussion_topics');
+    expect(calls[0].url.searchParams.get('only_announcements')).toBe('true');
+    expect(calls[0].url.pathname).not.toContain('/announcements');
+    expect((await api().getDiscussions(7))[0].title).toBe('D');
+    expect(calls[1].url.searchParams.get('only_announcements')).toBeNull();
+  });
+});
+
 describe('writes', () => {
   it('marks a module item as read', async () => {
     const { calls } = installFetch(() => json({}));

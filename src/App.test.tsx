@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { AuthProvider } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
+import { PullProvider } from './context/PullContext';
 import { setLanguage } from './i18n';
 import { ThemeProvider } from './context/ThemeContext';
 import { installFetch, json, type Call } from './test/fakeFetch';
@@ -41,6 +42,8 @@ const routes: Record<string, unknown> = {
   '/api/v1/courses/1/assignments/5': lab,
   '/api/v1/courses/1/assignments/5/submissions/self': { ...lab.submission, body: '<p>My lab</p>', submission_comments: [{ id: 1, author_id: 9, author_name: 'Prof', comment: 'Nice work', created_at: '2026-09-23T10:00:00Z' }] },
   '/api/v1/courses/1/assignment_groups': [{ id: 1, name: 'Labs', position: 1, group_weight: 0, assignments: [lab, quiz, essay] }],
+  // The same address serves announcements (asked with only_announcements=true) and discussions: see the handler below.
+  '/api/v1/courses/1/discussion_topics': [{ id: 92, title: 'Week 2 questions', message: '<p>Ask here</p>', posted_at: '2026-10-02T10:00:00Z', discussion_subentry_count: 3, author: { display_name: 'Prof Rivera' } }],
   '/api/v1/courses/1/modules': [
     {
       id: 10,
@@ -71,7 +74,11 @@ beforeEach(() => {
   localStorage.clear();
   localStorage.setItem('courseline.credentials', JSON.stringify({ baseUrl: 'https://school.test', token: 'T' }));
   localStorage.setItem('theme', 'light');
-  ({ calls } = installFetch((c) => (path(c) in routes ? json(routes[path(c)]) : undefined)));
+  const announcements = [{ id: 91, title: 'Midterm moved', message: '<p>The midterm is now Friday.</p>', posted_at: '2026-10-01T10:00:00Z', is_announcement: true, author: { display_name: 'Prof Rivera' } }];
+  ({ calls } = installFetch((c) => {
+    if (path(c) === '/api/v1/courses/1/discussion_topics' && c.url.searchParams.get('only_announcements') === 'true') return json(announcements);
+    return path(c) in routes ? json(routes[path(c)]) : undefined;
+  }));
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
@@ -89,7 +96,9 @@ const show = (at: string) =>
         <AuthProvider>
           <MemoryRouter initialEntries={[at]}>
             <LanguageProvider>
-              <App />
+              <PullProvider>
+                <App />
+              </PullProvider>
             </LanguageProvider>
           </MemoryRouter>
         </AuthProvider>
@@ -113,6 +122,7 @@ describe('screens', () => {
     ['/courses/1', ['Week 1', 'Slides.pdf', 'Welcome to Bio']],
     ['/courses/1/assignments', ['Lab report', '8/10', 'Quiz 1']],
     ['/courses/1/files', ['Slides.pdf', 'Not in a unit', 'Extra.docx']],
+    ['/courses/1/announcements', ['Midterm moved', 'Prof Rivera', 'Week 2 questions']],
     ['/courses/1/export', ['AI export', 'Scan course']],
     ['/courses/1/grades', ['Current grade', 'Grade over time', 'Labs']],
     ['/courses/1/assignments/5', ['Instructions', 'rubric.pdf', 'Nice work']],

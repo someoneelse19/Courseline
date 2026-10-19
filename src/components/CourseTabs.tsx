@@ -10,6 +10,7 @@ export function CourseTabs({ courseId }: { courseId: number }) {
     { to: base, label: t('Pages'), active: pathname === base || pathname.startsWith(`${base}/pages`) },
     // The assignment detail page lives under this tab too, so it stays highlighted there.
     { to: `${base}/assignments`, label: t('Assignments'), active: pathname.startsWith(`${base}/assignments`) },
+    { to: `${base}/announcements`, label: t('Announcements'), active: pathname.startsWith(`${base}/announcements`) },
     { to: `${base}/files`, label: t('Files by unit'), active: pathname.startsWith(`${base}/files`) },
     { to: `${base}/grades`, label: t('Grades'), active: pathname.startsWith(`${base}/grades`) },
     { to: `${base}/export`, label: t('AI export'), active: pathname.startsWith(`${base}/export`) },

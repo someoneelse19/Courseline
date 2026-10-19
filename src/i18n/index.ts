@@ -49,6 +49,11 @@ export function saveLanguage(language: Language) {
   }
 }
 
+/** t() with a singular form: pass the count and both English strings (each needs its own dictionary entry). */
+export function tn(n: number, one: string, other: string, vars?: Record<string, string | number>): string {
+  return t(n === 1 ? one : other, { n, ...vars });
+}
+
 export function t(text: string, vars?: Record<string, string | number>): string {
   const translated = dictionaries[current][text] ?? text;
   return vars ? translated.replace(/\{(\w+)\}/g, (match, key: string) => (key in vars ? String(vars[key]) : match)) : translated;

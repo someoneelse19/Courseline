@@ -2,6 +2,7 @@ import { loadEnv } from 'vite';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import { contentSecurityPolicy } from './src/lib/csp';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
@@ -30,13 +31,25 @@ export default defineConfig(({ mode }) => {
       : undefined;
 
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(),
+      tailwindcss(),
+      {
+        // The policy goes in as the first thing in <head> so it covers everything after it.
+        name: 'courseline-csp',
+        transformIndexHtml: {
+          order: 'pre',
+          handler: (html, ctx) =>
+            html.replace('<meta charset="UTF-8" />', `<meta charset="UTF-8" />\n    <meta http-equiv="Content-Security-Policy" content="${contentSecurityPolicy(!!ctx.server)}" />`),
+        },
+      },
+    ],
     server: { proxy },
     // The app itself is ~100 KB (gzipped). The big chunks are the document viewers (PDF.js, PowerPoint, Excel,
     // Word), which are imported on demand the first time a file of that type is opened, so the default
     // 500 KB warning does not apply to them.
     build: { chunkSizeWarningLimit: 1400 },
     // `npm test`: unit + component tests run in a simulated browser (jsdom), with fetch faked per test.
-    test: { environment: 'jsdom', include: ['src/**/*.test.{ts,tsx}'] },
+    test: { environment: 'jsdom', include: ['src/**/*.test.{ts,tsx}', 'extension/**/*.test.js'] },
   };
 });

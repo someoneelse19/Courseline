@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { es } from './es';
-import { detectLanguage, getLocale, setLanguage, t } from './index';
+import { detectLanguage, getLocale, setLanguage, t, tn } from './index';
 import { pt } from './pt';
 
 afterEach(() => {
@@ -58,5 +58,19 @@ describe('Portuguese', () => {
     expect(t('Dashboard')).toBe('Painel');
     expect(t('{count} of {total} selected', { count: 2, total: 5 })).toBe('2 de 5 selecionados');
     expect(getLocale()).toBe('pt-BR');
+  });
+});
+
+describe('tn()', () => {
+  it('picks the singular for one and the plural otherwise, filling {n}', () => {
+    expect(tn(1, '{n} response', '{n} responses')).toBe('1 response');
+    expect(tn(0, '{n} response', '{n} responses')).toBe('0 responses');
+    expect(tn(5, '{n} response', '{n} responses')).toBe('5 responses');
+  });
+
+  it('translates each form from its own entry', () => {
+    setLanguage('es');
+    expect(tn(1, '{n} response', '{n} responses')).toBe('1 respuesta');
+    expect(tn(3, '{n} response', '{n} responses')).toBe('3 respuestas');
   });
 });

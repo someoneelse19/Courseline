@@ -194,6 +194,20 @@ export interface UpcomingEvent {
   assignment?: Assignment;
 }
 
+// A discussion topic or an announcement (an announcement is a discussion topic with is_announcement).
+export interface DiscussionTopic {
+  id: CanvasId;
+  title: string;
+  message?: string | null; // HTML written by the instructor: render it through HtmlContent
+  posted_at?: string | null;
+  last_reply_at?: string | null;
+  html_url?: string;
+  is_announcement?: boolean;
+  discussion_subentry_count?: number; // replies
+  author?: { display_name?: string };
+  context_code?: string; // "course_123"; on /announcements results
+}
+
 // Page content (HTML) with embedded files and links.
 export interface Page {
   page_id?: CanvasId;

@@ -33,8 +33,10 @@ export function AssignmentDetailPage() {
   const params = useParams();
   const courseId = Number(params.courseId);
   const assignmentId = Number(params.assignmentId);
-  const { user } = useAuth();
+  const { user, source } = useAuth();
   const { openFile } = useFileViewer();
+  // Submitting and replying write to Canvas, which the extension cannot do: they need an access token.
+  const readOnly = source === 'extension';
 
   const assignment = useAssignment(courseId, assignmentId);
   const submission = useMySubmission(courseId, assignmentId);
@@ -113,12 +115,15 @@ export function AssignmentDetailPage() {
             </a>
           </Card>
 
-          <SubmissionForm
-            courseId={courseId}
-            assignmentId={assignmentId}
-            assignment={a}
-            onSubmitted={submission.refetch}
-          />
+          {readOnly ? (
+            <Card title={t('Submit your work')}>
+              <p className="text-sm text-neutral-600 dark:text-neutral-300">
+                {t('Submitting and replying need a Canvas access token, which you are not using. Use the button above to do it in Canvas, or add a token in Settings → Connection.')}
+              </p>
+            </Card>
+          ) : (
+            <SubmissionForm courseId={courseId} assignmentId={assignmentId} assignment={a} onSubmitted={submission.refetch} />
+          )}
 
           <Card title={t('Your submission')}>
             {submission.error && !a.submission ? (
@@ -156,7 +161,7 @@ export function AssignmentDetailPage() {
                 ))}
               </ul>
             )}
-            <ReplyBox courseId={courseId} assignmentId={assignmentId} onSent={submission.refetch} />
+            {!readOnly && <ReplyBox courseId={courseId} assignmentId={assignmentId} onSent={submission.refetch} />}
           </Card>
         </div>
       </div>

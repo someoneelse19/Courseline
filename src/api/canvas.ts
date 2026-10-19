@@ -1,6 +1,6 @@
 // Canvas endpoints. One small function per resource; add new features here.
 import { CanvasApiError, createClient, type ClientConfig } from './client';
-import type { Assignment, AssignmentGroup, Course, CourseFile, Module, ModuleItem, Page, Submission, UpcomingEvent, UserProfile } from './types';
+import type { Assignment, AssignmentGroup, Course, CourseFile, DiscussionTopic, Module, ModuleItem, Page, Submission, UpcomingEvent, UserProfile } from './types';
 
 export function createCanvasApi(config: ClientConfig) {
   const client = createClient(config);
@@ -231,8 +231,18 @@ export function createCanvasApi(config: ClientConfig) {
       return events.filter((e) => e.type === 'assignment' && e.assignment);
     },
 
-    // TODO(discussions): GET /courses/:id/discussion_topics, and /discussion_topics/:id/view for threaded replies
-    // TODO(announcements): GET /announcements?context_codes[]=course_123
+    /**
+     * Announcements for one course. QUIRK: the account-wide /announcements endpoint only returns a window around today
+     * (two weeks back, four ahead) unless dates are given, so older ones would silently vanish; the course's own
+     * topic list with only_announcements has no such window.
+     */
+    getAnnouncements: (courseId: number) =>
+      client.getAll<DiscussionTopic>(`/courses/${courseId}/discussion_topics`, { only_announcements: true, order_by: 'recent_activity' }),
+
+    /** Discussion topics for one course (Canvas leaves announcements out of this list). */
+    getDiscussions: (courseId: number) => client.getAll<DiscussionTopic>(`/courses/${courseId}/discussion_topics`, { order_by: 'recent_activity' }),
+
+    // TODO(discussions): /discussion_topics/:id/view for threaded replies
     // TODO(calendar): GET /calendar_events?start_date=&end_date=&context_codes[]=
     // TODO(folders): GET /courses/:id/folders for a folder-tree view of files
     // TODO(inbox): GET /conversations
