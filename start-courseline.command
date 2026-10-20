@@ -79,6 +79,10 @@ if [ -n "${OPEN:-}" ]; then
   ) &
 fi
 
+# Vite shuts down when its input closes. Started from a Shortcut, a launcher or `nohup ... < /dev/null` there is no
+# terminal, so its input is closed at once; CI=true tells Vite not to watch for that.
+[ -t 0 ] || export CI=true
+
 # --strictPort: if the port is taken, stop instead of quietly using another one.
 "$NODE" node_modules/vite/bin/vite.js --port "$PORT" --strictPort
 code=$?
