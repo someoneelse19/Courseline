@@ -79,9 +79,15 @@ if [ -n "${OPEN:-}" ]; then
   ) &
 fi
 
-# Vite shuts down when its input closes. Started from a Shortcut, a launcher or `nohup ... < /dev/null` there is no
-# terminal, so its input is closed at once; CI=true tells Vite not to watch for that.
-[ -t 0 ] || export CI=true
+# Vite stops (or stops answering) when its input is closed. Started from a Shortcut, a launcher or with
+# `< /dev/null` there is no terminal, so give it an input that stays open: a pipe this script holds both ends of.
+if [ ! -t 0 ]; then
+  keepalive="$(mktemp -u "${TMPDIR:-/tmp}/courseline-stdin.XXXXXX")"
+  if mkfifo "$keepalive" && exec 3<>"$keepalive"; then
+    rm -f "$keepalive"
+    exec 0<&3
+  fi
+fi
 
 # --strictPort: if the port is taken, stop instead of quietly using another one.
 "$NODE" node_modules/vite/bin/vite.js --port "$PORT" --strictPort
