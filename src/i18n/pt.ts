@@ -452,4 +452,8 @@ export const pt: Record<string, string> = {
   'This will open {n} Canvas pages, one at a time, in background tabs of this window. Each closes itself. About {min} min. Pages open as if you had visited them, so Canvas may record the visits (for example marking items as viewed).': 'Isto abrirá {n} páginas do Canvas, uma de cada vez, em abas em segundo plano desta janela. Cada uma se fecha sozinha. Cerca de {min} min. As páginas abrem como se você as visitasse, então o Canvas pode registrar as visitas (por exemplo, marcando itens como vistos).',
   'Address cleared. Nothing is captured until you save one.': 'Endereço apagado. Nada é capturado até você salvar um.',
   'Enter your Canvas address.': 'Digite o endereço do seu Canvas.',
+  'Class median grade (estimate)': 'Nota mediana da turma (estimada)',
+  'You are {delta} points vs the median': 'Você está {delta} pontos em relação à mediana',
+  'Based on {n} of {total} graded assignments that show class statistics': 'Baseado em {n} de {total} tarefas avaliadas com estatísticas da turma',
+  'Each graded assignment scored at its class median': 'Cada tarefa avaliada com a mediana da turma',
 };

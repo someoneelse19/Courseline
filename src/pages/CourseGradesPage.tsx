@@ -5,7 +5,7 @@ import { GradeTrendChart, type TrendDatum } from '../components/GradeTrendChart'
 import { Card, EmptyState, ErrorMessage, Spinner } from '../components/ui';
 import { useAssignmentGroups, useCourse } from '../hooks/useCanvasData';
 import { assignmentTone, TONE_CLASSES } from '../lib/assignmentState';
-import { computeGrade, gradeTrend, neededAverage, toModel } from '../lib/grades';
+import { computeGrade, gradeTrend, medianComparison, neededAverage, toModel } from '../lib/grades';
 import { formatDay } from '../lib/format';
 import { t } from '../i18n';
 
@@ -72,6 +72,12 @@ export function CourseGradesPage() {
         : [],
     [model, weighted],
   );
+  const comparison = useMemo(() => {
+    if (!model) return null;
+    const medians = new Map<number, number>();
+    for (const [id, a] of byId) if (a.score_statistics) medians.set(id, a.score_statistics.median);
+    return medians.size ? medianComparison(model.groups, model.items, weighted, medians) : null;
+  }, [model, byId, weighted]);
   const goal = useMemo(() => (model ? neededAverage(model.groups, model.items, { weighted, overrides }, target) : null), [model, weighted, overrides, target]);
 
   if (groupsQ.error) return <ErrorMessage error={groupsQ.error} onRetry={groupsQ.refetch} />;
@@ -121,7 +127,7 @@ export function CourseGradesPage() {
   return (
     <div className="space-y-6">
       {/* Headline numbers */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className={`grid gap-3 sm:grid-cols-2 ${comparison?.median != null ? 'lg:grid-cols-5' : 'lg:grid-cols-4'}`}>
         <Tile
           label={t('Current grade')}
           note={
@@ -136,6 +142,23 @@ export function CourseGradesPage() {
         <Tile label={t('If the rest were zero')} note={counts.pending + counts.missing === 0 ? t('Everything is graded') : t('Ungraded work counts as 0')}>
           <p className="text-3xl font-semibold tracking-tight">{pct(finalHeadline)}</p>
         </Tile>
+        {comparison?.median != null && (
+          <Tile
+            label={t('Class median grade (estimate)')}
+            note={
+              <>
+                {comparison.you != null && t('You are {delta} points vs the median', { delta: sign(comparison.you - comparison.median) })}
+                <span className="block">
+                  {comparison.covered < comparison.graded
+                    ? t('Based on {n} of {total} graded assignments that show class statistics', { n: comparison.covered, total: comparison.graded })
+                    : t('Each graded assignment scored at its class median')}
+                </span>
+              </>
+            }
+          >
+            <p className="text-3xl font-semibold tracking-tight">{pct(comparison.median)}</p>
+          </Tile>
+        )}
         <Tile label={t('Points')} note={weighted ? t('Graded work; the course weights groups') : t('Graded work')}>
           <p className="text-3xl font-semibold tracking-tight">
             {pts(earned)} <span className="text-lg font-normal text-neutral-500 dark:text-neutral-400">/ {pts(possible)}</span>

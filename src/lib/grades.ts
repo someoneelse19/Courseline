@@ -196,3 +196,30 @@ export function neededAverage(groups: GradeGroup[], items: GradeItem[], opts: Gr
   }
   return { status: 'reachable', remaining: remaining.length, needed: hi, bestPossible: best };
 }
+
+export interface MedianComparison {
+  you: number | null; // your grade over the covered work
+  median: number | null; // the same work, scored at each assignment's class median
+  covered: number; // graded assignments that have class statistics
+  graded: number; // all graded assignments
+}
+
+/**
+ * Estimates where the median student stands: your graded work re-scored at each assignment's class
+ * median. Canvas publishes no course-level median, so this is an approximation (the median of each
+ * assignment, not of each student's total). Both numbers use only the assignments that have
+ * statistics, so the comparison is like for like.
+ */
+export function medianComparison(groups: GradeGroup[], items: GradeItem[], weighted: boolean, medians: Map<number, number>): MedianComparison {
+  const gradedItems = items.filter((i) => i.score != null && !i.excused && !i.omitted);
+  const covered = gradedItems.filter((i) => medians.has(i.id));
+  const only = new Set(covered.map((i) => i.id));
+  const overrides: Record<number, number | null> = {};
+  for (const i of items) overrides[i.id] = only.has(i.id) ? medians.get(i.id)! : null;
+  return {
+    you: computeGrade(groups, items, { weighted, onlyGraded: only }).current,
+    median: computeGrade(groups, items, { weighted, overrides }).current,
+    covered: covered.length,
+    graded: gradedItems.length,
+  };
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AssignmentGroup } from '../api/types';
-import { computeGrade, gradeTrend, neededAverage, toModel, type GradeGroup, type GradeItem } from './grades';
+import { computeGrade, gradeTrend, medianComparison, neededAverage, toModel, type GradeGroup, type GradeItem } from './grades';
 
 let nextId = 1;
 const group = (id: number, weight: number, o: Partial<GradeGroup> = {}): GradeGroup => ({ id, name: `G${id}`, weight, position: id, dropLowest: 0, dropHighest: 0, neverDrop: [], ...o });
@@ -162,5 +162,22 @@ describe('toModel', () => {
     expect(m.groups[0]).toMatchObject({ weight: 25, dropLowest: 2, neverDrop: [9] });
     expect(m.items).toHaveLength(1);
     expect(m.items[0]).toMatchObject({ score: 18, points: 20, gradedAt: '2026-02-01' });
+  });
+});
+
+describe('medianComparison', () => {
+  it('re-scores graded work at the class median, on the same assignments', () => {
+    const groups = [group(1, 0)];
+    const a = item(1, 10, 9);
+    const b = item(1, 10, 7);
+    const c = item(1, 10, 10); // no statistics: left out of both numbers
+    const r = medianComparison(groups, [a, b, c], false, new Map([[a.id, 8], [b.id, 8]]));
+    expect(r.you).toBeCloseTo(80);
+    expect(r.median).toBeCloseTo(80);
+    expect(r.covered).toBe(2);
+    expect(r.graded).toBe(3);
+    const r2 = medianComparison(groups, [a, b], false, new Map([[a.id, 6], [b.id, 6]]));
+    expect(r2.you).toBeCloseTo(80);
+    expect(r2.median).toBeCloseTo(60);
   });
 });
