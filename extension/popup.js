@@ -40,7 +40,7 @@ async function render() {
     coverage.append(el('div', 'muted', 'Course list not seen yet. Open your Canvas dashboard to see how many courses are synced.'));
   }
 
-  const store = await chrome.storage.local.get(['canvasHost', 'appPinned']);
+  const store = await chrome.storage.local.get(['canvasHost', 'appPinned', 'skippedLarge']);
   // Show the saved address, but never overwrite what is being typed.
   const addr = $('addr');
   if (document.activeElement !== addr && !addr.dataset.dirty) addr.value = store.canvasHost ?? '';
@@ -49,6 +49,9 @@ async function render() {
   if (!store.canvasHost) hostBox.append(el('div', 'warn', 'Save your Canvas address above to start capturing. Until then nothing is kept, so a page you visit cannot pass itself off as your Canvas.'));
   if (Array.isArray(store.appPinned) && store.appPinned.length) {
     hostBox.append(el('div', null, `Courses chosen in Courseline: ${store.appPinned.length}`));
+  }
+  if (store.skippedLarge) {
+    hostBox.append(el('div', null, `${store.skippedLarge} response${store.skippedLarge === 1 ? ' was' : 's were'} too large to keep (over 3 MB each).`));
   }
 
   const warn = $('warn');

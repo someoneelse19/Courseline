@@ -92,6 +92,8 @@
 
   // GraphQL calls all share one address, so the only way to tell them apart is the operation name the page sends,
   // plus its variables (which carry the course id). Never the query text.
+  const WRITE_NAME = /^(create|update|delete|destroy|set|mark|add|remove|hide|unhide|subscribe|unsubscribe|submit|post|send|upsert|save|move|reorder|toggle|dismiss|archive|restore|accept|reject)/i;
+
   function graphqlRequest(init) {
     try {
       if (typeof init?.body !== 'string') return {};
@@ -101,15 +103,24 @@
       const operation = names.length ? [...new Set(names)].slice(0, 3).join(',') : undefined;
       const vars = ops.length === 1 ? ops[0]?.variables : undefined;
       const variables = vars && typeof vars === 'object' && JSON.stringify(vars).length < 2000 ? vars : undefined;
-      // A GraphQL "mutation" changes something; it is not a read, so it is not captured. (Only the fact is kept.)
-      const mutation = ops.some((o) => typeof o?.query === 'string' && /^\s*mutation\b/.test(o.query));
-      return { operation, variables, mutation };
+      // A GraphQL "mutation" changes something; it is not a read, so it is not captured. Normally the query text
+      // says so. A persisted query sends no text, only a name, so a name that reads like a change counts too.
+      const textSaysMutation = ops.some((o) => typeof o?.query === 'string' && /^\s*mutation\b/.test(o.query));
+      const noText = ops.every((o) => typeof o?.query !== 'string');
+      const nameSaysChange = names.some((n) => WRITE_NAME.test(n));
+      return { operation, variables, mutation: textSaysMutation || (noText && nameSaysChange) };
     } catch {
       return {};
     }
   }
 
-  function report(rawUrl, status, text, request = {}) {
+  // `read` gives the parsed body: from text (fetch, XHR text) or as it already is (XHR in JSON mode).
+  const fromText = (text) => () => {
+    if (text.length > MAX_BODY_CHARS) throw new Error('too large');
+    return parse(text);
+  };
+
+  function report(rawUrl, status, read, request = {}) {
     if (state === 'other') return;
     try {
       const url = new URL(rawUrl, location.href);
@@ -119,8 +130,7 @@
       const isGraphql = url.pathname === '/api/graphql';
       if (!isGraphql && request.method && request.method !== 'GET') return;
       if (request.mutation) return;
-      if (text.length > MAX_BODY_CHARS) return;
-      const item = { url: url.href, status, body: parse(text), operation: request.operation, variables: request.variables };
+      const item = { url: url.href, status, body: read(), operation: request.operation, variables: request.variables };
       if (state === 'canvas') return send(item);
       decide();
       if (state === 'canvas') return send(item);
@@ -133,7 +143,16 @@
   const realFetch = window.fetch;
   window.fetch = function (input, init) {
     const method = String(init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase();
-    const request = { ...graphqlRequest(init), method };
+    // The operation name (and whether it is a mutation) comes from the request body: from `init`, or, when the page
+    // passed a Request object, from a copy of its body taken before fetch uses it up.
+    let requestInfo = Promise.resolve(graphqlRequest(init));
+    if (input instanceof Request && init?.body === undefined && method !== 'GET' && method !== 'HEAD') {
+      try {
+        requestInfo = input.clone().text().then((body) => graphqlRequest({ body }), () => ({}));
+      } catch {
+        /* body already used: no name */
+      }
+    }
     started();
     const result = realFetch.apply(this, arguments);
     result.then(
@@ -149,9 +168,9 @@
           return ended();
         }
         // The body can still be arriving when the response does, so "finished" waits for it too.
-        reading.then(
-          (text) => {
-            report(url, res.status, text, request);
+        Promise.all([reading, requestInfo]).then(
+          ([text, info]) => {
+            report(url, res.status, fromText(text), { ...info, method });
             ended();
           },
           ended,
@@ -163,23 +182,31 @@
   };
 
   const realSend = XMLHttpRequest.prototype.send;
-  XMLHttpRequest.prototype.send = function () {
+  XMLHttpRequest.prototype.send = function (body) {
     started();
+    this.__courselineBody = typeof body === 'string' ? body : undefined;
     this.addEventListener('loadend', ended, { once: true });
     return realSend.apply(this, arguments);
   };
 
   const realOpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function (method, url) {
-    this.addEventListener('load', () => {
-      try {
-        if (this.responseType === '' || this.responseType === 'text') {
-          report(this.responseURL || String(url), this.status, this.responseText, { method: String(method).toUpperCase() });
+    this.__courselineMethod = String(method).toUpperCase();
+    this.__courselineUrl = String(url);
+    // open() can be called again on the same object: listen once, and read whatever the latest open() set.
+    if (!this.__courselineListening) {
+      this.__courselineListening = true;
+      this.addEventListener('load', () => {
+        try {
+          const request = { ...graphqlRequest({ body: this.__courselineBody }), method: this.__courselineMethod };
+          const where = this.responseURL || this.__courselineUrl;
+          if (this.responseType === '' || this.responseType === 'text') report(where, this.status, fromText(this.responseText), request);
+          else if (this.responseType === 'json' && this.response !== null) report(where, this.status, () => this.response, request);
+        } catch {
+          /* ignore */
         }
-      } catch {
-        /* ignore */
-      }
-    });
+      });
+    }
     return realOpen.apply(this, arguments);
   };
 })();

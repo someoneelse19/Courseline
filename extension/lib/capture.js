@@ -95,6 +95,7 @@ export function classify(rawUrl, body, operation, variables) {
         shapeOk: graphqlOk(body),
         key: `${url.host}/api/graphql#${operation}#${stable(variables ?? {})}`,
         host: url.host,
+        route: `POST /api/graphql ${operation}`,
       };
     }
     const named = typeof operation === 'string' && /^[A-Za-z0-9_,]{1,120}$/.test(operation) ? operation : null;
@@ -127,6 +128,7 @@ export function classify(rawUrl, body, operation, variables) {
       shapeOk: Boolean(check(body)),
       key: `${url.host}${path}?${params}`,
       host: url.host,
+      route: `GET ${pattern(path)}`,
     };
   }
   if (SECRET.some((re) => re.test(path))) return null;

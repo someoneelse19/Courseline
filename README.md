@@ -115,6 +115,11 @@ in to Canvas).
   backend or use Canvas OAuth2 (needs a developer key from your Canvas admin).
 - Each person uses their **own** token. Revoke tokens you no longer need (Settings → Approved Integrations).
 - Never commit `.env`. It is in `.gitignore`.
+- The token is only ever sent to the Canvas address you entered, over https (an `http://` address is upgraded), and
+  never to file storage or any other host. Instructor HTML and spreadsheet cells are sanitized before display.
+- The browser extension keeps nothing until you save your Canvas address, never saves credentials, email addresses
+  or capability links, and only takes commands from the Courseline app running on `localhost`. The full list of known
+  risks is in [DEVELOPER_GUIDE.md §9](DEVELOPER_GUIDE.md#9-security-model).
 
 ## Status
 

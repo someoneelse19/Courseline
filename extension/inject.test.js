@@ -154,4 +154,84 @@ describe('inject.js', () => {
     await tick();
     expect(clone).toHaveBeenCalledTimes(1);
   });
+
+  describe('the gaps a page could slip through', () => {
+    // A stand-in XMLHttpRequest the capture script wraps, answering from `replies` without any network.
+    let replies;
+    class FakeXHR extends EventTarget {
+      constructor() {
+        super();
+        this.responseType = '';
+        this.status = 0;
+      }
+      open(method, url) {
+        this.url = url;
+      }
+      send() {
+        queueMicrotask(() => {
+          const r = replies[new URL(this.url, location.href).pathname] ?? { status: 404, text: '' };
+          this.status = r.status ?? 200;
+          this.responseURL = new URL(this.url, location.href).href;
+          this.responseText = this.responseType === '' || this.responseType === 'text' ? r.text : '';
+          this.response = this.responseType === 'json' ? r.json : this.responseText;
+          this.dispatchEvent(new Event('load'));
+          this.dispatchEvent(new Event('loadend'));
+        });
+      }
+    }
+    const xhr = (method, url, { type = '', body } = {}) =>
+      new Promise((resolve) => {
+        const x = new XMLHttpRequest();
+        x.responseType = type;
+        x.open(method, url);
+        x.addEventListener('loadend', () => resolve(x));
+        x.send(body);
+      });
+    const gql = (operationName, query, extra = {}) => JSON.stringify({ operationName, ...(query ? { query } : {}), ...extra });
+    const settle = async () => {
+      for (let i = 0; i < 5; i++) await tick();
+    };
+
+    beforeEach(() => {
+      replies = {};
+      document.body.className = 'ic-app';
+      globalThis.XMLHttpRequest = FakeXHR;
+      window.XMLHttpRequest = FakeXHR;
+    });
+
+    it('reads an XHR in JSON mode, not only in text mode', async () => {
+      install(vi.fn(async () => new Response('{}')));
+      replies['/api/v1/courses/1/front_page'] = { json: { url: 'home', title: 'Home' } };
+      await xhr('GET', '/api/v1/courses/1/front_page', { type: 'json' });
+      await settle();
+      expect(posted.find((p) => p.url.endsWith('/front_page'))?.body).toEqual({ url: 'home', title: 'Home' });
+    });
+
+    it('names a GraphQL read sent through XHR, and never keeps a mutation sent that way', async () => {
+      install(vi.fn(async () => new Response('{}')));
+      replies['/api/graphql'] = { text: '{"data":{"x":1}}' };
+      await xhr('POST', '/api/graphql', { body: gql('GetThing', 'query GetThing { x }') });
+      await xhr('POST', '/api/graphql', { body: gql('ChangeThing', 'mutation ChangeThing { x }') });
+      await settle();
+      const ops = posted.filter((p) => p.url.endsWith('/api/graphql')).map((p) => p.operation);
+      expect(ops).toEqual(['GetThing']);
+    });
+
+    it('names a GraphQL read sent as a Request object, and never keeps a mutation sent that way', async () => {
+      install(vi.fn(async (input) => new Response('{"data":{"x":1}}', { status: 200, headers: { 'content-type': 'application/json' } })));
+      await window.fetch(new Request(`${location.origin}/api/graphql`, { method: 'POST', body: gql('ReadIt', 'query ReadIt { x }') }));
+      await window.fetch(new Request(`${location.origin}/api/graphql`, { method: 'POST', body: gql('WriteIt', 'mutation WriteIt { x }') }));
+      await settle();
+      expect(posted.filter((p) => p.url.endsWith('/api/graphql')).map((p) => p.operation)).toEqual(['ReadIt']);
+    });
+
+    it('a persisted query (no query text) that is named like a change is treated as a mutation', async () => {
+      install(vi.fn(async () => new Response('{"data":{"x":1}}', { status: 200 })));
+      const apq = { extensions: { persistedQuery: { version: 1, sha256Hash: 'abc' } } };
+      await window.fetch('/api/graphql', { method: 'POST', body: gql('UpdateDashboardPosition', null, apq) });
+      await window.fetch('/api/graphql', { method: 'POST', body: gql('GetDashboard', null, apq) });
+      await settle();
+      expect(posted.filter((p) => p.url.endsWith('/api/graphql')).map((p) => p.operation)).toEqual(['GetDashboard']);
+    });
+  });
 });

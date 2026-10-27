@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useMatch } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { usePull } from '../context/PullContext';
-import { coverage, courseUpdatedAt, failingKinds, freshnessByType, lastUpdatedAt, workingCourses, type FreshnessKey } from '../extension/extensionApi';
+import { coverage, courseUpdatedAt, failingKinds, freshnessByType, lastUpdatedAt, snapshotHost, workingCourses, type FreshnessKey } from '../extension/extensionApi';
 import { discoverLinks, pendingLinks } from '../extension/linkDiscovery';
 import { formatAgo } from '../lib/format';
 import { t, tn } from '../i18n';
@@ -44,8 +44,7 @@ export function ExtensionStatus() {
   // Pages linked from what has been captured that have not been opened yet (assignment instructions, page bodies...).
   const linked = useMemo(() => {
     if (!snapshot) return 0;
-    const newest = [...snapshot.records].sort((a, b) => b.capturedAt - a.capturedAt)[0]?.host;
-    const host = snapshot.canvasHost ?? newest;
+    const host = snapshotHost(snapshot);
     if (!host) return 0;
     const ids = new Set(workingCourses(snapshot).map((c) => c.id));
     return pendingLinks(discoverLinks(snapshot, host, ids), snapshot.visited, Date.now()).length;

@@ -21,8 +21,21 @@ const PRUNE_EVERY_MS = 3600e3;
 const MAX_RECORD_CHARS = 3_000_000; // one saved response; bigger ones are counted, not kept
 const MAX_RECORDS = 6000; // the oldest go first beyond this
 
+// Commands only the Courseline app may give (through bridge.js, which runs on localhost only). The relay on Canvas
+// pages never forwards these, and this check makes sure no other content-script context can send them either.
+const APP_ONLY = new Set(['setCanvasHost', 'openPage', 'cancelPull', 'setPinned']);
+const fromLocalApp = (sender) => {
+  try {
+    const u = new URL(sender.url);
+    return u.protocol === 'http:' && (u.hostname === 'localhost' || u.hostname === '127.0.0.1');
+  } catch {
+    return false;
+  }
+};
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!sender.tab) return;
+  if (APP_ONLY.has(msg?.type) && !fromLocalApp(sender)) return;
   if (msg?.type === 'setCanvasHost') {
     // From the bridge: the Canvas address typed into the Courseline app. Same rules as the popup's field.
     applyCanvasAddress(chrome.storage.local, msg.input).then(sendResponse, () => sendResponse({ ok: false, error: 'Could not save the address.' }));
@@ -102,25 +115,35 @@ async function save(url, body, operation, variables, senderUrl) {
     h.ok += 1;
     h.lastOkAt = now;
     const record = { kind: info.kind, courseId: info.courseId, host: info.host, url, capturedAt: now, body: stripSensitive(body) };
+    if (JSON.stringify(record).length > MAX_RECORD_CHARS) {
+      await chrome.storage.local.set({ health, skippedLarge: (store.skippedLarge ?? 0) + 1 });
+      return;
+    }
     await chrome.storage.local.set({ [`cap:${info.key}`]: record, health });
     noteRecent(info.kind, body);
   } else {
-    // Known route, unexpected shape: do not store it as data, but remember that it happened, and keep its structure
-    // (names and types, no values) once so we can see what Canvas sent instead.
+    // Known route, unexpected shape: Courseline's screens must not read it as if it were the usual data, but nothing
+    // is lost either. It is kept raw as kind "other", under its own key so it never replaces a good copy, the health
+    // counter shows the mismatch, and its structure (names and types, no values) is kept once to write a reader.
     h.badShape += 1;
     h.lastBadAt = now;
     const { shapes = {} } = await chrome.storage.local.get('shapes');
     const label = `REJECTED ${info.kind}`;
     if (!shapes[label] && Object.keys(shapes).length < 100) shapes[label] = skeleton(body);
-    await chrome.storage.local.set({ health, shapes });
+    const raw = { kind: 'other', route: info.route, rejectedAs: info.kind, courseId: info.courseId, host: info.host, url, capturedAt: now, body: stripSensitive(body) };
+    const fits = JSON.stringify(raw).length <= MAX_RECORD_CHARS;
+    await chrome.storage.local.set({ health, shapes, ...(fits ? { [`cap:rejected:${info.key}`]: raw } : { skippedLarge: (store.skippedLarge ?? 0) + 1 }) });
   }
   await pruneOld(now);
 }
 
 // Saved responses do not live forever: anything older than 90 days is deleted, checked at most once an hour.
+// The last prune time is kept in memory too, so a capture does not need a storage read just to learn it is not time.
+let lastPruneAt = null;
 async function pruneOld(now) {
-  const { lastPrune = 0 } = await chrome.storage.local.get('lastPrune');
-  if (now - lastPrune < PRUNE_EVERY_MS) return;
+  lastPruneAt ??= (await chrome.storage.local.get('lastPrune')).lastPrune ?? 0;
+  if (now - lastPruneAt < PRUNE_EVERY_MS) return;
+  lastPruneAt = now;
   const all = await chrome.storage.local.get(null);
   const old = expiredKeys(all, now);
   // Keep the newest MAX_RECORDS: everything is saved now, so there is a ceiling.

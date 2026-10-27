@@ -38,7 +38,10 @@ function installChrome() {
 }
 
 const sender = (url = 'https://school.test/courses/1') => ({ tab: { id: 1 }, url });
-const send = async (msg, s = sender()) => {
+const app = () => sender('http://localhost:5173/');
+// Commands from the Courseline app arrive from its localhost tab (through bridge.js); captures from Canvas pages.
+const APP_COMMANDS = ['setCanvasHost', 'openPage', 'cancelPull', 'setPinned'];
+const send = async (msg, s = APP_COMMANDS.includes(msg?.type) ? app() : sender()) => {
   let reply;
   const returned = listener(msg, s, (r) => (reply = r));
   await new Promise((r) => setTimeout(r, 25));
@@ -63,6 +66,14 @@ describe('background capture pipeline', () => {
     const bad = await send({ type: 'setCanvasHost', input: 'http://x.test' });
     expect(bad.reply).toMatchObject({ ok: false });
     expect(store.canvasHost).toBe('school.test');
+  });
+
+  it('ignores app commands that do not come from the local Courseline app', async () => {
+    const { reply } = await send({ type: 'setCanvasHost', input: 'evil.test' }, sender('https://evil.test/'));
+    expect(reply).toBeUndefined();
+    expect(store.canvasHost).toBeUndefined();
+    await send({ type: 'setPinned', ids: [9] }, sender('https://school.test/'));
+    expect(store.appPinned).toBeUndefined();
   });
 
   it('keeps nothing until the student has saved a Canvas address, however Canvas-like the page looks', async () => {
@@ -157,7 +168,7 @@ describe('background capture pipeline', () => {
     await send(capture('https://school.test/api/v1/courses/1', { id: 1, name: 'Bio' }));
 
     let reply;
-    listener({ type: 'openPage', url: 'https://school.test/courses/1/announcements' }, sender(), (r) => (reply = r));
+    listener({ type: 'openPage', url: 'https://school.test/courses/1/announcements' }, app(), (r) => (reply = r));
     await new Promise((r) => setTimeout(r, 60));
     // While the page loads, Canvas's own page makes a request that the capture script forwards.
     await send(capture('https://school.test/api/v1/courses/1/announcements', [{ id: 1, title: 'Welcome', message: 'hi' }, { id: 2, title: 'Week 2' }]));
@@ -192,7 +203,7 @@ describe('background capture pipeline', () => {
     await saveAddress();
     let reply;
     const started = Date.now();
-    listener({ type: 'openPage', url: 'https://school.test/courses/1/files' }, sender(), (r) => (reply = r));
+    listener({ type: 'openPage', url: 'https://school.test/courses/1/files' }, app(), (r) => (reply = r));
     await new Promise((r) => setTimeout(r, 80));
     removedListener(7); // Stop closed it (or the student did)
     await new Promise((r) => setTimeout(r, 300));
@@ -205,11 +216,22 @@ describe('background capture pipeline', () => {
     await saveAddress();
     chrome.tabs.get = async () => ({ status: 'loading' });
     let reply;
-    listener({ type: 'openPage', url: 'https://school.test/courses/1/quizzes' }, sender(), (r) => (reply = r));
+    listener({ type: 'openPage', url: 'https://school.test/courses/1/quizzes' }, app(), (r) => (reply = r));
     await new Promise((r) => setTimeout(r, 80));
     removedListener(7); // ends the test quickly: the page never loaded
     await new Promise((r) => setTimeout(r, 300));
     expect(reply?.loaded).toBe(false);
     expect(store.visited?.['https://school.test/courses/1/quizzes']).toBeUndefined();
+  });
+
+  it('a known route in an unexpected format is kept raw under its own key, and never replaces the good copy', async () => {
+    await saveAddress();
+    await send(capture('https://school.test/api/v1/courses/1/assignments/5', { id: 5, name: 'Essay', description: 'good' }));
+    await send(capture('https://school.test/api/v1/courses/1/assignments/5', { id: 5 })); // no name: not the usual shape
+    const good = store['cap:school.test/courses/1/assignments/5?'];
+    const raw = store['cap:rejected:school.test/courses/1/assignments/5?'];
+    expect(good).toMatchObject({ kind: 'assignment', body: { name: 'Essay', description: 'good' } });
+    expect(raw).toMatchObject({ kind: 'other', rejectedAs: 'assignment', route: 'GET /courses/:id/assignments/:id', body: { id: 5 } });
+    expect(store.health.assignment).toMatchObject({ ok: 1, badShape: 1 });
   });
 });

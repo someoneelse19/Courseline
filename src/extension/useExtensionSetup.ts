@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { extensionInstalled, loadSnapshot, onExtensionChange, setCanvasAddress, type AddressResult, type Snapshot } from './bridge';
+import { lastUpdatedAt } from './extensionApi';
 
 export interface ExtensionSetup {
   /** The extension's bridge has announced itself on this page. */
@@ -56,14 +57,13 @@ export function useExtensionSetup(): ExtensionSetup {
     [reload],
   );
 
-  const times = snapshot?.records.map((r) => r.capturedAt) ?? [];
   return {
     installed,
     loaded,
     snapshot,
     canvasHost: snapshot?.canvasHost ?? null,
     recordCount: snapshot?.records.length ?? 0,
-    lastCapturedAt: times.length ? Math.max(...times) : null,
+    lastCapturedAt: snapshot ? lastUpdatedAt(snapshot) : null,
     saveAddress,
     reload,
   };

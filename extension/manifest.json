@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Courseline Capture",
   "version": "0.1.0",
-  "description": "Passively saves the Canvas data your own browsing already loads, so Courseline can show it. Works on any Canvas site it recognizes. Reads no cookies and makes no requests of its own. [Updated Oct 19, 2026 10:11 AM CEST]",
+  "description": "Passively saves the Canvas data your own browsing already loads, so Courseline can show it. Works on any Canvas site it recognizes. Reads no cookies and makes no requests of its own. [Updated Oct 27, 2026 9:02 PM CET]",
   "permissions": [
     "storage",
     "unlimitedStorage"

@@ -119,8 +119,12 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === 'openPlan' && portOk && isCourseline()) post({ type: 'openPlan' });
 });
 
+// Tell the app only about changes to what a snapshot carries. Pull bookkeeping (session storage, written several
+// times per page) and internal counters would otherwise make the app copy the whole store again for nothing.
+const SNAPSHOT_KEYS = new Set(['health', 'appPinned', 'canvasHost', 'visited']);
 let timer;
-chrome.storage.onChanged.addListener(() => {
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !Object.keys(changes ?? {}).some((k) => k.startsWith('cap:') || SNAPSHOT_KEYS.has(k))) return;
   clearTimeout(timer);
   timer = setTimeout(() => isCourseline() && post({ type: 'changed' }), 300);
 });

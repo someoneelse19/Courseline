@@ -13,6 +13,8 @@ describe('normalizeBaseUrl', () => {
     ['https://x.com/', 'https://x.com'],
     ['https://x.com/api/v1', 'https://x.com'],
     ['  http://localhost:3000///  ', 'http://localhost:3000'],
+    ['http://school.instructure.com', 'https://school.instructure.com'], // the token never goes out over plain http
+    ['http://localhost.evil.test', 'https://localhost.evil.test'],
   ])('%s -> %s', (input, expected) => expect(normalizeBaseUrl(input)).toBe(expected));
 });
 
@@ -186,6 +188,17 @@ describe('uploadFile (Canvas three-step upload)', () => {
       ({ url }) => (url.pathname === '/api/v1/files/45/create_success' ? json({ id: 45 }) : undefined),
     );
     expect(await upload()).toMatchObject({ id: 45 });
+  });
+
+  it('never sends the token to a confirm address on another host', async () => {
+    const { calls } = installFetch(
+      ({ url }) => (isSlot(url) ? json(slot()) : undefined),
+      ({ url }) => (url.host === 'storage.test' ? new Response('', { status: 201, headers: { Location: 'https://elsewhere.test/confirm' } }) : undefined),
+      ({ url }) => (url.host === 'elsewhere.test' ? json({ id: 46 }) : undefined),
+    );
+    expect(await upload()).toMatchObject({ id: 46 });
+    expect(calls[2].url.host).toBe('elsewhere.test');
+    expect(calls[2].headers.Authorization).toBeUndefined();
   });
 
   it('routes an upload URL on Canvas itself through the dev proxy', async () => {

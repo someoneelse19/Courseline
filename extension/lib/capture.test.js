@@ -72,6 +72,11 @@ describe('classify', () => {
     expect(classify(`${base}/login/session_token`, {})).toBeNull();
   });
 
+  it('gives every recognised route its address shape too, for keeping a response whose format did not match', () => {
+    expect(classify(`${base}/courses/42/assignments/5`, {})).toMatchObject({ kind: 'assignment', route: 'GET /courses/:id/assignments/:id' });
+    expect(classify('https://school.instructure.com/api/graphql', { data: {} }, 'GetUserCourses', {})).toMatchObject({ route: 'POST /api/graphql GetUserCourses' });
+  });
+
   it('ignores non-API URLs', () => {
     expect(classify('https://school.instructure.com/courses/42', {})).toBeNull();
     expect(classify('not a url', {})).toBeNull();

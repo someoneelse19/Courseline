@@ -33,11 +33,25 @@ export interface ClientConfig {
   onUnauthorized?: () => void;
 }
 
-/** Accepts "myschool.instructure.com", "https://x.com/", "https://x.com/api/v1" and returns the origin-ish base. */
+/**
+ * Accepts "myschool.instructure.com", "https://x.com/", "https://x.com/api/v1" and returns the origin-ish base.
+ * The token travels in every request, so a plain http:// address is upgraded to https:// (Canvas is always https).
+ * Only localhost keeps http, for local mocks and tests.
+ */
 export function normalizeBaseUrl(input: string): string {
   let url = input.trim().replace(/\/+$/, '').replace(/\/api\/v1$/i, '');
   if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+  if (/^http:\/\//i.test(url) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(url)) url = url.replace(/^http:/i, 'https:');
   return url;
+}
+
+/** Is `url` on the Canvas address itself (where the token may go)? */
+export function isCanvasOrigin(url: string, baseUrl: string): boolean {
+  try {
+    return new URL(url).origin === new URL(normalizeBaseUrl(baseUrl)).origin;
+  } catch {
+    return false;
+  }
 }
 
 function buildQuery(params: Params = {}): string {
@@ -128,7 +142,8 @@ export interface UploadedFile {
 }
 
 export function createClient({ baseUrl, token, proxyPrefix, onUnauthorized }: ClientConfig) {
-  const origin = proxyPrefix ?? normalizeBaseUrl(baseUrl);
+  const canvasBase = normalizeBaseUrl(baseUrl);
+  const origin = proxyPrefix ?? canvasBase;
   const apiRoot = `${origin}/api/v1`;
 
   async function fetchUrl(url: string, init?: RequestInit): Promise<Response> {
@@ -191,9 +206,10 @@ export function createClient({ baseUrl, token, proxyPrefix, onUnauthorized }: Cl
       items.push(...((await res.json()) as T[]));
 
       const next = parseNextLink(res.headers.get('Link'));
-      // The `next` URL is absolute and points at the real Canvas host. Re-root it
-      // on `origin` so it still goes through the dev proxy when that's enabled.
-      url = next ? `${origin}${new URL(next).pathname}${new URL(next).search}` : null;
+      // The `next` URL is absolute and points at the real Canvas host. Re-root it on `origin`, so it still goes
+      // through the dev proxy when that is enabled, and so the token is never sent wherever a header points.
+      const nextUrl = next ? new URL(next, canvasBase) : null;
+      url = nextUrl ? `${origin}${nextUrl.pathname}${nextUrl.search}` : null;
     }
     return items;
   }
@@ -253,7 +269,13 @@ export function createClient({ baseUrl, token, proxyPrefix, onUnauthorized }: Cl
     }
     const confirmUrl = res.redirected ? res.url : res.headers.get('Location');
     if (confirmUrl) {
-      const confirmed = await asFile(await fetchUrl(downloadTarget(confirmUrl, baseUrl, origin)));
+      // The token only goes to Canvas itself. A confirm address on any other host (it comes from the storage
+      // server's answer) is fetched without it.
+      const target = downloadTarget(confirmUrl, baseUrl, origin);
+      const answer = isCanvasOrigin(new URL(confirmUrl, canvasBase).href, baseUrl)
+        ? await fetchUrl(target)
+        : await fetch(target, { credentials: 'omit' }).catch(() => null);
+      const confirmed = answer?.ok ? await asFile(answer) : null;
       if (confirmed) return confirmed;
     }
     throw new CanvasApiError(`Canvas did not confirm the upload of ${file.name} (${res.status}).`, res.status, 'unknown');

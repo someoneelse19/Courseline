@@ -8,6 +8,8 @@ import path from 'node:path';
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 8443);
 export const hits = [];
+// Every API call the fake Canvas answered: what the extension should have picked up (or knowingly left out).
+export const apiLog = [];
 export const PORT_USED = PORT;
 
 const wrap = (b) => 'while(1);' + JSON.stringify(b);
@@ -61,10 +63,15 @@ const api = {
   '/api/v1/courses/1/assignments/5': () => ({ ...assignment(5, 'Lab report', future), description: '<p>Write up the lab. Use the <a href="/courses/1/pages/week-1">reading</a>.</p>', rubric: [{ id: 'c1', description: 'Clarity', points: 5, ratings: [{ id: 'r1', description: 'Clear', points: 5 }] }] }),
   '/api/v1/courses/1/discussion_topics/900': () => ({ id: '900', title: 'Welcome to Biology', message: '<p>Say hi</p>' }),
   '/api/v1/conversations': () => [{ id: '1', subject: 'Hello', last_message: 'hi' }],
+  '/api/v1/courses/1/front_page': () => ({ url: 'home', title: 'Biology home', body: '<p>Welcome</p>' }),
+  // Not the usual shape (no name): the extension must keep it raw, not drop it.
+  '/api/v1/courses/1/assignments/7': () => ({ id: '7', unusual: true }),
   '/api/v1/courses/1/quizzes': () => [{ id: '55', title: 'Quiz 1', html_url: `https://canvas.test:${PORT}/courses/1/quizzes/55` }],
 };
 
 const graphql = (op) => {
+  if (op === 'GetCourseHome' || op === 'GetCourseOutline') return { data: { course: { _id: '1', name: 'Biology 101' } } };
+  if (op === 'MarkSeen') return { data: { markSeen: { ok: true } } };
   if (op === 'GetAssignmentDetail') return { data: { assignment: { _id: '6', name: 'Essay draft', description: '<p>Instructions that only arrive through GraphQL.</p>', dueAt: future, pointsPossible: 20, submissionTypes: ['online_text_entry'] } } };
   return { data: {} };
 };
@@ -76,7 +83,19 @@ const pages = {
   '/grades': { first: ['/api/v1/users/self/courses'], second: [] },
   '/calendar': { first: ['/api/v1/planner/items'], second: [] },
   '/conversations': { first: ['/api/v1/conversations'], second: [] },
-  '/courses/1': { first: ['/api/v1/courses/1'], second: [] },
+  '/courses/1': {
+    first: ['/api/v1/courses/1', '/api/v1/courses/1/assignments/7'],
+    second: [],
+    // The ways a real page can ask that are easy to miss: XHR in JSON mode, GraphQL over XHR (a read and a
+    // mutation), and GraphQL sent as a Request object.
+    extra: `
+      await new Promise((done) => { const x = new XMLHttpRequest(); x.responseType = 'json'; x.open('GET', '/api/v1/courses/1/front_page'); x.onloadend = done; x.send(); });
+      const xpost = (op, kind) => new Promise((done) => { const x = new XMLHttpRequest(); x.open('POST', '/api/graphql'); x.setRequestHeader('Content-Type', 'application/json'); x.onloadend = done; x.send(JSON.stringify({ operationName: op, query: kind + ' ' + op + ' { x }', variables: { courseId: '1' } })); });
+      await xpost('GetCourseHome', 'query');
+      await xpost('MarkSeen', 'mutation');
+      await fetch(new Request('/api/graphql', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operationName: 'GetCourseOutline', query: 'query GetCourseOutline { x }', variables: { courseId: '1' } }) }));
+    `,
+  },
   '/courses/1/assignments': { first: ['/api/v1/courses/1', '/api/v1/courses/1/assignment_groups'], second: [] },
   '/courses/1/grades': { first: ['/api/v1/courses/1/students/submissions'], second: ['/api/v1/courses/1/assignment_groups'] },
   '/courses/1/modules': { first: ['/api/v1/courses/1/modules'], second: [] },
@@ -114,6 +133,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await new Promise((r) => setTimeout(r, 150));
   await Promise.all(${JSON.stringify(spec.second)}.map(get));
   ${spec.graphql ? `await post('${spec.graphql}');` : ''}
+  ${spec.extra ?? ''}
   // A write the page makes: must never be captured.
   fetch('/api/v1/courses/1/mark_read', { method: 'POST', body: '{}' });
 });
@@ -133,11 +153,13 @@ const server = https.createServer({ key: fs.readFileSync(path.join(dir, 'key.pem
     let body = '';
     for await (const c of req) body += c;
     const op = JSON.parse(body).operationName;
+    apiLog.push({ method: 'POST', path: url.pathname, search: '', status: 200, op, at: Date.now() });
     res.writeHead(200, { 'content-type': 'application/json' });
     return res.end(wrap(graphql(op)));
   }
   if (url.pathname.startsWith('/api/v1/')) {
     const handler = api[url.pathname];
+    apiLog.push({ method: req.method, path: url.pathname, search: url.search, status: handler ? 200 : 404, at: Date.now() });
     if (!handler) {
       res.writeHead(404, { 'content-type': 'application/json' });
       return res.end(JSON.stringify({ errors: [{ message: 'not found' }] }));

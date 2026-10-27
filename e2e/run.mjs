@@ -4,7 +4,7 @@
 // It exits non-zero if any check fails. Screenshots go to e2e/screenshots/.
 import fs from 'node:fs';
 import { ensureCert, start, signIn, click, panel, waitDone, go, text, typeInto, sleep, dir, pageCount, APP } from './harness.mjs';
-import { startMock, hits } from './mock-canvas.mjs';
+import { startMock, hits, apiLog } from './mock-canvas.mjs';
 
 const results = [];
 const check = (name, ok, detail = '') => {
@@ -50,6 +50,7 @@ try {
   await sleep(500);
 
   await typeInto(app, 'Your Canvas address', 'https://canvas.test:8443/');
+  const addressSavedAt = Date.now();
   await click(app, /Connect and load/);
   await waitDone(h, app);
   await sleep(1000);
@@ -151,6 +152,33 @@ try {
   await sleep(1200);
   check('Stop ends the run and closes the tab', (await pageCount(h)) === baseline && /Stopped\./.test(await panel(app)));
   await click(app, /^Close$/);
+
+  section('everything the pages read was picked up');
+  await go(app, '/settings?tab=connection');
+  await sleep(1000);
+  await typeInto(app, 'Canvas page address', '/courses/1');
+  await app.eval(`document.querySelector('input[aria-label="Canvas page address"]').form.requestSubmit()`, { userGesture: true });
+  await h.waitFor(async () => /Visited 1 of 1/.test(await panel(app)), 60000, 'the course home page');
+  await click(app, /^Close$/);
+  await sleep(1500);
+  {
+    const st = await h.storage();
+    const records = Object.entries(st).filter(([k]) => k.startsWith('cap:'));
+    const stored = new Set(records.map(([, r]) => { const u = new URL(r.url); return u.pathname + u.search; }));
+    // Every successful GET the pages made after the address was saved, for a pinned course (1, 2) or no course,
+    // except the credential endpoint, must be in storage.
+    const shouldHave = [...new Set(apiLog
+      .filter((c) => c.at >= addressSavedAt && c.method === 'GET' && c.status === 200 && c.path !== '/api/v1/jwts' && !/^\/api\/v1\/courses\/3(\/|$)/.test(c.path))
+      .map((c) => c.path + c.search))];
+    const missing = shouldHave.filter((p) => !stored.has(p));
+    check(`every API read the pages made was saved (${shouldHave.length - missing.length} of ${shouldHave.length})`, missing.length === 0, missing.slice(0, 5).join(', '));
+    const keys = records.map(([k]) => k).join(' ');
+    check('GraphQL reads are saved by name, whether sent through fetch, XHR or a Request object', ['GetAssignmentDetail', 'GetCourseHome', 'GetCourseOutline'].every((op) => keys.includes(`#${op}#`)), keys.slice(0, 200));
+    check('a GraphQL mutation is never saved', !keys.includes('#MarkSeen#') && !JSON.stringify(st).includes('markSeen'));
+    check('an XHR answered in JSON mode was read', records.some(([, r]) => r.kind === 'frontPage' && r.body?.title === 'Biology home'));
+    check('a response in an unexpected format is kept raw instead of dropped', records.some(([k, r]) => k.startsWith('cap:rejected:') && r.rejectedAs === 'assignment' && r.body?.unusual === true));
+    check('nothing from the unpinned course was kept', !records.some(([, r]) => r.courseId === 3));
+  }
 
   section('the extension popup and its button');
   const popup = await h.openTab(`chrome-extension://${h.extId}/popup.html`);

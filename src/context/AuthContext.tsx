@@ -3,7 +3,7 @@ import { createCanvasApi, type CanvasApi } from '../api/canvas';
 import { normalizeBaseUrl } from '../api/client';
 import type { UserProfile } from '../api/types';
 import { extensionInstalled, loadSnapshot, onExtensionChange, type Snapshot } from '../extension/bridge';
-import { baseUrlOf, createExtensionApi } from '../extension/extensionApi';
+import { baseUrlOf, createExtensionApi, lastUpdatedAt } from '../extension/extensionApi';
 
 // ⚠️ SECURITY: the token is stored in localStorage, which any script running on
 // this origin can read (an XSS bug or a malicious npm dependency = stolen token).
@@ -223,7 +223,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       error,
       source,
       snapshot: source === 'extension' ? snapshot : null,
-      dataVersion: snapshot ? `${snapshot.records.length}:${Math.max(0, ...snapshot.records.map((r) => r.capturedAt))}:${(snapshot.appPinned ?? []).join(',')}:${snapshot.canvasHost ?? ''}` : '',
+      dataVersion: snapshot ? `${snapshot.records.length}:${lastUpdatedAt(snapshot) ?? 0}:${(snapshot.appPinned ?? []).join(',')}:${snapshot.canvasHost ?? ''}` : '',
       extensionAvailable: extensionInstalled() && skip,
       enableExtension,
       login,

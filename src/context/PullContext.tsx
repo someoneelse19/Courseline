@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { PullPanel } from '../components/PullPanel';
 import { cancelPull, loadSnapshot, onOpenPlanRequest, onPullEvent, startPull, type PullItem, type PullStep } from '../extension/bridge';
 import { t } from '../i18n';
-import { workingCourses } from '../extension/extensionApi';
+import { snapshotHost, workingCourses } from '../extension/extensionApi';
 import { discoverLinks, pendingLinks, planLinks } from '../extension/linkDiscovery';
 import type { FreshnessKey } from '../extension/extensionApi';
 import { dashboardStep, MAX_RUN_STEPS, planCourse, planSync, stepForAddress, stepsForKind, type CourseRef, type Depth } from '../extension/pullPlan';
@@ -88,8 +88,7 @@ function fit(build: PullBuild): PullBuild {
 async function pendingDeep() {
   const snapshot = await loadSnapshot();
   if (!snapshot) return { host: null as string | null, pending: [], names: new Map<number, string | null>() };
-  const newest = [...snapshot.records].sort((a, b) => b.capturedAt - a.capturedAt)[0]?.host;
-  const host = snapshot.canvasHost ?? newest ?? null;
+  const host = snapshotHost(snapshot);
   const courses = workingCourses(snapshot);
   const names = new Map(courses.map((c) => [c.id, c.name] as const));
   if (!host) return { host, pending: [], names };
@@ -99,8 +98,7 @@ async function pendingDeep() {
 
 async function context() {
   const snapshot = await loadSnapshot();
-  const newest = snapshot ? [...snapshot.records].sort((a, b) => b.capturedAt - a.capturedAt)[0]?.host : null;
-  const host = snapshot?.canvasHost ?? newest ?? null;
+  const host = snapshot ? snapshotHost(snapshot) : null;
   const courses: CourseRef[] = snapshot ? workingCourses(snapshot).map((c) => ({ id: c.id, name: c.name })) : [];
   return { host, courses };
 }

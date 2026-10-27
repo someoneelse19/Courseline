@@ -109,8 +109,21 @@ export interface CourseSummary {
   concluded: boolean;
 }
 
+/** The most recently captured record, in one pass (snapshots hold thousands; no copy, no sort). */
+export function newestRecord(records: readonly CapturedRecord[]): CapturedRecord | undefined {
+  let newest: CapturedRecord | undefined;
+  for (const r of records) if (!newest || r.capturedAt > newest.capturedAt) newest = r;
+  return newest;
+}
+
+/** The Canvas host to work with: the address saved in the extension, else wherever the newest capture came from. */
+export function snapshotHost(snapshot: Snapshot): string | null {
+  return snapshot.canvasHost ?? newestRecord(snapshot.records)?.host ?? null;
+}
+
 /** One place that knows how to find things in a snapshot. */
 class Dataset {
+  // Per kind, oldest first: sorted once here instead of on every lookup.
   private byKind = new Map<string, CapturedRecord[]>();
 
   constructor(readonly snapshot: Snapshot) {
@@ -119,10 +132,13 @@ class Dataset {
       list.push(r);
       this.byKind.set(r.kind, list);
     }
+    for (const list of this.byKind.values()) list.sort((a, b) => a.capturedAt - b.capturedAt);
   }
 
+  /** Oldest first. Always a fresh array, so callers may reverse or change it. */
   of(kind: string, courseId?: number): CapturedRecord[] {
-    return (this.byKind.get(kind) ?? []).filter((r) => courseId === undefined || r.courseId === courseId).sort((a, b) => a.capturedAt - b.capturedAt);
+    const list = this.byKind.get(kind) ?? [];
+    return courseId === undefined ? list.slice() : list.filter((r) => r.courseId === courseId);
   }
 
   /** Every item from every captured page of a list (paged lists are saved one page per record). */
@@ -136,11 +152,14 @@ class Dataset {
   }
 
   newest(kind: string, courseId?: number): CapturedRecord | undefined {
-    return this.of(kind, courseId).at(-1);
+    const list = this.byKind.get(kind) ?? [];
+    if (courseId === undefined) return list.at(-1);
+    for (let i = list.length - 1; i >= 0; i--) if (list[i].courseId === courseId) return list[i];
+    return undefined;
   }
 
   get host(): string | null {
-    return [...this.snapshot.records].sort((a, b) => b.capturedAt - a.capturedAt)[0]?.host ?? null;
+    return newestRecord(this.snapshot.records)?.host ?? null;
   }
 }
 
@@ -210,13 +229,12 @@ export function coverage(snapshot: Snapshot) {
 
 /** When a course's data was last captured (ms), or null if never. */
 export function courseUpdatedAt(snapshot: Snapshot, courseId: number): number | null {
-  const times = snapshot.records.filter((r) => r.courseId === courseId).map((r) => r.capturedAt);
-  return times.length ? Math.max(...times) : null;
+  return newestRecord(snapshot.records.filter((r) => r.courseId === courseId))?.capturedAt ?? null;
 }
 
 /** Newest capture of anything, or null. */
 export function lastUpdatedAt(snapshot: Snapshot): number | null {
-  return snapshot.records.length ? Math.max(...snapshot.records.map((r) => r.capturedAt)) : null;
+  return newestRecord(snapshot.records)?.capturedAt ?? null;
 }
 
 export type FreshnessKey = 'assignments' | 'grades' | 'units' | 'pages' | 'files' | 'announcements' | 'upcoming' | 'course';
