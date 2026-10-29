@@ -41,6 +41,11 @@ export const navIcons = {
       <path d="M3 10h18M8 3v4M16 3v4" />
     </Icon>
   ),
+  messages: (
+    <Icon>
+      <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12z" />
+    </Icon>
+  ),
   settings: (
     <Icon>
       <path d="M4 7h10M18 7h2M4 17h2M10 17h10" />

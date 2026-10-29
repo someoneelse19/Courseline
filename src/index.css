@@ -76,9 +76,3 @@
   .dark .canvas-html [style*="background"] { background: transparent !important; }
 }
 
-@layer components {
-  /* Spreadsheet preview: scoped so it never touches other tables. */
-  .xlsx-sheet table { @apply border-collapse text-sm; }
-  .xlsx-sheet th, .xlsx-sheet td { @apply whitespace-nowrap border border-neutral-300 px-2 py-1 text-left align-top dark:border-neutral-700; }
-  .xlsx-sheet tr:first-child td, .xlsx-sheet th { @apply bg-neutral-100 font-semibold dark:bg-neutral-800; }
-}

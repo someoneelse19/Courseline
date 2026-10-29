@@ -1,20 +1,21 @@
 // Which Canvas pages to open to refresh something, as a list of steps the extension opens one at a time in
 // background tabs. Pure, so it is easy to test. (The page lists mirror what each kind of data comes from.)
-import type { FreshnessKey } from './extensionApi';
+import { SECTION_PATHS, type CourseSection, type FreshnessKey } from './extensionApi';
 import type { PullStep } from './bridge';
 import { t } from '../i18n';
 
 export type Depth = 'essential' | 'everything';
 
-/** The most pages one run opens (the extension enforces the same number). A bigger plan is cut and says so. */
-export const MAX_RUN_STEPS = 200;
-
-// The pages the app's own screens are built from.
+// The pages the app's own screens are built from. The course home carries the front page and the course menu (which
+// tabs the school shows); the Grades page carries the assignments, weights and scores in the page itself.
 const COURSE_PAGES: Array<[string, string]> = [
+  ['', 'Home'],
   ['assignments', 'Assignments'],
   ['grades', 'Grades'],
   ['modules', 'Units'],
   ['pages', 'Pages'],
+  // Files by unit needs both the units and the file list (sizes, dates, files outside units).
+  ['files', 'Files'],
 ];
 
 // Everything else a course has; opening them makes Canvas's own pages request their data.
@@ -22,7 +23,6 @@ const EXTRA_COURSE_PAGES: Array<[string, string]> = [
   ['announcements', 'Announcements'],
   ['discussion_topics', 'Discussions'],
   ['quizzes', 'Quizzes'],
-  ['files', 'Files'],
   ['assignments/syllabus', 'Syllabus'],
   ['users', 'People'],
 ];
@@ -33,11 +33,20 @@ const ACCOUNT_PAGES: Array<[string, string]> = [
   ['grades', 'All grades'],
   ['calendar', 'Calendar'],
   ['conversations', 'Inbox'],
+  // Message threads and the sent folder are read when the student opens Messages in the app, not here.
 ];
 
 export interface CourseRef {
   id: number;
   name: string | null;
+  /** Course tabs the school hides in Canvas (see hiddenSections). Their pages only redirect home, so they are skipped. */
+  hidden?: ReadonlySet<CourseSection>;
+}
+
+/** Is this course page one the school hides? (Its address is the tab's, or under it, like assignments/syllabus.) */
+function isHidden(course: CourseRef, path: string): boolean {
+  if (!course.hidden?.size || !path) return false;
+  return [...course.hidden].some((section) => SECTION_PATHS[section].includes(`/${path}`));
 }
 
 const courseName = (c: CourseRef) => c.name ?? t('Course {id}', { id: c.id });
@@ -55,28 +64,31 @@ export function planSync(host: string, courses: CourseRef[], depth: Depth = 'eve
 }
 
 export function planCourse(host: string, course: CourseRef, depth: Depth = 'everything'): PullStep[] {
-  const pages = depth === 'everything' ? [...COURSE_PAGES, ...EXTRA_COURSE_PAGES] : COURSE_PAGES;
-  return pages.map(([path, label]) => ({ url: `https://${host}/courses/${course.id}/${path}`, label: `${courseName(course)} · ${t(label)}` }));
+  const pages = (depth === 'everything' ? [...COURSE_PAGES, ...EXTRA_COURSE_PAGES] : COURSE_PAGES).filter(([path]) => !isHidden(course, path));
+  return pages.map(([path, label]) => ({ url: `https://${host}/courses/${course.id}${path ? `/${path}` : ''}`, label: `${courseName(course)} · ${t(label)}` }));
 }
 
-// The page that makes Canvas load each kind of data shown in the status bar.
-const KIND_PAGES: Record<FreshnessKey, { course: string | null; account: string | null }> = {
-  assignments: { course: 'assignments', account: null },
-  grades: { course: 'grades', account: 'grades' },
-  units: { course: 'modules', account: null },
-  pages: { course: 'pages', account: null },
-  files: { course: 'files', account: null },
-  announcements: { course: 'announcements', account: null },
-  upcoming: { course: null, account: 'calendar' },
-  course: { course: '', account: '' },
+// The pages that make Canvas load each kind of data shown in the status bar, first choice first. When a course's own
+// tab for it is hidden, the next page that still carries it is used (the Grades page lists the assignments; the course
+// home has the front page).
+const KIND_PAGES: Record<FreshnessKey, { course: string[]; account: string | null }> = {
+  assignments: { course: ['assignments', 'grades'], account: null },
+  grades: { course: ['grades'], account: 'grades' },
+  units: { course: ['modules'], account: null },
+  pages: { course: ['pages', ''], account: null },
+  files: { course: ['files'], account: null },
+  announcements: { course: ['announcements'], account: null },
+  upcoming: { course: [], account: 'calendar' },
+  course: { course: [''], account: '' },
 };
 
 /** The page(s) that refresh one kind of data, for one course or (courseId null) the account. Empty if there is none. */
 export function stepsForKind(host: string, course: CourseRef | null, key: FreshnessKey, label: string): PullStep[] {
   const target = KIND_PAGES[key];
   if (course) {
-    if (target.course === null) return [];
-    return [{ url: `https://${host}/courses/${course.id}${target.course ? `/${target.course}` : ''}`, label: `${courseName(course)} · ${label}` }];
+    const path = target.course.find((p) => !isHidden(course, p));
+    if (path === undefined) return [];
+    return [{ url: `https://${host}/courses/${course.id}${path ? `/${path}` : ''}`, label: `${courseName(course)} · ${label}` }];
   }
   if (target.account === null) return [];
   return [{ url: `https://${host}/${target.account}`, label }];
@@ -103,7 +115,10 @@ export function stepForAddress(host: string, input: string): AddressResult {
   return { ok: true, step: { url: url.href, label: `${url.pathname}${url.search}` } };
 }
 
+/** Background tabs loading at once (the extension's CONCURRENCY in extension/lib/pullRunner.js). */
+export const TABS_AT_ONCE = 4;
+
 /** Rough time for a run. Each page moves on as soon as it has loaded, so this is mostly Canvas's own load time. */
 export function estimateSeconds(stepCount: number): number {
-  return Math.round(stepCount * 4);
+  return Math.round((Math.ceil(stepCount / TABS_AT_ONCE) || 0) * 4);
 }

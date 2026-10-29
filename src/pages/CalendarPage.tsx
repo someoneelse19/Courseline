@@ -6,6 +6,7 @@ import { useAllAssignments, useCourseColors, useVisibleCourses } from '../hooks/
 import { getLanguage, getLocale, t } from '../i18n';
 import { assignmentTone, isFaded, TONE_CLASSES, type Tone } from '../lib/assignmentState';
 import { dateKey, monthGrid } from '../lib/calendar';
+import { weekStartDay } from '../lib/systemClock';
 
 // A month view of everything due, across the visible courses. Click a day to list its assignments.
 // Only assignments with a due date appear (Canvas calendar events are not included yet).
@@ -49,7 +50,8 @@ function Month({ courses }: { courses: Course[] }) {
   if (!data) return <Spinner />;
 
   const language = getLocale();
-  const weekStart = getLanguage() === 'es' ? 1 : 0; // Spain and Latin America start on Monday; the US and Brazil on Sunday
+  // The computer's first weekday; if the browser can't tell, Spanish starts on Monday and the rest on Sunday.
+  const weekStart = weekStartDay(getLanguage() === 'es' ? 1 : 0);
   const days = monthGrid(cursor.year, cursor.month, weekStart);
   const todayKey = dateKey(today);
   // 2023-01-01 was a Sunday: a fixed reference for the weekday names.

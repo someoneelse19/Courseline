@@ -8,8 +8,16 @@ Settings → Connection (or type your Canvas address in the extension's popup).
 
 **What it does**
 - Reads, in your Canvas tabs, the responses Canvas's own pages already fetch (never cookies, never requests of its
-  own while you browse, never writes). It keeps them only for the Canvas address you saved.
-- When you confirm a sync inside Courseline, it opens Canvas pages one at a time in background tabs of your current
+  own while you browse). It keeps them only for the Canvas address you saved.
+- **Sends the messages you write in Courseline**, and nothing else: only after a click on Send, only a reply or a new
+  message (checked in `lib/message.js`), only to your saved Canvas, from a Canvas tab it opens in the background,
+  using the form token Canvas puts in the page (it still reads no cookies).
+- **Reads your messages when you open Messages in Courseline**: the inbox, the sent folder and every thread, from a
+  Canvas tab in the background, with read-only requests that mark nothing as read (at most every two minutes).
+- Also reads what Canvas builds into the page instead of fetching it: the Grades page's assignments and scores, the
+  course home page, the syllabus, the Modules page, your display name, and which course tabs are in the menu. A tab
+  that is not in the menu is never loaded by Canvas, so it cannot be captured; Sync now skips it and Courseline says so.
+- When you confirm a sync inside Courseline, it opens Canvas pages a few at a time (4 tabs at once) in background tabs of your current
   window, waits until each has finished loading, and closes them.
 - Credential responses (tokens) are never saved. Email addresses and similar fields are removed. Anything older than
   90 days is deleted.

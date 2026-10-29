@@ -1,9 +1,9 @@
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import DOMPurify from 'dompurify';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { CanvasApiError } from '../api/client';
 import { useApi } from '../context/AuthContext';
 import { ErrorMessage, Spinner } from './ui';
 import { t } from '../i18n';
+import { readWorkbookStyles, type CellStyle, type SheetLayout, type WorkbookStyles } from '../lib/xlsxStyles';
 import { applyMasterBodyStyles } from '../lib/pptxFix';
 
 const Editor = lazy(() => import('@monaco-editor/react').then(m => ({ default: m.default })));
@@ -369,8 +369,10 @@ function DocxViewer({ fileUrl, zoom }: { fileUrl: string; zoom: number }) {
 
 const MAX_SHEET_ROWS = 2000;
 
+const MAX_SHEET_COLS = 200;
+
 function ExcelViewer({ fileUrl, zoom }: { fileUrl: string; zoom: number }) {
-  type Book = { xlsx: typeof import('xlsx'); wb: import('xlsx').WorkBook; names: string[] };
+  type Book = { xlsx: typeof import('xlsx'); wb: import('xlsx').WorkBook; names: string[]; styles: WorkbookStyles | null };
   const [book, setBook] = useState<Book | null>(null);
   const [active, setActive] = useState(0);
   const [status, setStatus] = useState<{ state: 'loading' } | { state: 'ready' } | { state: 'error'; message: string }>({ state: 'loading' });
@@ -385,11 +387,16 @@ function ExcelViewer({ fileUrl, zoom }: { fileUrl: string; zoom: number }) {
         const xlsx = await import('xlsx');
         // sheetRows caps how much is parsed, so a huge workbook can't freeze the page.
         const wb = await withTimeout(Promise.resolve(xlsx.read(bytes, { type: 'array', cellDates: true, sheetRows: MAX_SHEET_ROWS + 1 })), OFFICE_TIMEOUT_MS);
+        // Fills, fonts, borders and widths (.xlsx/.xlsm only; other formats show the values without them).
+        const styles = await withTimeout(readWorkbookStyles(bytes, MAX_SHEET_ROWS + 1), OFFICE_TIMEOUT_MS).catch((e) => {
+          console.warn('[file viewer] spreadsheet formatting skipped', e);
+          return null;
+        });
         if (cancelled) return;
         const hidden = new Set((wb.Workbook?.Sheets ?? []).filter((s) => s.Hidden).map((s) => s.name));
         const names = wb.SheetNames.filter((n) => !hidden.has(n));
         if (names.length === 0) throw new Error('the workbook has no visible sheets');
-        setBook({ xlsx, wb, names });
+        setBook({ xlsx, wb, names, styles });
         setStatus({ state: 'ready' });
       } catch (err) {
         console.warn('[file viewer] spreadsheet failed', err);
@@ -403,12 +410,12 @@ function ExcelViewer({ fileUrl, zoom }: { fileUrl: string; zoom: number }) {
 
   const sheet = useMemo(() => {
     if (!book) return null;
-    const ws = book.wb.Sheets[book.names[active]];
+    const name = book.names[active];
+    const ws = book.wb.Sheets[name];
     if (!ws) return null;
-    const ref = ws['!fullref'] ?? ws['!ref'];
-    const range = ref ? book.xlsx.utils.decode_range(ref) : null;
-    const total = range ? range.e.r - range.s.r + 1 : 0;
-    return { html: sanitizeSheetHtml(book.xlsx.utils.sheet_to_html(ws)), cut: total > MAX_SHEET_ROWS ? total : 0 };
+    const full = ws['!fullref'] ?? ws['!ref'];
+    const total = full ? book.xlsx.utils.decode_range(full).e.r + 1 : 0;
+    return { ws, layout: book.styles?.sheets.get(name) ?? null, cut: total > MAX_SHEET_ROWS ? total : 0 };
   }, [book, active]);
 
   if (status.state !== 'ready' || !book || !sheet) return <OfficeStatus status={status} what="spreadsheet" />;
@@ -431,8 +438,11 @@ function ExcelViewer({ fileUrl, zoom }: { fileUrl: string; zoom: number }) {
           ))}
         </div>
       )}
-      <div className={`${frameBase} xlsx-sheet min-h-0 flex-1 bg-white dark:bg-neutral-900`}>
-        <div style={{ zoom }} dangerouslySetInnerHTML={{ __html: sheet.html }} />
+      {/* Always white, as in Excel, so the file's own colors read as they were made (in dark mode too). */}
+      <div className={`${frameBase} min-h-0 flex-1 bg-white text-black`} style={{ colorScheme: 'light' }}>
+        <div style={{ zoom }}>
+          <SheetTable xlsx={book.xlsx} ws={sheet.ws} layout={sheet.layout} xfs={book.styles?.xfs ?? []} />
+        </div>
       </div>
       {sheet.cut > 0 && (
         <p className="shrink-0 text-xs text-neutral-500 dark:text-neutral-400">
@@ -443,21 +453,109 @@ function ExcelViewer({ fileUrl, zoom }: { fileUrl: string; zoom: number }) {
   );
 }
 
-// The sheet's cell text is untrusted (it comes from the file), so the generated HTML is sanitized
-// before it is injected. Our Canvas token lives in localStorage; never skip this.
-function sanitizeSheetHtml(html: string): string {
-  const hook = (node: Element) => {
-    if (node.tagName === 'A') {
-      node.setAttribute('target', '_blank');
-      node.setAttribute('rel', 'noopener noreferrer');
-    }
+const ALIGN: Record<string, CSSProperties['textAlign']> = { left: 'left', center: 'center', centerContinuous: 'center', right: 'right', justify: 'justify', fill: 'left', distributed: 'justify' };
+const VALIGN: Record<string, CSSProperties['verticalAlign']> = { top: 'top', center: 'middle', bottom: 'bottom', justify: 'middle', distributed: 'middle' };
+
+/** A cell's formatting as inline CSS. Numbers align right and text left when the file does not say otherwise. */
+function cellCss(style: CellStyle | undefined, isNumber: boolean, gridLines: boolean): CSSProperties {
+  const grid = gridLines ? '1px solid #e2e2e2' : 'none';
+  const s = style ?? {};
+  return {
+    backgroundColor: s.bg,
+    color: s.color ?? '#000000',
+    fontWeight: s.bold ? 700 : undefined,
+    fontStyle: s.italic ? 'italic' : undefined,
+    textDecoration: [s.underline && 'underline', s.strike && 'line-through'].filter(Boolean).join(' ') || undefined,
+    fontSize: s.fontSizePt ? `${(s.fontSizePt * 96) / 72}px` : undefined,
+    fontFamily: s.fontName ? `"${s.fontName.replace(/"/g, '')}", Calibri, Carlito, Arial, sans-serif` : undefined,
+    textAlign: (s.hAlign && ALIGN[s.hAlign]) || (isNumber ? 'right' : 'left'),
+    verticalAlign: (s.vAlign && VALIGN[s.vAlign]) || 'bottom',
+    whiteSpace: s.wrap ? 'pre-wrap' : 'pre',
+    paddingLeft: s.indent ? `${4 + s.indent * 9}px` : undefined,
+    borderTop: s.borders?.top ?? grid,
+    borderRight: s.borders?.right ?? grid,
+    borderBottom: s.borders?.bottom ?? grid,
+    borderLeft: s.borders?.left ?? grid,
   };
-  DOMPurify.addHook('afterSanitizeAttributes', hook);
-  try {
-    return DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
-  } finally {
-    DOMPurify.removeHook('afterSanitizeAttributes', hook);
+}
+
+/**
+ * The sheet as a real table, drawn from SheetJS's values (cell.w is the text as Excel shows it) and the formatting
+ * read from the file (lib/xlsxStyles.ts): fills, fonts, borders, alignment, widths, merged cells, hidden rows and
+ * columns, gridlines. Built as elements, never as HTML, so nothing in the file can run in the page.
+ */
+export function SheetTable({ xlsx, ws, layout, xfs }: { xlsx: typeof import('xlsx'); ws: import('xlsx').WorkSheet; layout: SheetLayout | null; xfs: CellStyle[] }) {
+  const ref = ws['!ref'];
+  if (!ref) return <p className="p-4 text-sm text-neutral-500">{t('This sheet is empty.')}</p>;
+  const range = xlsx.utils.decode_range(ref);
+  const lastRow = Math.min(range.e.r, range.s.r + MAX_SHEET_ROWS - 1);
+  const lastCol = Math.min(range.e.c, MAX_SHEET_COLS - 1);
+  const firstRow = 0;
+  const firstCol = 0;
+  const gridLines = layout?.showGridLines ?? true;
+
+  // Merged cells: the top-left one spans, the others are not drawn.
+  const span = new Map<string, { rows: number; cols: number }>();
+  const covered = new Set<string>();
+  for (const m of ws['!merges'] ?? []) {
+    span.set(`${m.s.r}:${m.s.c}`, { rows: m.e.r - m.s.r + 1, cols: m.e.c - m.s.c + 1 });
+    for (let r = m.s.r; r <= m.e.r; r++) for (let c = m.s.c; c <= m.e.c; c++) if (r !== m.s.r || c !== m.s.c) covered.add(`${r}:${c}`);
   }
+  const cols: number[] = [];
+  for (let c = firstCol; c <= lastCol; c++) if (!layout?.cols.get(c)?.hidden && !ws['!cols']?.[c]?.hidden) cols.push(c);
+  const rows: number[] = [];
+  for (let r = firstRow; r <= lastRow; r++) if (!layout?.rows.get(r)?.hidden && !ws['!rows']?.[r]?.hidden) rows.push(r);
+  const widthOf = (c: number) => layout?.cols.get(c)?.widthPx ?? (ws['!cols']?.[c]?.wpx ? Math.round(ws['!cols'][c].wpx!) : (layout?.defaultColWidthPx ?? 64));
+  const header = 'sticky bg-neutral-100 px-1.5 text-center text-[11px] font-normal text-neutral-500 border border-neutral-300';
+
+  return (
+    <table className="border-separate text-[14.67px] leading-tight" style={{ borderSpacing: 0, fontFamily: 'Calibri, Carlito, Arial, sans-serif', tableLayout: 'fixed' }}>
+      <colgroup>
+        <col style={{ width: 40 }} />
+        {cols.map((c) => (
+          <col key={c} style={{ width: widthOf(c) }} />
+        ))}
+      </colgroup>
+      <thead>
+        <tr>
+          <th className={`${header} left-0 top-0 z-20`} />
+          {cols.map((c) => (
+            <th key={c} className={`${header} top-0 z-10`}>
+              {xlsx.utils.encode_col(c)}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r} style={{ height: layout?.rows.get(r)?.heightPx ?? layout?.defaultRowHeightPx ?? 20 }}>
+            <th className={`${header} left-0 z-10`}>{r + 1}</th>
+            {cols.map((c) => {
+              const key = `${r}:${c}`;
+              if (covered.has(key)) return null;
+              const address = xlsx.utils.encode_cell({ r, c });
+              const cell = ws[address] as import('xlsx').CellObject | undefined;
+              const style = xfs[layout?.cellStyle.get(address) ?? 0];
+              const text = cell ? (cell.w ?? (cell.v instanceof Date ? cell.v.toLocaleDateString() : String(cell.v ?? ''))) : '';
+              const link = cell?.l?.Target && /^https?:\/\//i.test(cell.l.Target) ? cell.l.Target : null;
+              const sp = span.get(key);
+              return (
+                <td key={c} rowSpan={sp?.rows} colSpan={sp?.cols} style={{ ...cellCss(style, cell?.t === 'n', gridLines), overflow: 'hidden', padding: '1px 4px' }}>
+                  {link ? (
+                    <a href={link} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: style?.color ?? '#0563C1' }}>
+                      {text}
+                    </a>
+                  ) : (
+                    text
+                  )}
+                </td>
+              );
+            })}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
 }
 
 // Slide shape comes from the file itself (<p:sldSz cx= cy=> in ppt/presentation.xml), so 4:3, 16:9 and

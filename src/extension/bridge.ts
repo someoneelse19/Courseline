@@ -1,3 +1,5 @@
+import { API_ONLY } from '../edition';
+
 // Talks to the Courseline browser extension (extension/bridge.js) through window messages. The extension is the only
 // source of data when there is no Canvas token. Everything here degrades to "no extension" without throwing.
 
@@ -10,6 +12,8 @@ export interface CapturedRecord {
   url: string;
   capturedAt: number; // ms since epoch
   body: unknown;
+  /** GraphQL reads: the variables the page sent (which folder, which course...). */
+  variables?: Record<string, unknown>;
 }
 
 export interface KindHealth {
@@ -40,9 +44,9 @@ const fromThisPage = (event: MessageEvent) =>
 const APP = 'courseline-app';
 const EXT = 'courseline-extension';
 
-/** True when the extension's bridge has announced itself on this page (it sets a data attribute at load). */
+/** True when the extension's bridge has announced itself on this page (it sets a data attribute at load). Never in the API-token edition. */
 export function extensionInstalled(): boolean {
-  return typeof document !== 'undefined' && !!document.documentElement.dataset.courselineExtension;
+  return !API_ONLY && typeof document !== 'undefined' && !!document.documentElement.dataset.courselineExtension;
 }
 
 function ask<T>(type: string, timeoutMs: number, payload: object = {}): Promise<T | null> {
@@ -123,6 +127,56 @@ export async function startPull(steps: PullStep[], continueFrom?: string): Promi
   if (!reply) return { ok: false, error: 'The extension did not answer. Reload this page and try again.' };
   if (reply.ok && reply.runId) return { ok: true, runId: reply.runId, total: reply.total ?? steps.length };
   return { ok: false, error: reply.busy ? 'A sync is already running.' : (reply.error ?? 'The extension could not start that.') };
+}
+
+/** An attached file as it travels to the extension: plain data only (messages cannot carry a File). */
+export interface FileForExtension {
+  name: string;
+  type: string;
+  data: string; // base64
+}
+
+export type SendRequest =
+  | { kind: 'reply'; conversationId: number; body: string; files?: FileForExtension[] }
+  | { kind: 'new'; recipients: number[]; subject: string; body: string; contextCode?: string; files?: FileForExtension[] };
+
+/** Files read into base64, for sendMessage. */
+export async function filesForExtension(files: readonly File[]): Promise<FileForExtension[]> {
+  const out: FileForExtension[] = [];
+  for (const f of files) {
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    out.push({ name: f.name, type: f.type || 'application/octet-stream', data: btoa(binary) });
+  }
+  return out;
+}
+
+/**
+ * Sends a message through the extension (the student's own Canvas session, from a Canvas tab it opens in the
+ * background). Must be called from a click: the extension refuses otherwise. Resolves with Canvas's answer (the
+ * conversation, or for a new message the conversations it created) or an error message.
+ */
+export async function sendMessage(request: SendRequest): Promise<{ ok: true; result: unknown } | { ok: false; error: string }> {
+  // Uploading attachments from the Canvas tab can take a while: a minute plus a little per file.
+  const reply = await ask<{ ok?: boolean; result?: unknown; error?: string }>('sendMessage', 60000 + (request.files?.length ?? 0) * 30000, { request });
+  if (!reply) return { ok: false, error: 'The extension did not answer. Reload this page and try again.' };
+  return reply.ok ? { ok: true, result: reply.result } : { ok: false, error: reply.error ?? 'Canvas did not take the message.' };
+}
+
+/**
+ * Asks the extension to read the inbox, the sent folder and every thread from Canvas (a background Canvas tab), when
+ * the student opens Messages. Needs a click (opening Messages is one): `needsClick` when there was none.
+ */
+export async function refreshMail(): Promise<{ ok: true; skipped?: boolean } | { ok: false; error: string; needsClick?: boolean }> {
+  const reply = await ask<{ ok?: boolean; skipped?: boolean; error?: string; needsClick?: boolean }>('refreshMail', 90000);
+  if (!reply) return { ok: false, error: 'The extension did not answer. Reload this page and try again.' };
+  return reply.ok ? { ok: true, skipped: reply.skipped } : { ok: false, error: reply.error ?? 'The messages could not be loaded.', needsClick: reply.needsClick };
+}
+
+/** The pass is over: the extension forgets the last run, so nothing can continue it. */
+export async function endChain(): Promise<void> {
+  await ask('endChain', 1500);
 }
 
 /** Stops after the page that is loading. */

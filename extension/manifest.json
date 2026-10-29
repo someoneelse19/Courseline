@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Courseline Capture",
   "version": "0.1.0",
-  "description": "Passively saves the Canvas data your own browsing already loads, so Courseline can show it. Works on any Canvas site it recognizes. Reads no cookies and makes no requests of its own. [Updated Oct 27, 2026 9:02 PM CET]",
+  "description": "Saves the Canvas data your own browsing already loads, so Courseline can show it, and reads and sends your messages when you use Messages in Courseline. Works on any Canvas site it recognizes. Reads no cookies. [Updated Oct 29, 2026 3:06 PM CET]",
   "permissions": [
     "storage",
     "unlimitedStorage"
@@ -49,7 +49,8 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "lib/pullRunner.js"
+        "lib/pullRunner.js",
+        "lib/message.js"
       ],
       "matches": [
         "http://localhost/*",

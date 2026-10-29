@@ -89,7 +89,7 @@ const pages = {
     // The ways a real page can ask that are easy to miss: XHR in JSON mode, GraphQL over XHR (a read and a
     // mutation), and GraphQL sent as a Request object.
     extra: `
-      await new Promise((done) => { const x = new XMLHttpRequest(); x.responseType = 'json'; x.open('GET', '/api/v1/courses/1/front_page'); x.onloadend = done; x.send(); });
+      await new Promise((done) => { const x = new XMLHttpRequest(); x.responseType = 'json'; x.open('GET', '/api/v1/courses/1/front_page'); x.setRequestHeader('Accept', 'application/json'); x.onloadend = done; x.send(); });
       const xpost = (op, kind) => new Promise((done) => { const x = new XMLHttpRequest(); x.open('POST', '/api/graphql'); x.setRequestHeader('Content-Type', 'application/json'); x.onloadend = done; x.send(JSON.stringify({ operationName: op, query: kind + ' ' + op + ' { x }', variables: { courseId: '1' } })); });
       await xpost('GetCourseHome', 'query');
       await xpost('MarkSeen', 'mutation');
@@ -165,6 +165,9 @@ const server = https.createServer({ key: fs.readFileSync(path.join(dir, 'key.pem
       return res.end(JSON.stringify({ errors: [{ message: 'not found' }] }));
     }
     res.writeHead(200, { 'content-type': 'application/json' });
+    // Like Canvas: a request that asks for plain JSON gets it without the `while(1);` guard (a JSON-mode XHR could
+    // not parse it otherwise).
+    if (req.headers.accept === 'application/json') return res.end(JSON.stringify(handler(url)));
     return res.end(wrap(handler(url)));
   }
   const spec = pages[url.pathname];

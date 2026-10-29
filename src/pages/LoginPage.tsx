@@ -1,6 +1,7 @@
 import { CanvasConnection } from '../components/CanvasConnection';
 import { TokenForm } from '../components/TokenForm';
 import { useAuth } from '../context/AuthContext';
+import { API_ONLY } from '../edition';
 import { extensionInstalled } from '../extension/bridge';
 import { t } from '../i18n';
 
@@ -19,7 +20,9 @@ export function LoginPage() {
           </p>
         )}
 
-        {installed ? (
+        {API_ONLY ? (
+          <TokenForm />
+        ) : installed ? (
           <>
             <CanvasConnection variant="login" />
             <details className="rounded-md border border-neutral-200 p-3 dark:border-neutral-800">

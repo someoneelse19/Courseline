@@ -20,6 +20,9 @@ const ROUTES = [
   ['pages', /^\/courses\/(\d+)\/pages$/, allObjs],
   ['page', /^\/courses\/(\d+)\/pages\/[^/]+$/, (b) => has(b, 'url')],
   ['files', /^\/courses\/(\d+)\/files$/, allObjs],
+  // The Files page lists a folder's files and subfolders here (no course in the address: each file names its course
+  // in context_asset_string).
+  ['folderContents', /^\/folders\/(\d+)\/all$/, allObjs],
   ['upcoming', /^\/users\/self\/upcoming_events$/, allObjs],
   ['announcements', /^\/announcements$/, allObjs],
   ['frontPage', /^\/courses\/(\d+)\/front_page$/, (b) => has(b, 'url')],
@@ -143,6 +146,51 @@ export function classify(rawUrl, body, operation, variables) {
   };
 }
 
+// Data Canvas builds into the page itself instead of fetching it (window.ENV, and the grades table), read by inject.js
+// once the page is recognised as Canvas. Some of a course only ever arrives this way: the student Grades page fetches
+// no assignments or scores, and the course home's front page is in ENV.WIKI_PAGE. [kind, shape check]
+const PAGE_KINDS = {
+  courseNav: (b) => isObj(b) && allObjs(b.tabs) && b.tabs.every((t) => typeof t.href === 'string'),
+  gradesPage: (b) => isObj(b) && allObjs(b.assignment_groups) && allObjs(b.submissions) && allObjs(b.assignments),
+  syllabus: (b) => isObj(b) && typeof b.syllabus_body === 'string',
+  wikiPage: (b) => has(b, 'url', 'title') && typeof b.body === 'string',
+  modulesPage: (b) => isObj(b) && allObjs(b.modules) && b.modules.every((m) => allObjs(m.items)),
+  // Not about a course: who is signed in. Filed under the Canvas root (`https://<host>/#page:currentUser`).
+  currentUser: (b) => has(b, 'id', 'display_name'),
+};
+const ACCOUNT_PAGE_KINDS = new Set(['currentUser']);
+
+/**
+ * Classifies data read from a Canvas page (see PAGE_KINDS). `rawUrl` is `https://<host>/courses/<id>#page:...`.
+ * A wiki page is filed as `frontPage` or `page`, the same kinds (and shape) as the API's, so the readers need nothing new.
+ * @returns {{kind: string, courseId: number, shapeOk: boolean, key: string, host: string, route: string} | null}
+ */
+export function classifyPage(page, rawUrl, body) {
+  if (!Object.hasOwn(PAGE_KINDS, page)) return null;
+  let url;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return null;
+  }
+  const shapeOk = Boolean(PAGE_KINDS[page](body));
+  if (ACCOUNT_PAGE_KINDS.has(page)) {
+    if (url.pathname !== '/') return null;
+    return { kind: page, courseId: null, shapeOk, key: `${url.host}/#page:${page}`, host: url.host, route: `PAGE / ${page}` };
+  }
+  const course = /^\/courses\/(\d+)$/.exec(url.pathname);
+  if (!course) return null;
+  let kind = page;
+  let key = `${url.host}/courses/${course[1]}#page:${page}`;
+  if (page === 'wikiPage') {
+    kind = body?.front_page === true ? 'frontPage' : 'page';
+    if (kind === 'page') key += `:${String(body?.url ?? '').slice(0, 200)}`;
+  }
+  // One record per grading period the Grades page showed, so viewing one period never replaces another.
+  if (page === 'gradesPage' && /^\d{1,15}$/.test(String(body?.grading_period_id ?? ''))) key += `:gp${body.grading_period_id}`;
+  return { kind, courseId: Number(course[1]), shapeOk, key, host: url.host, route: `PAGE /courses/:id ${page}` };
+}
+
 /** Should a response about this course be kept? Always, until the pinned set is known; then only pinned courses. */
 export function keepCourse(courseId, pinnedIds) {
   return courseId === null || !Array.isArray(pinnedIds) || pinnedIds.includes(courseId);
@@ -158,7 +206,7 @@ export function sameOrigin(url, senderUrl) {
 }
 
 const SENSITIVE_KEYS = new Set([
-  'email', 'primary_email', 'login_id', 'sis_user_id', 'integration_id', 'avatar_url', 'avatarUrl',
+  'email', 'primary_email', 'login_id', 'sis_user_id', 'integration_id', 'avatar_url', 'avatarUrl', 'avatar_image_url',
   // Credentials, wherever one turns up inside an otherwise ordinary response.
   'token', 'access_token', 'refresh_token', 'session_token', 'password', 'client_secret',
 ]);

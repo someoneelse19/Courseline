@@ -8,6 +8,7 @@ import { useQueryStore } from '../context/DataContext';
 import { useCourseStyles } from '../context/CourseStyleContext';
 import { DEFAULT_COURSE_ICON, type CourseIconKey } from '../lib/courseIcons';
 import { buildCourseColors, NEUTRAL_COURSE_COLOR } from '../lib/courseColor';
+import type { MailScope } from '../api/types';
 import { useQuery } from './useQuery';
 
 export function useCourses() {
@@ -125,4 +126,27 @@ export function useDiscussions(courseId: number) {
 export function useAssignmentGroups(courseId: number) {
   const api = useApi();
   return useQuery(`assignmentGroups:${courseId}`, () => api.getAssignmentGroups(courseId));
+}
+
+// --- Inbox -------------------------------------------------------------------------------------------------------
+
+export function useConversations(scope: MailScope) {
+  const api = useApi();
+  return useQuery(`conversations:${scope}`, () => api.getConversations(scope));
+}
+
+export function useConversation(id: number) {
+  const api = useApi();
+  return useQuery(`conversation:${id}`, () => api.getConversation(id));
+}
+
+export function useUnreadCount() {
+  const api = useApi();
+  return useQuery('conversations:unread', api.getUnreadCount);
+}
+
+/** Teachers, TAs and classmates of a course: who the student can message about it. */
+export function useCourseRecipients(courseId: number | null) {
+  const api = useApi();
+  return useQuery(`recipients:${courseId ?? 'none'}`, async () => (courseId ? api.getCourseRecipients(courseId) : []));
 }

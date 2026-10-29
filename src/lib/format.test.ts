@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Course } from '../api/types';
-import { courseIdFromContext, formatBytes, formatGrade, getGrade } from './format';
+import { courseIdFromContext, formatAgoShort, formatBytes, formatGrade, getGrade } from './format';
 
 const course = (enrollments: Course['enrollments']): Course => ({ id: 1, name: 'C', enrollments });
 
@@ -29,5 +29,14 @@ describe('small helpers', () => {
     expect(courseIdFromContext('course_123')).toBe(123);
     expect(courseIdFromContext('user_5')).toBeNull();
     expect(courseIdFromContext(undefined)).toBeNull();
+  });
+});
+
+describe('formatAgoShort', () => {
+  it('is short enough for the sidebar', () => {
+    const now = Date.parse('2026-10-28T10:00:00Z');
+    expect(formatAgoShort(now - 9 * 60e3, now)).toMatch(/^9\s?min/);
+    expect(formatAgoShort(now - 3 * 3600e3, now)).toMatch(/^3\s?hr/);
+    expect(formatAgoShort(now - 2 * 86400e3, now)).toMatch(/^2\s?days?/);
   });
 });

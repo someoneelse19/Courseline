@@ -5,6 +5,12 @@ talks directly to your school's Canvas API with a personal access token. There i
 
 React · TypeScript · Vite · Tailwind CSS 4
 
+**Two editions, one codebase.** The `main` branch is the **API-token edition**: sign-in by access token only, and
+the app never looks for or talks to the browser extension. The `dev` branch is the full app, with the extension as a
+second way in. Both have every other feature. The only difference is [`edition.json`](edition.json)
+(`"apiOnly": true` on `main`), so merging `dev` into `main` keeps `main` API-only. Any build can be made API-only with
+`COURSELINE_EDITION=api`.
+
 ![Courseline dashboard](docs/screenshots/dashboard.png)
 
 ## What it does
@@ -15,11 +21,16 @@ React · TypeScript · Vite · Tailwind CSS 4
   and an explicit Download button. Nothing downloads unless you press that button.
 - **In-depth grades page.** Grade over time, assignment-group breakdown with weights and drop rules, what-if scores
   and a "what do I need to reach X%" calculator.
+- **Messages that feel like texting.** Your Canvas Inbox and sent messages as conversations, each a thread of
+  bubbles with its subject on top; reply with Enter, or start a new message to a course's teachers (Canvas's own
+  "message this teacher" links open it filled in). Works with a token and with the extension.
 - **Dark mode and a custom accent color**, plus a setting to pick which courses to show.
 - **AI export tab in every course**: packs the syllabus, units, pages, assignments and file text into a zip an AI can use as a tutor (stays on your computer).
 - **No access token needed, optionally.** A Chrome-based browser extension (in `extension/`) saves the data your own
   Canvas pages load, and Courseline reads it, with a live preview, per-course freshness and one-click refresh of any
-  page. See [Use it without a token](#use-it-without-a-token).
+  page. See [Use it without a token](#use-it-without-a-token). Not in the API-token edition (`main`).
+- **Times follow your computer**: 12- or 24-hour clock and the first day of the week (on a Mac, read from System
+  Settings by the dev server, since browsers don't pass that on).
 - **English, Spanish and Brazilian Portuguese**, switchable in Settings (defaults to your browser's language).
 
 ## Screenshots
@@ -46,13 +57,19 @@ It works in Chrome, Arc, Edge, Brave and other Chromium browsers.
    pick the `extension/` folder of this project.
 2. Start the app (`npm run dev`) and open <http://localhost:5173>.
 3. On the login page, type your Canvas address and press **Connect and load my courses**. A panel at the bottom right
-   shows your Canvas pages loading one at a time in background tabs; you are signed in as soon as data arrives.
+   shows your Canvas pages loading, a few at a time, in background tabs; you are signed in as soon as data arrives.
 4. **Settings → Connection** has the whole setup: the extension, your Canvas address, Sync now, pulling any single page,
    and everything that was captured.
 
 What it can and cannot do: it shows courses, assignments, grades (worked out from the scores it saw), units, pages,
-announcements and discussions. Opening files, submitting work and replying to feedback need a token (those buttons say
-so and send you to Canvas). It only reads what your own Canvas pages load, only from the address you saved, and keeps
+announcements, discussions and the syllabus. Some of that Canvas builds into the page instead of loading it (the Grades
+page, the course home page, the syllabus), and the extension reads it from the page too. **Messages** work too: your
+Inbox and sent folder come from Canvas's own Inbox page, and when you press Send the extension sends it from a Canvas
+tab it opens in the background (only after your click, only to your Canvas). Opening files, submitting work and
+replying to assignment feedback need a token (those buttons say so and send you to Canvas). **If your school hides a course tab
+in Canvas** (some courses only show Home, Announcements, Grades and People), no Canvas page ever loads that data, so the
+extension cannot see it: Courseline says it is "not in the Canvas menu" there, and a token shows it. The Grades page still gives
+those courses their assignments and grade. It only reads what your own Canvas pages load, only from the address you saved, and keeps
 it on your computer. Read the security notes in [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md#9-security-model) before
 sharing it with anyone.
 

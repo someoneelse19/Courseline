@@ -1,13 +1,14 @@
 import type { Course } from '../api/types';
 import { getLocale, t } from '../i18n';
+import { withClock } from './systemClock';
 
-// Formatters follow the app language (not just the browser's), cached per language.
+// Formatters follow the app language (not just the browser's) and the computer's 12/24-hour clock, cached per language.
 const formatters = new Map<string, Intl.DateTimeFormat>();
 function dateFmt(): Intl.DateTimeFormat {
   const locale = getLocale();
   let fmt = formatters.get(locale);
   if (!fmt) {
-    fmt = new Intl.DateTimeFormat(locale, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    fmt = new Intl.DateTimeFormat(locale, withClock({ weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }));
     formatters.set(locale, fmt);
   }
   return fmt;
@@ -67,4 +68,14 @@ export function formatAgo(thenMs: number, nowMs: number = Date.now()): string {
   if (abs < 3600) return rtf.format(Math.round(seconds / 60), 'minute');
   if (abs < 86400) return rtf.format(Math.round(seconds / 3600), 'hour');
   return rtf.format(Math.round(seconds / 86400), 'day');
+}
+
+/** The same, short enough for a narrow column: "now", "9 min", "3 hr", "2 days" (in the app's language). */
+export function formatAgoShort(thenMs: number, nowMs: number = Date.now()): string {
+  const abs = Math.abs(Math.round((nowMs - thenMs) / 1000));
+  const unit = (value: number, u: 'minute' | 'hour' | 'day') => new Intl.NumberFormat(getLocale(), { style: 'unit', unit: u, unitDisplay: 'short' }).format(value);
+  if (abs < 45) return new Intl.RelativeTimeFormat(getLocale(), { numeric: 'auto' }).format(0, 'second');
+  if (abs < 3600) return unit(Math.round(abs / 60), 'minute');
+  if (abs < 86400) return unit(Math.round(abs / 3600), 'hour');
+  return unit(Math.round(abs / 86400), 'day');
 }

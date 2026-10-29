@@ -4,6 +4,7 @@ import { CapturedDataBrowser } from '../components/CapturedDataBrowser';
 import { TokenForm } from '../components/TokenForm';
 import { useAuth } from '../context/AuthContext';
 import { usePull } from '../context/PullContext';
+import { API_ONLY } from '../edition';
 import { extensionInstalled } from '../extension/bridge';
 import { useExtensionSetup } from '../extension/useExtensionSetup';
 import { useSearchParams } from 'react-router-dom';
@@ -139,7 +140,7 @@ function ConnectionTab() {
             : t('Right now: an access token for {host}.', { host: baseUrl ?? '—' })}
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
-          {!usingExtension && (
+          {!usingExtension && !API_ONLY && (
             <button
               type="button"
               disabled={!setup.installed || setup.recordCount === 0}
@@ -157,16 +158,18 @@ function ConnectionTab() {
             {t('Log out')}
           </button>
         </div>
-        {!usingExtension && (!setup.installed || setup.recordCount === 0) && (
+        {!usingExtension && !API_ONLY && (!setup.installed || setup.recordCount === 0) && (
           <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
             {t('Set up the extension below first; this switches as soon as it has your data.')}
           </p>
         )}
       </Card>
 
-      <Card title={t('Browser extension')}>
-        <CanvasConnection variant="settings" />
-      </Card>
+      {!API_ONLY && (
+        <Card title={t('Browser extension')}>
+          <CanvasConnection variant="settings" />
+        </Card>
+      )}
 
       {setup.installed && <PullAPage />}
 

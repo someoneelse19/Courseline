@@ -7,6 +7,7 @@ export type ErrorKind =
   | 'rate_limit'
   | 'not_found'
   | 'network' // fetch itself failed: offline, DNS, or CORS
+  | 'hidden' // extension mode: not in the course's Canvas menu, so no Canvas page loads it (a token can show it)
   | 'server'
   | 'unknown';
 
@@ -240,12 +241,13 @@ export function createClient({ baseUrl, token, proxyPrefix, onUnauthorized }: Cl
    *      browser follows redirects itself; if that final Canvas URL needs the token (401/403), or the answer
    *      only carries a Location header, we GET it with auth. The confirmed file object holds the new file id.
    */
-  async function uploadFile(slotPath: string, file: File): Promise<UploadedFile> {
+  async function uploadFile(slotPath: string, file: File, extra: Record<string, string> = {}): Promise<UploadedFile> {
     const slot = await send<{ upload_url: string; upload_params?: Record<string, string>; file_param?: string }>('POST', slotPath, {
       name: file.name,
       size: file.size,
       content_type: file.type || undefined,
       on_duplicate: 'rename',
+      ...extra,
     });
 
     const form = new FormData();

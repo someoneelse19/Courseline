@@ -6,6 +6,9 @@ interface ImportMetaEnv {
   readonly VITE_USE_DEV_PROXY?: string;
 }
 
+/** Set by vite.config.ts from edition.json; read it through src/edition.ts. */
+declare const __API_ONLY__: boolean;
+
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }

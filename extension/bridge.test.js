@@ -27,7 +27,7 @@ function setup() {
   globalThis.chrome = {
     runtime: {
       getManifest: () => ({ version: '9.9.9' }),
-      getURL: () => runnerPath,
+      getURL: (p) => (p ? resolve('extension', p) : runnerPath),
       onMessage: { addListener: (fn) => (fromExtension = fn) },
       sendMessage: vi.fn(async (msg) => {
         sent.push(msg);
@@ -80,7 +80,8 @@ describe('bridge.js pull', () => {
 
   it('lets a confirmed run continue without a second click, but only from the run that just finished', async () => {
     await ask({ id: 'first', type: 'pull', steps });
-    await new Promise((r) => setTimeout(r, 4000));
+    // Wait for the run to end (not a fixed time: a loaded machine can be slower).
+    for (let i = 0; i < 100 && !replies.some((r) => r.type === 'pullDone' && r.runId === 'first'); i++) await new Promise((r) => setTimeout(r, 100));
     active = false;
     await ask({ id: 'second', type: 'pull', steps, continueFrom: 'first' });
     expect(replies.some((r) => r.id === 'second' && r.ok)).toBe(true);
@@ -94,17 +95,47 @@ describe('bridge.js pull', () => {
 describe('bridge.js pull safety', () => {
   const steps = [{ url: 'https://school.test/courses/1/grades', label: 'Grades' }];
 
-  it('a continuation is single-use and cannot be chained: more runs need a click', async () => {
+  it('a clicked run can be continued round after round, each time only from the run that just ended', async () => {
     await ask({ id: 'one', type: 'pull', steps });
     await new Promise((r) => setTimeout(r, 1500));
-    active = false;
+    active = false; // no click from here on
     await ask({ id: 'two', type: 'pull', steps, continueFrom: 'one' });
     expect(replies.some((r) => r.id === 'two' && r.ok)).toBe(true);
     await new Promise((r) => setTimeout(r, 1500));
-    await ask({ id: 'three', type: 'pull', steps, continueFrom: 'two' }); // a continuation cannot be continued
-    expect(replies.some((r) => r.id === 'three' && r.ok)).toBe(false);
-    await ask({ id: 'four', type: 'pull', steps, continueFrom: 'one' }); // and the first was already used up
+    await ask({ id: 'three', type: 'pull', steps, continueFrom: 'two' }); // the next round of linked pages
+    expect(replies.some((r) => r.id === 'three' && r.ok)).toBe(true);
+    await new Promise((r) => setTimeout(r, 1500));
+    await ask({ id: 'four', type: 'pull', steps, continueFrom: 'one' }); // not the run that just ended
     expect(replies.some((r) => r.id === 'four' && r.ok)).toBe(false);
+    await ask({ id: 'five', type: 'pull', steps, continueFrom: 'nobody' }); // nor one that never ran
+    expect(replies.some((r) => r.id === 'five' && r.ok)).toBe(false);
+  }, 20000);
+
+  it('a stopped run ends the chain', async () => {
+    pageDelay = 800; // Stop arrives while the page is still loading
+    await ask({ id: 'a', type: 'pull', steps });
+    await ask({ id: 'stop', type: 'cancelPull' });
+    await new Promise((r) => setTimeout(r, 1500));
+    active = false;
+    await ask({ id: 'b', type: 'pull', steps, continueFrom: 'a' });
+    expect(replies.some((r) => r.id === 'b' && r.ok)).toBe(false);
+  }, 10000);
+
+  it('Stop between rounds, or the app saying the pass is over, ends the chain', async () => {
+    await ask({ id: 'r1', type: 'pull', steps });
+    await new Promise((r) => setTimeout(r, 1500));
+    await ask({ id: 'x', type: 'cancelPull' }); // no run going: the app was working out the next round
+    active = false;
+    await ask({ id: 'r2', type: 'pull', steps, continueFrom: 'r1' });
+    expect(replies.some((r) => r.id === 'r2' && r.ok)).toBe(false);
+
+    active = true;
+    await ask({ id: 'r3', type: 'pull', steps });
+    await new Promise((r) => setTimeout(r, 1500));
+    await ask({ id: 'y', type: 'endChain' });
+    active = false;
+    await ask({ id: 'r4', type: 'pull', steps, continueFrom: 'r3' });
+    expect(replies.some((r) => r.id === 'r4' && r.ok)).toBe(false);
   }, 15000);
 
   it('turns away a second start that arrives while the first is still starting (a double click)', async () => {
@@ -137,5 +168,25 @@ describe('bridge.js on another localhost page', () => {
     document.head.innerHTML = '';
     await ask({ id: 'c', type: 'hello' });
     expect(replies.find((r) => r.id === 'c')).toBeUndefined();
+  });
+});
+
+describe('bridge.js sending a message', () => {
+  it('only from a click, and only a well-formed message', async () => {
+    active = false;
+    await ask({ id: 's1', type: 'sendMessage', request: { kind: 'reply', conversationId: 8, body: 'hi' } });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(replies.find((r) => r.id === 's1')).toMatchObject({ ok: false });
+    expect(sent.some((m) => m.type === 'sendMessage')).toBe(false);
+
+    active = true;
+    await ask({ id: 's2', type: 'sendMessage', request: { kind: 'reply', conversationId: 'x', body: 'hi' } });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(replies.find((r) => r.id === 's2')).toMatchObject({ ok: false });
+
+    await ask({ id: 's3', type: 'sendMessage', request: { kind: 'reply', conversationId: 8, body: ' hi ' } });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(sent.find((m) => m.type === 'sendMessage')).toEqual({ type: 'sendMessage', request: { kind: 'reply', conversationId: 8, body: 'hi' } });
+    expect(replies.find((r) => r.id === 's3')).toMatchObject({ ok: true });
   });
 });

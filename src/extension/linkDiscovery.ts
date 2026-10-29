@@ -4,7 +4,7 @@
 import type { PullStep, Snapshot } from './bridge';
 import { t } from '../i18n';
 
-export type LinkKind = 'assignment' | 'page' | 'discussion' | 'quiz' | 'file' | 'moduleItem' | 'syllabus';
+export type LinkKind = 'assignment' | 'page' | 'discussion' | 'quiz' | 'file' | 'moduleItem' | 'syllabus' | 'folder';
 
 export interface DiscoveredLink {
   url: string;
@@ -24,10 +24,11 @@ const KIND_LABEL: Record<LinkKind, string> = {
   file: 'File',
   moduleItem: 'Unit item',
   syllabus: 'Syllabus',
+  folder: 'Folder',
 };
 
 // Opened in this order within a course: what the screens need most first.
-const ORDER: LinkKind[] = ['syllabus', 'assignment', 'page', 'discussion', 'quiz', 'moduleItem', 'file'];
+const ORDER: LinkKind[] = ['syllabus', 'assignment', 'page', 'discussion', 'quiz', 'moduleItem', 'folder', 'file'];
 
 const LINK = /(?:https?:\/\/([a-z0-9.-]+(?::\d+)?))?\/courses\/(\d+)\/(assignments|pages|discussion_topics|announcements|quizzes|files|modules\/items)\/([A-Za-z0-9_%.-]+)/gi;
 
@@ -102,6 +103,22 @@ export function discoverLinks(snapshot: Snapshot, host: string, courseIds: Reado
   };
 
   for (const r of snapshot.records) walk(r.body, 0);
+  // Subfolders: the Files page only loads the folder it shows, so each subfolder a folder listing names is a page to
+  // open (its listing brings that folder's files). Canvas addresses a folder by its path under "course files".
+  for (const r of snapshot.records) {
+    if (r.kind !== 'folderContents' && !(r.kind === 'other' && r.route === 'GET /folders/:id/all')) continue;
+    for (const f of Array.isArray(r.body) ? r.body : []) {
+      if (!f || typeof f !== 'object') continue;
+      const folder = f as Record<string, unknown>;
+      const courseId = Number(folder.context_id);
+      if (folder.context_type !== 'Course' || typeof folder.full_name !== 'string' || !Number.isInteger(courseId)) continue;
+      if (courseIds && !courseIds.has(courseId)) continue;
+      const path = folder.full_name.split('/').slice(1); // drop the root ("course files")
+      if (!path.length) continue;
+      const url = `https://${host}/courses/${courseId}/files/folder/${path.map(encodeURIComponent).join('/')}`;
+      if (!found.has(url)) found.set(url, { url, courseId, kind: 'folder', id: String(folder.id ?? path.join('/')), title: path.join(' / ').slice(0, 80) });
+    }
+  }
   // Titles can be learned after a link was first seen.
   for (const link of found.values()) if (!link.title) link.title = titles.get(link.url) ?? null;
   return [...found.values()];
@@ -119,7 +136,7 @@ export function pendingLinks(links: DiscoveredLink[], visited: Record<string, nu
 }
 
 /** The next batch of steps, labelled with the course and item name. */
-export function planLinks(links: DiscoveredLink[], courseNames: ReadonlyMap<number, string | null>, limit: number): PullStep[] {
+export function planLinks(links: DiscoveredLink[], courseNames: ReadonlyMap<number, string | null>, limit = Infinity): PullStep[] {
   return links.slice(0, limit).map((l) => ({
     url: l.url,
     label: `${courseNames.get(l.courseId) ?? t('Course {id}', { id: l.courseId })} · ${t(KIND_LABEL[l.kind])}${l.kind === 'syllabus' ? '' : ` · ${l.title ?? l.id}`}`,

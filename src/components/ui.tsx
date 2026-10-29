@@ -12,6 +12,10 @@ export function Spinner({ label = t('Loading…') }: { label?: string }) {
 }
 
 export function ErrorMessage({ error, onRetry }: { error: Error; onRetry?: () => void }) {
+  // Not an error: the extension cannot see this part of the course (it is not in the course's Canvas menu).
+  if (error instanceof CanvasApiError && error.kind === 'hidden') {
+    return <p className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-700 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300">{error.message}</p>;
+  }
   const hint =
     error instanceof CanvasApiError && error.kind === 'rate_limit'
       ? t('Canvas throttles heavy usage — give it a few seconds.')

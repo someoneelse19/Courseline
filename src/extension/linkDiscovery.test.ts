@@ -70,3 +70,27 @@ describe('pendingLinks and planLinks', () => {
     expect(steps[1].label).toBe('Biology · Assignment · 5');
   });
 });
+
+describe('discoverLinks: subfolders named in folder listings', () => {
+  it('opens each subfolder by its path under "course files", for the chosen courses only', () => {
+    const listing = (body: unknown[]): CapturedRecord => ({ kind: 'folderContents', courseId: null, host: 'h.test', url: 'https://h.test/api/v1/folders/1/all', capturedAt: 1, body });
+    const s: Snapshot = {
+      records: [
+        listing([
+          { id: '5', name: 'Block 1', full_name: 'course files/Block 1', context_type: 'Course', context_id: '1' },
+          { id: '6', name: 'Lab #2', full_name: 'course files/Labs/Lab #2', context_type: 'Course', context_id: '1' },
+          { id: '7', name: 'course files', full_name: 'course files', context_type: 'Course', context_id: '1' },
+          { id: '8', name: 'Other', full_name: 'course files/Other', context_type: 'Course', context_id: '2' },
+          { id: '9', display_name: 'a.pdf', size: 1, context_asset_string: 'course_1' },
+        ]),
+      ],
+      health: {},
+      appPinned: null,
+      canvasHost: 'h.test',
+      takenAt: 1,
+    };
+    const folders = discoverLinks(s, 'h.test', new Set([1])).filter((l) => l.kind === 'folder');
+    expect(folders.map((l) => l.url)).toEqual(['https://h.test/courses/1/files/folder/Block%201', 'https://h.test/courses/1/files/folder/Labs/Lab%20%232']);
+    expect(folders[1].title).toBe('Labs / Lab #2');
+  });
+});

@@ -5,25 +5,39 @@ const bio = { id: 1, name: 'Biology' };
 const unnamed = { id: 3, name: null };
 
 describe('planSync', () => {
-  it('essential: four pages per course and nothing else', () => {
+  it('essential: the home page, the four core pages and Files per course, and nothing else', () => {
     const steps = planSync('h.test', [bio, unnamed], 'essential');
     expect(steps.map((s) => s.url)).toEqual([
+      'https://h.test/courses/1',
       'https://h.test/courses/1/assignments',
       'https://h.test/courses/1/grades',
       'https://h.test/courses/1/modules',
       'https://h.test/courses/1/pages',
+      'https://h.test/courses/1/files',
+      'https://h.test/courses/3',
       'https://h.test/courses/3/assignments',
       'https://h.test/courses/3/grades',
       'https://h.test/courses/3/modules',
       'https://h.test/courses/3/pages',
+      'https://h.test/courses/3/files',
     ]);
-    expect(steps[4].label).toBe('Course 3 · Assignments');
+    expect(steps[7].label).toBe('Course 3 · Assignments');
   });
 
-  it('everything (the default): the account pages once, then ten pages per course', () => {
+  it('skips the tabs a school hides in Canvas (their pages only redirect to the course home)', () => {
+    const restricted = { ...bio, hidden: new Set(['assignments', 'modules', 'pages', 'files', 'syllabus', 'quizzes', 'discussions'] as const) };
+    expect(planCourse('h.test', restricted).map((s) => s.url.replace('https://h.test/courses/1', ''))).toEqual(['', '/grades', '/announcements', '/users']);
+    expect(stepsForKind('h.test', restricted, 'units', 'Units')).toEqual([]);
+    // A kind whose own tab is hidden is refreshed from the page that still carries it.
+    expect(stepsForKind('h.test', restricted, 'assignments', 'Assignments')[0].url).toBe('https://h.test/courses/1/grades');
+    expect(stepsForKind('h.test', restricted, 'pages', 'Pages')[0].url).toBe('https://h.test/courses/1');
+    expect(stepsForKind('h.test', restricted, 'grades', 'Grades')).toHaveLength(1);
+  });
+
+  it('everything (the default): the account pages once, then eleven pages per course', () => {
     const steps = planSync('h.test', [bio, unnamed]);
     expect(steps.slice(0, 4).map((s) => s.url)).toEqual(['https://h.test/courses', 'https://h.test/grades', 'https://h.test/calendar', 'https://h.test/conversations']);
-    expect(steps).toHaveLength(4 + 2 * 10);
+    expect(steps).toHaveLength(4 + 2 * 11);
     expect(planCourse('h.test', bio).map((s) => s.url.replace('https://h.test/courses/1/', ''))).toContain('assignments/syllabus');
   });
 

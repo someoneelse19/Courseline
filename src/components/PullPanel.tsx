@@ -58,19 +58,19 @@ export function PullPanel() {
               : tn(
                   state.planCount,
                   'This will open {n} Canvas page, in a background tab of this window. It closes itself. About {min} min. The page opens as if you had visited it, so Canvas may record the visit (for example marking items as viewed).',
-                  'This will open {n} Canvas pages, one at a time, in background tabs of this window. Each closes itself. About {min} min. Pages open as if you had visited them, so Canvas may record the visits (for example marking items as viewed).',
+                  'This will open {n} Canvas pages, a few at a time, in background tabs of this window. Each closes itself. About {min} min. Pages open as if you had visited them, so Canvas may record the visits (for example marking items as viewed).',
                   { min: Math.max(1, Math.round(estimateSeconds(state.planCount) / 60)) },
                 )}
           </p>
-          {state.planTotal !== null && state.planCount !== null && state.planTotal > state.planCount && (
+          {state.followsLinks && state.planCount !== null && (
             <p className="text-xs text-neutral-600 dark:text-neutral-300">
-              {t('{total} pages found; this run opens the first {n}. Run it again for the rest.', { total: state.planTotal, n: state.planCount })}
+              {t('Then it opens every page those link to, and the pages linked from them, until nothing new turns up. Stop works at any time.')}
             </p>
           )}
           {state.depthChoice && (
             <label className="flex items-start gap-2 text-xs">
               <input type="checkbox" checked={state.depth === 'essential'} onChange={(e) => setDepth(e.target.checked ? 'essential' : 'everything')} className="mt-0.5" />
-              <span>{t('Essentials only (faster): assignments, grades, units and pages')}</span>
+              <span>{t('Essentials only (faster): assignments, grades, units, pages and files; no linked pages')}</span>
             </label>
           )}
           {state.message && <p role="alert" className="text-xs text-red-700 dark:text-red-300">{state.message}</p>}

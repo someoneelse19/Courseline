@@ -26,17 +26,40 @@ vi.mock('../context/AuthContext', () => ({ useAuth: () => auth }));
 const pull = { requestSync: vi.fn(), refreshCourse: vi.fn(), refreshKind: vi.fn(), running: false };
 vi.mock('../context/PullContext', () => ({ usePull: () => pull }));
 
-async function render(path: string) {
+// The details are collapsed until opened; the tests below read them opened (as remembered on this browser).
+async function render(path: string, opened = true) {
+  localStorage.setItem('courseline.extension-status-open', opened ? '1' : '0');
   const el = document.createElement('div');
   document.body.append(el);
   const root = createRoot(el);
   await act(async () => root.render(<MemoryRouter initialEntries={[path]}><ExtensionStatus /></MemoryRouter>));
-  return { text: () => el.textContent ?? '', items: () => [...el.querySelectorAll('li')].map((li) => li.textContent), unmount: () => act(() => root.unmount()) };
+  return {
+    text: () => el.textContent ?? '',
+    items: () => [...el.querySelectorAll('li')].map((li) => li.textContent),
+    toggle: () => act(async () => (el.querySelector('button[aria-expanded]') as HTMLButtonElement).click()),
+    expanded: () => el.querySelector('button[aria-expanded]')?.getAttribute('aria-expanded'),
+    unmount: () => act(() => root.unmount()),
+  };
 }
 
 afterEach(() => {
   document.body.innerHTML = '';
   auth = { source: 'extension', snapshot };
+});
+
+describe('ExtensionStatus in the sidebar', () => {
+  it('starts as one row with a status in words, and opens to the details (remembered)', async () => {
+    const view = await render('/courses/1/grades', false);
+    expect(view.expanded()).toBe('false');
+    expect(view.text()).toContain('Extension');
+    expect(view.text()).toMatch(/Out of date|Partly synced|Up to date|Needs attention|Not synced yet/);
+    expect(view.items()).toEqual([]);
+    await view.toggle();
+    expect(view.expanded()).toBe('true');
+    expect(view.items().join(' ')).toContain('Assignments');
+    expect(localStorage.getItem('courseline.extension-status-open')).toBe('1');
+    await view.unmount();
+  });
 });
 
 describe('ExtensionStatus per-type freshness', () => {

@@ -58,7 +58,11 @@ try {
   check('it signed in by itself', /Welcome, Student/.test(afterSync), afterSync.slice(0, 120));
   check('both pinned courses are listed', /Biology 101/.test(afterSync) && /World History/.test(afterSync));
   check('a grade is calculated from the captured scores', /80\.0%/.test(afterSync));
-  check('the status bar shows coverage', /2 of 2 courses synced/.test(afterSync));
+  // The extension's status is a collapsed item in the sidebar: a dot and a word, opened to the details (remembered).
+  check('the sidebar shows the extension status, collapsed', /Extension/.test(afterSync) && !/2 of 2 courses synced/.test(afterSync));
+  await click(app, /^Extension/, 'button[aria-expanded="false"]');
+  await sleep(300);
+  check('opened, it shows coverage', /2 of 2 courses synced/.test(await text(app)));
   await shot(app, '02-dashboard');
 
   let st = await h.storage();
@@ -146,7 +150,9 @@ try {
   await h.waitFor(async () => /This will open/.test(await panel(app)), 10000, 'the course plan');
   await click(app, /^Start$/);
   await sleep(3000);
-  check('while running, one background tab is open', (await pageCount(h)) === baseline + 1, `tabs ${await pageCount(h)} vs ${baseline}`);
+  // A few pages load at once (CONCURRENCY in extension/lib/pullRunner.js): never more than that.
+  const open = (await pageCount(h)) - baseline;
+  check('while running, a few background tabs are open (at most 4)', open >= 1 && open <= 4, `tabs ${await pageCount(h)} vs ${baseline}`);
   await click(app, /^Stop$/);
   await waitDone(h, app, /Stopped\./, 60000);
   await sleep(1200);
@@ -193,14 +199,15 @@ try {
   await click(app, /^Cancel$/);
 
   section('log out and back in; switching address');
+  const pathBeforeLogout = await app.eval('location.pathname');
   await click(app, /Log out/);
   await sleep(1200);
   check('logging out shows the login page', /Sign in with the extension/.test(await text(app)));
   await h.waitFor(() => app.eval(`[...document.querySelectorAll('button')].some((b) => /Sign in with the extension/.test(b.textContent) && !b.disabled)`), 20000, 'the sign-in button');
   await click(app, /Sign in with the extension/);
-  await h.waitFor(async () => /Data from the Courseline extension/.test(await text(app)), 20000, 'signing back in');
+  await h.waitFor(() => app.eval(`!!document.querySelector('section[aria-label="Data from the Courseline extension"]')`), 20000, 'signing back in');
   check('signing back in did not touch the saved Canvas address', (await h.storage()).canvasHost === 'canvas.test:8443');
-  check('signing back in works, and returns to the page it was on', (await app.eval('location.pathname')) === '/courses/1/grades', await app.eval('location.pathname'));
+  check('signing back in works, and returns to the page it was on', (await app.eval('location.pathname')) === pathBeforeLogout, `${await app.eval('location.pathname')} vs ${pathBeforeLogout}`);
   const before = Object.keys(await h.storage()).filter((k) => k.startsWith('cap:')).length;
   await go(app, '/settings?tab=connection');
   await sleep(1200);
@@ -232,6 +239,11 @@ try {
 } catch (e) {
   check('the run completed without an exception', false, e.message);
   if (app) await shot(app, 'failure').catch(() => {});
+  // What the extension and the page said, to tell why without re-running by hand.
+  if (process.env.E2E_LOGS) {
+    console.log('--- background worker log\n' + h.sw.logs.slice(-40).join('\n'));
+    if (app) console.log('--- app page log\n' + app.logs.slice(-40).join('\n'));
+  }
 }
 h.browser.kill();
 mock.close();

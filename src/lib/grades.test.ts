@@ -181,3 +181,16 @@ describe('medianComparison', () => {
     expect(r2.median).toBeCloseTo(60);
   });
 });
+
+describe('toModel: never-drop ids sent as strings', () => {
+  it('still never drops them', () => {
+    const groups = [{ id: 1, name: 'G', position: 1, group_weight: 0, rules: { drop_lowest: 1, never_drop: ['700'] as unknown as number[] }, assignments: [
+      { id: 700, name: 'Low', points_possible: 10, submission: { score: 1 } },
+      { id: 701, name: 'High', points_possible: 10, submission: { score: 9 } },
+    ] }] as unknown as AssignmentGroup[];
+    const model = toModel(groups);
+    expect(model.groups[0].neverDrop).toEqual([700]);
+    // Drop lowest 1, but 700 (the lowest) is protected, so 701 is dropped: 1/10. Before, 700 was dropped (9/10).
+    expect(computeGrade(model.groups, model.items, { weighted: false }).current).toBeCloseTo(10);
+  });
+});

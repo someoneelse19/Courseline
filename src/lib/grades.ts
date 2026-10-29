@@ -68,7 +68,8 @@ export function toModel(groups: AssignmentGroup[]): { groups: GradeGroup[]; item
       position: g.position,
       dropLowest: g.rules?.drop_lowest ?? 0,
       dropHighest: g.rules?.drop_highest ?? 0,
-      neverDrop: g.rules?.never_drop ?? [],
+      // Canvas's own pages send these ids as strings; the items' ids are numbers.
+      neverDrop: (g.rules?.never_drop ?? []).map(Number).filter(Number.isFinite),
     });
     for (const a of g.assignments ?? []) {
       if (a.grading_type === 'not_graded') continue;

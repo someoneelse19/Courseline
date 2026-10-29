@@ -1,7 +1,6 @@
 import { Suspense, useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { ErrorBoundary } from './ErrorBoundary';
-import { ExtensionStatus } from './ExtensionStatus';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import { Spinner } from './ui';
@@ -15,6 +14,9 @@ export function Layout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const { pathname } = useLocation();
 
+  // Messages fills the whole area like a chat app (its own panes scroll), so it gets no page padding.
+  const fullBleed = pathname === '/messages' || pathname.startsWith('/messages/');
+
   // Close the mobile drawer after navigating.
   useEffect(() => setMenuOpen(false), [pathname]);
 
@@ -23,8 +25,7 @@ export function Layout() {
       <Header onMenu={() => setMenuOpen((o) => !o)} />
       <div className="relative flex flex-1 overflow-hidden">
         <Sidebar open={menuOpen} onClose={() => setMenuOpen(false)} />
-        <main className="min-w-0 flex-1 overflow-y-auto p-4 md:p-6">
-          <ExtensionStatus />
+        <main className={`min-w-0 flex-1 ${fullBleed ? 'flex flex-col overflow-hidden' : 'overflow-y-auto p-4 md:p-6'}`}>
           {/* key=pathname resets the boundary when navigating away from a crashed page */}
           <ErrorBoundary key={pathname}>
             {/* Most screens load on first visit (App.tsx). */}

@@ -175,3 +175,42 @@ describe('writes', () => {
     expect(calls[0].url.pathname).toBe('/api/v1/courses/1/assignments/2/submissions/self/files');
   });
 });
+
+describe('getConversations', () => {
+  it('uses your own newest message for the sent folder (Canvas names it last_authored_message there)', async () => {
+    const api = createCanvasApi({ baseUrl: 'https://school.test', token: 't' });
+    installFetch(({ url }) =>
+      url.pathname === '/api/v1/conversations'
+        ? json([{ id: 1, subject: 'Q', workflow_state: 'read', last_message: null, last_message_at: null, last_authored_message: 'Mine', last_authored_message_at: '2026-10-29T10:42:00Z', message_count: 1, participants: [] }])
+        : undefined,
+    );
+    const [sent] = await api.getConversations('sent');
+    expect(sent).toMatchObject({ last_message: 'Mine', last_message_at: '2026-10-29T10:42:00Z' });
+    expect(sent).not.toHaveProperty('last_authored_message');
+  });
+});
+
+describe('message attachments', () => {
+  it('uploads each file to "conversation attachments" first, then replies with their ids', async () => {
+    const api = createCanvasApi({ baseUrl: 'https://school.test', token: 't' });
+    const { calls } = installFetch(
+      ({ url }) => (url.pathname === '/api/v1/users/self/files' ? json({ upload_url: 'https://storage.test/up', upload_params: { k: 'v' } }) : undefined),
+      ({ url }) => (url.host === 'storage.test' ? json({ id: 77 }, { status: 201 }) : undefined),
+      ({ url }) => (url.pathname === '/api/v1/conversations/8/add_message' ? json({ id: 8, messages: [{ id: 1, body: 'hi' }] }) : undefined),
+    );
+    await api.replyToConversation(8, 'hi', [new File(['x'], 'a.txt', { type: 'text/plain' })]);
+    expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({ name: 'a.txt', parent_folder_path: 'conversation attachments' });
+    expect(calls[1].headers.Authorization).toBeUndefined(); // the storage host never sees the token
+    expect(JSON.parse(String(calls[2].init?.body))).toEqual({ body: 'hi', attachment_ids: ['77'] });
+  });
+});
+
+describe('markConversationRead', () => {
+  it('tells Canvas the conversation is read', async () => {
+    const api = createCanvasApi({ baseUrl: 'https://school.test', token: 't' });
+    const { calls } = installFetch(({ url }) => (url.pathname === '/api/v1/conversations/8' ? json({ id: 8, workflow_state: 'read' }) : undefined));
+    await api.markConversationRead(8);
+    expect(calls[0].init?.method).toBe('PUT');
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ conversation: { workflow_state: 'read' } });
+  });
+});

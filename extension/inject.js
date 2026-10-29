@@ -7,7 +7,9 @@
 // not to be Canvas the buffer is thrown away and nothing ever leaves the page.
 (() => {
   if (window.__courselineCapture) return;
-  window.__courselineCapture = true;
+  // This copy of the script; only the current copy acts on commands (a page only ever has one).
+  const self = {};
+  window.__courselineCapture = self;
 
   const TAG = 'courseline-capture';
   // Any Canvas API address (REST under /api/v1, /api/v2 and so on, and /api/graphql). Reads only: see report().
@@ -42,7 +44,175 @@
       state = 'canvas';
       buffer.forEach(send);
       buffer = [];
+      whenParsed(readPage);
     }
+  }
+
+  // Some of a course never crosses /api/: Canvas builds it into the page. The student Grades page puts the
+  // assignment groups (weights, drop rules, points) and the student's own scores in window.ENV and the assignment
+  // names only in its table; the course home has its front page in ENV.WIKI_PAGE; the syllabus page has
+  // ENV.SYLLABUS_BODY; and which course tabs the school shows is only in the course menu. This reads those once the
+  // page is known to be Canvas. Still passive: it reads what is already on the page, sends no request, reads no cookie.
+  function whenParsed(fn) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn, { once: true });
+    else fn();
+  }
+
+  let pageRead = false;
+  function readPage() {
+    if (pageRead) return;
+    pageRead = true;
+    try {
+      const env = window.ENV;
+      // Who is signed in (only the id and display name): Canvas's own pages never load the profile through the API.
+      const me = env && typeof env.current_user === 'object' ? env.current_user : null;
+      if (me && me.id && typeof me.display_name === 'string') {
+        send({ url: `${location.origin}/#page:currentUser`, status: 200, body: { id: me.id, display_name: me.display_name }, page: 'currentUser' });
+      }
+      const course =
+        /^course_(\d+)$/.exec(String(env?.context_asset_string ?? ''))?.[1] ?? /^\/courses\/(\d+)(\/|$)/.exec(location.pathname)?.[1];
+      if (!course) return;
+      const page = (kind, body) => send({ url: `${location.origin}/courses/${course}#page:${kind}`, status: 200, body, page: kind });
+
+      const tabs = [...document.querySelectorAll('#section-tabs a[href]')].map((a) => ({ href: a.getAttribute('href'), label: a.textContent.trim() }));
+      if (tabs.length) page('courseNav', { tabs });
+
+      if (!env || typeof env !== 'object') return;
+      if (env.WIKI_PAGE && typeof env.WIKI_PAGE === 'object') page('wikiPage', env.WIKI_PAGE);
+      if (typeof env.SYLLABUS_BODY === 'string') page('syllabus', { syllabus_body: env.SYLLABUS_BODY });
+      if (ownGradesPage(env) && Array.isArray(env.assignment_groups) && Array.isArray(env.submissions)) page('gradesPage', gradesPage(env));
+      readLatePage();
+    } catch {
+      // A page laid out differently: nothing read, and never disturb the page.
+    }
+  }
+
+  // What Canvas keeps drawing after the page has loaded: the Modules page renders its items with JavaScript. Read when
+  // the page is parsed, on its load event, and once more when it has gone quiet; sent again only when it changed.
+  let lastModules = '';
+  function readLatePage() {
+    try {
+      if (state !== 'canvas' || !/^\/courses\/\d+\/modules\/?$/.test(location.pathname) || !document.querySelector('#context_modules')) return;
+      const course = /^\/courses\/(\d+)/.exec(location.pathname)[1];
+      const body = modulesPage();
+      const text = JSON.stringify(body);
+      if (text === lastModules) return;
+      lastModules = text;
+      send({ url: `${location.origin}/courses/${course}#page:modulesPage`, status: 200, body, page: 'modulesPage' });
+    } catch {
+      /* never disturb the page */
+    }
+  }
+
+  // The signed-in student's own Grades page: /courses/<id>/grades, or /courses/<id>/grades/<their own user id>
+  // (linked from the all-courses grades page). Never someone else's (an observer's or a teacher's view).
+  function ownGradesPage(env) {
+    const m = /^\/courses\/\d+\/grades(?:\/(\d+))?\/?$/.exec(location.pathname);
+    if (!m) return false;
+    const me = String(env.current_user_id ?? env.current_user?.id ?? '');
+    if (!me) return false;
+    if (m[1] !== undefined && m[1] !== me) return false;
+    return env.student_id === undefined || env.student_id === null || String(env.student_id) === me;
+  }
+
+  // The Grades page: ENV has the numbers, the table has the names. One row per assignment (tr#submission_<id>).
+  // With grading periods the page shows one period (the current one, or ?grading_period_id=); which one is recorded,
+  // and each period is kept as its own record, so viewing one never replaces another.
+  function gradesPage(env) {
+    const assignments = [];
+    const groupNames = {};
+    for (const row of document.querySelectorAll('#grades_summary tr.student_assignment')) {
+      // One summary row per assignment group (tr#submission_group-<id>), every group, even one with no assignments.
+      const groupRow = /^submission_group-(\d+)$/.exec(row.id)?.[1];
+      const groupTitle = groupRow && row.querySelector('th.title')?.textContent.trim();
+      if (groupTitle) groupNames[groupRow] = groupTitle;
+      const id = /^submission_(\d+)$/.exec(row.id)?.[1];
+      if (!id) continue;
+      const link = row.querySelector('th.title a');
+      const groupId = row.querySelector('.assignment_group_id')?.textContent.trim();
+      const groupName = row.querySelector('th.title .context')?.textContent.trim();
+      if (groupId && groupName) groupNames[groupId] ??= groupName;
+      const href = link?.getAttribute('href') ?? '';
+      // The row links to the submission; the assignment itself is the part before /submissions/.
+      const assignmentPath = /^(\/courses\/\d+\/assignments\/\d+)/.exec(href)?.[1];
+      assignments.push({
+        id,
+        name: link?.textContent.trim() ?? '',
+        html_url: assignmentPath ? `${location.origin}${assignmentPath}` : undefined,
+        assignment_group_id: groupId || undefined,
+        // ENV.submissions has no missing/late flags; the row's status pill does.
+        missing: !!row.querySelector('.submission-missing-pill'),
+        late: !!row.querySelector('.submission-late-pill'),
+        score_statistics: scoreStatistics(id),
+      });
+    }
+    const period = new URLSearchParams(location.search).get('grading_period_id') ?? env.current_grading_period_id ?? env.grading_period_id;
+    return {
+      assignment_groups: env.assignment_groups,
+      submissions: env.submissions,
+      assignments,
+      group_names: groupNames,
+      grading_period_id: period === undefined || period === null || period === '' ? undefined : String(period),
+    };
+  }
+
+  // The class statistics Canvas shows under an assignment (table#score_details_<id>), when the instructor shows them.
+  // Three cells, labels in the student's language, so read by position: mean and median, high and upper quartile,
+  // low and lower quartile.
+  function scoreStatistics(id) {
+    const cells = document.querySelectorAll(`#score_details_${id} tbody tr td`);
+    if (cells.length < 3) return undefined;
+    // The page's language does not say how Canvas writes these (a Spanish page still writes 6.88), so each number is
+    // read by its own shape: with both marks, the last one is the decimal mark; a single mark followed by exactly three
+    // digits groups thousands (Canvas rounds statistics to two decimals); otherwise it is the decimal mark.
+    const toNumber = (token) => {
+      const t = token.replace(/[\s\u00a0\u202f]/g, '');
+      const marks = t.match(/[.,]/g) ?? [];
+      if (!marks.length) return Number(t);
+      const last = Math.max(t.lastIndexOf('.'), t.lastIndexOf(','));
+      const decimalAt = new Set(marks).size > 1 || (marks.length === 1 && t.length - last - 1 !== 3) ? last : -1;
+      return Number([...t].map((c, i) => (i === decimalAt ? '.' : /[.,]/.test(c) ? '' : c)).join(''));
+    };
+    // Each cell holds exactly two numbers (mean and median, high and upper quartile, low and lower quartile).
+    const nums = (cell) => (cell.textContent.match(/-?\d+(?:[.,\u00a0\u202f]\d+)*/g) ?? []).map(toNumber);
+    const [a, b, c] = [nums(cells[0]), nums(cells[1]), nums(cells[2])];
+    if (a.length !== 2 || b.length !== 2 || c.length !== 2 || ![...a, ...b, ...c].every(Number.isFinite)) return undefined;
+    return { mean: a[0], median: a[1], max: b[0], upper_q: b[1], min: c[0], lower_q: c[1] };
+  }
+
+  // The Modules page draws its modules into the HTML (no API call carries them). Per module: id, name and its items,
+  // each with Canvas's own type and content id (from the item's `<Type>_<id>` class), title, link, indent and position.
+  function modulesPage() {
+    const modules = [];
+    document.querySelectorAll('#context_modules .context_module[data-module-id]').forEach((m, mi) => {
+      const id = m.getAttribute('data-module-id');
+      if (!/^\d+$/.test(id ?? '')) return;
+      const items = [];
+      m.querySelectorAll('li.context_module_item').forEach((li, ii) => {
+        const itemId = /^context_module_item_(\d+)$/.exec(li.id)?.[1];
+        if (!itemId) return;
+        const typed = [...li.classList].map((c) => /^([A-Z][A-Za-z]*(?:::[A-Za-z]+)?)_(\d+)$/.exec(c)).find(Boolean);
+        const link = li.querySelector('.item_name a.title')?.getAttribute('href');
+        // The visible title only: Canvas adds screen-reader text ("Links to an external site.") inside it.
+        const titleEl = li.querySelector('.item_name .title')?.cloneNode(true);
+        titleEl?.querySelectorAll('.screenreader-only, .ui-helper-hidden-accessible').forEach((e) => e.remove());
+        const absolute = link && /^https?:\/\//i.test(link) && !link.startsWith(location.origin) ? link : undefined;
+        items.push({
+          id: itemId,
+          canvas_type: typed?.[1],
+          content_id: typed?.[2],
+          title: titleEl?.textContent.replace(/\s+/g, ' ').trim() ?? '',
+          html_url: link && link.startsWith('/') ? `${location.origin}${link}` : undefined,
+          // An external link's address: Canvas puts it in .url, or links the title straight to it.
+          external_url: li.querySelector('.item_name .url')?.textContent.trim() || absolute,
+          indent: Number(/(?:^|\s)indent_(\d+)/.exec(li.className)?.[1] ?? 0),
+          position: ii + 1,
+        });
+      });
+      const name = m.querySelector('.ig-header .name')?.textContent.trim() || m.getAttribute('aria-label') || '';
+      modules.push({ id, name, position: mi + 1, items });
+    });
+    return { modules };
   }
 
   function giveUp() {
@@ -62,7 +232,10 @@
     clearTimeout(idleTimer);
     if (inflight > 0 || state !== 'canvas' || document.readyState !== 'complete') return;
     idleTimer = setTimeout(() => {
-      if (inflight === 0 && state === 'canvas') window.postMessage({ source: TAG, type: 'idle' }, location.origin);
+      if (inflight !== 0 || state !== 'canvas') return;
+      // Last look at what Canvas draws after loading (module items render late), before saying the page is done.
+      readLatePage();
+      window.postMessage({ source: TAG, type: 'idle' }, location.origin);
     }, IDLE_MS);
   }
   const started = () => void inflight++;
@@ -74,6 +247,7 @@
   document.addEventListener('DOMContentLoaded', decide);
   window.addEventListener('load', () => {
     decide();
+    readLatePage();
     checkIdle();
   });
   setTimeout(giveUp, GIVE_UP_MS);
@@ -141,6 +315,116 @@
   }
 
   const realFetch = window.fetch;
+
+  // A message the student sent from Courseline (background.js sendViaTab opened this tab for it). Only Canvas's two
+  // message endpoints, on this page's own origin, with the form token Canvas put in the page; the answer goes back to
+  // the extension. A script on any page could post this command, but it would only make a request its own page can
+  // make anyway.
+  // Canvas's three-step upload (https://canvas.instructure.com/doc/api/file.file_uploads.html): ask this Canvas for a
+  // slot in the student's own files, post the bytes where it says (often file storage on another host, so no
+  // credentials go there), then take the file id from the answer or from the address it confirms with.
+  async function uploadAttachment(f, headers) {
+    try {
+      if (!f || typeof f.name !== 'string' || typeof f.data !== 'string') return { ok: false, error: 'An attachment could not be read.' };
+      const bin = atob(f.data);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const blob = new Blob([bytes], { type: typeof f.type === 'string' ? f.type : 'application/octet-stream' });
+      const slotRes = await realFetch.call(window, '/api/v1/users/self/files', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers,
+        body: JSON.stringify({ name: f.name, size: blob.size, content_type: blob.type, parent_folder_path: 'conversation attachments', on_duplicate: 'rename' }),
+      });
+      const slot = slotRes.ok ? parse(await slotRes.text()) : null;
+      if (!slot?.upload_url) return { ok: false, error: `Canvas did not take the attachment ${f.name} (${slotRes.status}).` };
+      const form = new FormData();
+      for (const [k, v] of Object.entries(slot.upload_params ?? {})) form.append(k, v);
+      form.append(slot.file_param ?? 'file', blob, f.name); // the file goes last, as Canvas requires
+      const target = new URL(slot.upload_url, location.href);
+      const up = await realFetch.call(window, target.href, { method: 'POST', body: form, credentials: target.origin === location.origin ? 'same-origin' : 'omit' });
+      let done = null;
+      try {
+        done = parse(await up.clone().text());
+      } catch {
+        /* not JSON: confirmed by address below */
+      }
+      if (up.ok && done && done.id) return { ok: true, id: done.id };
+      const confirm = up.redirected ? up.url : up.headers.get('Location');
+      if (confirm && new URL(confirm, location.href).origin === location.origin) {
+        const c = await realFetch.call(window, confirm, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+        const file = c.ok ? parse(await c.text()) : null;
+        if (file?.id) return { ok: true, id: file.id };
+      }
+      return { ok: false, error: `Canvas did not confirm the attachment ${f.name} (${up.status}).` };
+    } catch (e) {
+      return { ok: false, error: `The attachment ${f?.name ?? ''} could not be uploaded: ${String(e?.message ?? e)}` };
+    }
+  }
+
+  // The student opened Messages in Courseline (background.js refreshMailViaTab opened this tab for it): read the inbox,
+  // the sent folder and each conversation's thread with Canvas's own messages API. Reads only (GET); a thread is read
+  // with auto_mark_as_read=false, so nothing is marked read that the student has not read.
+  window.addEventListener('message', async (event) => {
+    if (event.source !== window || event.origin !== location.origin) return;
+    const m = event.data;
+    if (!m || m.source !== 'courseline-command' || m.type !== 'mail' || typeof m.nonce !== 'string' || window.__courselineCapture !== self) return;
+    // `where`: the page this ran on, so the extension can tell a Canvas page from a login screen (it cannot read tab
+    // addresses itself).
+    const reply = (r) => window.postMessage({ source: TAG, type: 'mailResult', nonce: m.nonce, where: location.host + location.pathname, ...r }, location.origin);
+    try {
+      if (!looksLikeCanvas()) return reply({ ok: false, error: 'This is not a Canvas page.' });
+      const get = async (path) => {
+        const res = await realFetch.call(window, path, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+        if (!res.ok) throw new Error(`Canvas answered ${res.status} for ${path.split('?')[0]}`);
+        return parse(await res.text());
+      };
+      const lists = {};
+      for (const scope of ['inbox', 'sent']) lists[scope] = await get(`/api/v1/conversations?scope=${scope}&per_page=50`);
+      const ids = [...new Set([...lists.inbox, ...lists.sent].map((c) => c?.id).filter((id) => Number.isInteger(id)))].slice(0, 100);
+      const threads = [];
+      for (const id of ids) threads.push(await get(`/api/v1/conversations/${id}?auto_mark_as_read=false`));
+      reply({ ok: true, lists, threads });
+    } catch (e) {
+      reply({ ok: false, error: String(e?.message ?? e) });
+    }
+  });
+
+  window.addEventListener('message', async (event) => {
+    if (event.source !== window || event.origin !== location.origin) return;
+    const m = event.data;
+    if (!m || m.source !== 'courseline-command' || m.type !== 'send' || typeof m.nonce !== 'string' || window.__courselineCapture !== self) return;
+    const reply = (r) => window.postMessage({ source: TAG, type: 'sendResult', nonce: m.nonce, where: location.host + location.pathname, ...r }, location.origin);
+    try {
+      if (!looksLikeCanvas()) return reply({ ok: false, error: 'This is not a Canvas page.' });
+      if (typeof m.path !== 'string' || !/^\/api\/v1\/conversations(\/\d{1,15}\/add_message)?$/.test(m.path) || !m.payload || typeof m.payload !== 'object') {
+        return reply({ ok: false, error: 'Not a message request.' });
+      }
+      const token = document.querySelector('input[name="authenticity_token"]')?.value || document.querySelector('meta[name="csrf-token"]')?.content;
+      if (!token) return reply({ ok: false, error: 'Canvas did not give its Settings page a form token, so the message was not sent. Send it from Canvas instead.' });
+      const headers = { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-Token': token, 'X-Requested-With': 'XMLHttpRequest' };
+      // Attachments first, as Canvas's own Inbox does: each goes to the student's "conversation attachments" folder.
+      const attachmentIds = [];
+      for (const f of Array.isArray(m.files) ? m.files.slice(0, 10) : []) {
+        const uploaded = await uploadAttachment(f, headers);
+        if (!uploaded.ok) return reply({ ok: false, error: uploaded.error });
+        attachmentIds.push(String(uploaded.id));
+      }
+      const payload = attachmentIds.length ? { ...m.payload, attachment_ids: attachmentIds } : m.payload;
+      const res = await realFetch.call(window, m.path, { method: 'POST', credentials: 'same-origin', headers, body: JSON.stringify(payload) });
+      const text = await res.text();
+      let body = null;
+      try {
+        body = parse(text);
+      } catch {
+        /* not JSON */
+      }
+      if (!res.ok) return reply({ ok: false, error: body?.errors?.[0]?.message ?? `Canvas refused the message (${res.status}).` });
+      reply({ ok: true, body });
+    } catch (e) {
+      reply({ ok: false, error: String(e?.message ?? e) });
+    }
+  });
   window.fetch = function (input, init) {
     const method = String(init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase();
     // The operation name (and whether it is a mutation) comes from the request body: from `init`, or, when the page

@@ -235,3 +235,313 @@ describe('inject.js', () => {
     });
   });
 });
+
+describe('inject.js: data Canvas builds into the page', () => {
+  const at = (path) => window.history.replaceState({}, '', path);
+  afterEach(() => {
+    at('/');
+    document.body.innerHTML = '';
+  });
+
+  it('reads the Grades page: ENV for the numbers, the table for the names, plus the course menu', async () => {
+    at('/courses/9/grades');
+    document.body.className = 'ic-app';
+    document.body.innerHTML = `
+      <nav id="section-tabs"><a href="/courses/9">Home</a><a href="/courses/9/grades">Grades</a></nav>
+      <table id="grades_summary"><tbody>
+        <tr class="student_assignment" id="submission_700">
+          <th class="title"><a href="/courses/9/assignments/700/submissions/42">Problem set 1</a><div class="context">Homework</div></th>
+          <td><span class="assignment_group_id">70</span></td>
+        </tr>
+        <tr class="student_assignment" id="submission_group-70"><th class="title">Homework</th></tr>
+        <tr class="student_assignment" id="submission_group-71"><th class="title">Final exam</th></tr>
+      </tbody></table>`;
+    window.ENV = { current_user_id: '42', context_asset_string: 'course_9', assignment_groups: [{ id: '70', assignments: [{ id: '700' }] }], submissions: [{ assignment_id: '700', score: 8 }] };
+    install(apiFetch());
+    window.dispatchEvent(new Event('load'));
+    await tick();
+    const nav = posted.find((p) => p.page === 'courseNav');
+    expect(nav).toMatchObject({ url: `${location.origin}/courses/9#page:courseNav`, body: { tabs: [{ href: '/courses/9' }, { href: '/courses/9/grades' }] } });
+    const grades = posted.find((p) => p.page === 'gradesPage');
+    expect(grades.body.assignments).toEqual([
+      { id: '700', name: 'Problem set 1', html_url: `${location.origin}/courses/9/assignments/700`, assignment_group_id: '70', missing: false, late: false, score_statistics: undefined },
+    ]);
+    expect(grades.body.group_names).toEqual({ 70: 'Homework', 71: 'Final exam' }); // a group with no assignments too
+    expect(grades.body.submissions).toEqual([{ assignment_id: '700', score: 8 }]);
+  });
+
+  it('reads the front page and the syllabus from ENV', async () => {
+    at('/courses/9');
+    window.ENV = { current_user_id: '42', context_asset_string: 'course_9', WIKI_PAGE: { url: 'home', title: 'Home', body: '<p>Hi</p>', front_page: true }, SYLLABUS_BODY: '<p>Outline</p>' };
+    install(apiFetch());
+    window.dispatchEvent(new Event('load'));
+    await tick();
+    expect(posted.find((p) => p.page === 'wikiPage').body).toMatchObject({ url: 'home', front_page: true });
+    expect(posted.find((p) => p.page === 'syllabus').body).toEqual({ syllabus_body: '<p>Outline</p>' });
+    expect(posted.some((p) => p.page === 'gradesPage')).toBe(false); // not the Grades page
+  });
+
+  it('reads nothing from a page that is not Canvas', async () => {
+    at('/courses/9');
+    window.ENV = undefined;
+    document.body.innerHTML = '<nav id="section-tabs"><a href="/courses/9">Home</a></nav>';
+    install(apiFetch());
+    window.dispatchEvent(new Event('load'));
+    await tick();
+    expect(posted.filter((p) => p.page)).toEqual([]);
+  });
+});
+
+describe('inject.js: modules, class statistics and who is signed in', () => {
+  const at = (path) => window.history.replaceState({}, '', path);
+  afterEach(() => {
+    at('/');
+    document.body.innerHTML = '';
+  });
+
+  it('reads the Modules page HTML: module names and each item\'s type, content id, title, link and indent', async () => {
+    at('/courses/9/modules');
+    document.body.innerHTML = `
+      <div id="context_modules">
+        <div class="context_module" data-module-id="50" aria-label="Unit 1">
+          <div class="ig-header"><span class="name">Unit 1</span></div>
+          <ul>
+            <li id="context_module_item_501" class="context_module_item attachment indent_1 Attachment_77">
+              <span class="item_name"><a class="title" href="/courses/9/modules/items/501">Notes.pdf</a><span class="url"></span></span>
+            </li>
+            <li id="context_module_item_503" class="context_module_item external_url indent_0 ExternalUrl_3">
+              <span class="item_name"><a class="title" href="/courses/9/modules/items/503">Teams</a><span class="url">https://teams.example</span></span>
+            </li>
+          </ul>
+        </div>
+      </div>`;
+    window.ENV = { current_user_id: '42', context_asset_string: 'course_9', current_user: { id: '42', display_name: 'Ada L', avatar_image_url: 'https://x/a.png' } };
+    install(apiFetch());
+    window.dispatchEvent(new Event('load'));
+    await tick();
+    const modules = posted.find((p) => p.page === 'modulesPage');
+    expect(modules.body.modules).toEqual([
+      {
+        id: '50',
+        name: 'Unit 1',
+        position: 1,
+        items: [
+          { id: '501', canvas_type: 'Attachment', content_id: '77', title: 'Notes.pdf', html_url: `${location.origin}/courses/9/modules/items/501`, external_url: undefined, indent: 1, position: 1 },
+          { id: '503', canvas_type: 'ExternalUrl', content_id: '3', title: 'Teams', html_url: `${location.origin}/courses/9/modules/items/503`, external_url: 'https://teams.example', indent: 0, position: 2 },
+        ],
+      },
+    ]);
+    // Only the id and display name of who is signed in; never the avatar or anything else in ENV.current_user.
+    expect(posted.find((p) => p.page === 'currentUser')).toMatchObject({ url: `${location.origin}/#page:currentUser`, body: { id: '42', display_name: 'Ada L' } });
+    expect(posted.find((p) => p.page === 'currentUser').body).not.toHaveProperty('avatar_image_url');
+  });
+
+  it('reads missing / late pills and the class statistics table on the Grades page', async () => {
+    at('/courses/9/grades');
+    document.body.innerHTML = `
+      <table id="grades_summary"><tbody>
+        <tr class="student_assignment" id="submission_700">
+          <th class="title"><a href="/courses/9/assignments/700">Set 1</a></th><td class="status"><span class="submission-late-pill">late</span></td>
+        </tr>
+        <tr id="grade_info_700"><td><table id="score_details_700" class="score_details_table"><tbody><tr>
+          <td>Promedio: 6.5 Mediana: 7</td><td>Alto: 10 Cuartil superior: 8.25</td><td>Bajo: 1 Cuartil inferior: 4.5</td>
+        </tr></tbody></table></td></tr>
+        <tr class="student_assignment" id="submission_701">
+          <th class="title"><a href="/courses/9/assignments/701">Set 2</a></th><td class="status"><span class="submission-missing-pill">missing</span></td>
+        </tr>
+      </tbody></table>`;
+    window.ENV = { current_user_id: '42', context_asset_string: 'course_9', assignment_groups: [], submissions: [] };
+    install(apiFetch());
+    window.dispatchEvent(new Event('load'));
+    await tick();
+    const [set1, set2] = posted.find((p) => p.page === 'gradesPage').body.assignments;
+    expect(set1).toMatchObject({ late: true, missing: false, score_statistics: { mean: 6.5, median: 7, max: 10, upper_q: 8.25, min: 1, lower_q: 4.5 } });
+    expect(set2).toMatchObject({ late: false, missing: true, score_statistics: undefined });
+  });
+});
+
+describe('inject.js: whose Grades page, and numbers in the page language', () => {
+  const at = (path) => window.history.replaceState({}, '', path);
+  const table = `<table id="grades_summary"><tbody>
+    <tr class="student_assignment" id="submission_700"><th class="title"><a href="/courses/9/assignments/700">Set 1</a></th></tr>
+    <tr id="grade_info_700"><td><table id="score_details_700"><tbody><tr>
+      <td>Mean: 1,234.5 Median: 1,300</td><td>High: 2,000 Upper: 1,500.25</td><td>Low: 10 Lower: 900</td>
+    </tr></tbody></table></td></tr></tbody></table>`;
+  afterEach(() => {
+    at('/');
+    document.body.innerHTML = '';
+    document.documentElement.lang = '';
+  });
+  const run = async (path, env) => {
+    at(path);
+    document.documentElement.lang = 'en';
+    document.body.innerHTML = table;
+    window.ENV = { context_asset_string: 'course_9', assignment_groups: [], submissions: [], ...env };
+    install(apiFetch());
+    window.dispatchEvent(new Event('load'));
+    await tick();
+    return posted.find((p) => p.page === 'gradesPage');
+  };
+
+  it('reads the student\'s own grades at /grades/<their id>, never anyone else\'s', async () => {
+    expect(await run('/courses/9/grades/42', { current_user_id: '42' })).toBeTruthy();
+    posted = [];
+    expect(await run('/courses/9/grades/43', { current_user_id: '42' })).toBeUndefined();
+    posted = [];
+    expect(await run('/courses/9/grades', { current_user_id: '42', student_id: '43' })).toBeUndefined(); // an observer's view
+  });
+
+  it('reads Canvas\'s decimal points on a Spanish page (6.88 is not 688)', async () => {
+    at('/courses/9/grades');
+    document.documentElement.lang = 'es';
+    document.body.innerHTML = table.replace('Mean: 1,234.5 Median: 1,300', 'Promedio: 6.17 Mediana: 6.88').replace('High: 2,000 Upper: 1,500.25', 'Alto: 10 Cuartil superior: 9.56').replace('Low: 10 Lower: 900', 'Bajo: 0 Cuartil inferior: 3,75');
+    window.ENV = { context_asset_string: 'course_9', assignment_groups: [], submissions: [], current_user_id: '42' };
+    install(apiFetch());
+    window.dispatchEvent(new Event('load'));
+    await tick();
+    expect(posted.find((p) => p.page === 'gradesPage').body.assignments[0].score_statistics).toEqual({ mean: 6.17, median: 6.88, max: 10, upper_q: 9.56, min: 0, lower_q: 3.75 });
+  });
+
+  it('reads grouped numbers as the page\'s language writes them, and records the grading period', async () => {
+    const grades = await run('/courses/9/grades?grading_period_id=12', { current_user_id: '42' });
+    expect(grades.body.assignments[0].score_statistics).toEqual({ mean: 1234.5, median: 1300, max: 2000, upper_q: 1500.25, min: 10, lower_q: 900 });
+    expect(grades.body.grading_period_id).toBe('12');
+  });
+});
+
+describe('inject.js: module items Canvas draws after loading', () => {
+  const at = (path) => window.history.replaceState({}, '', path);
+  afterEach(() => {
+    at('/');
+    document.body.innerHTML = '';
+  });
+
+  it('reads the Modules page again on load, and sends it only when it changed', async () => {
+    at('/courses/9/modules');
+    document.body.innerHTML = '<div id="context_modules"><div class="context_module" data-module-id="50"><div class="ig-header"><span class="name">Unit 1</span></div><ul id="items"></ul></div></div>';
+    window.ENV = { current_user_id: '42', context_asset_string: 'course_9' };
+    install(apiFetch());
+    document.body.className = 'ic-app';
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+    await tick();
+    expect(posted.filter((p) => p.page === 'modulesPage').at(-1).body.modules[0].items).toEqual([]);
+    // Canvas renders the items afterwards.
+    document.getElementById('items').innerHTML = '<li id="context_module_item_501" class="context_module_item Attachment_77"><span class="item_name"><a class="title" href="/courses/9/modules/items/501">Notes.pdf</a></span></li>';
+    window.dispatchEvent(new Event('load'));
+    await tick();
+    const sends = posted.filter((p) => p.page === 'modulesPage');
+    expect(sends.at(-1).body.modules[0].items.map((i) => i.title)).toEqual(['Notes.pdf']);
+    window.dispatchEvent(new Event('load'));
+    await tick();
+    expect(posted.filter((p) => p.page === 'modulesPage')).toHaveLength(sends.length); // unchanged: not sent again
+  });
+});
+
+describe('inject.js: unit item titles as students see them', () => {
+  const at = (path) => window.history.replaceState({}, '', path);
+  afterEach(() => {
+    at('/');
+    document.body.innerHTML = '';
+  });
+
+  it('drops screen-reader text from titles, and takes an external link straight from the title link', async () => {
+    at('/courses/9/modules');
+    document.body.innerHTML = `<div id="context_modules"><div class="context_module" data-module-id="50"><div class="ig-header"><span class="name">U</span></div><ul>
+      <li id="context_module_item_7" class="context_module_item external_url ExternalUrl_3"><span class="item_name"><a class="title external" href="https://teams.example/x">Teams<span class="screenreader-only">Links to an external site.</span></a><span class="url"></span></span></li>
+    </ul></div></div>`;
+    window.ENV = { current_user_id: '42', context_asset_string: 'course_9' };
+    install(apiFetch());
+    window.dispatchEvent(new Event('load'));
+    await tick();
+    const [item] = posted.filter((p) => p.page === 'modulesPage').at(-1).body.modules[0].items;
+    expect(item).toMatchObject({ title: 'Teams', external_url: 'https://teams.example/x', html_url: undefined });
+  });
+});
+
+describe('inject.js: sending a message the student wrote in Courseline', () => {
+  // As a real browser delivers it (jsdom's postMessage leaves source and origin empty, which inject.js refuses).
+  const command = (extra) =>
+    window.dispatchEvent(new MessageEvent('message', { data: { source: 'courseline-command', type: 'send', nonce: 'n1', ...extra }, source: window, origin: location.origin }));
+  const result = async () => {
+    for (let i = 0; i < 20 && !posted.some((p) => p.type === 'sendResult'); i++) await tick();
+    return posted.find((p) => p.type === 'sendResult');
+  };
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('makes Canvas\'s own request with the page\'s form token, and passes the answer back', async () => {
+    window.ENV = { current_user_id: '42' };
+    document.body.innerHTML = '<form><input name="authenticity_token" value="tok123"></form>';
+    const fetchImpl = vi.fn(async () => new Response('while(1);{"id":8,"messages":[{"id":1,"body":"hi"}]}', { status: 200 }));
+    install(fetchImpl);
+    command({ path: '/api/v1/conversations/8/add_message', payload: { body: 'hi' } });
+    const r = await result();
+    expect(r, JSON.stringify(r)).toMatchObject({ ok: true, nonce: 'n1', body: { id: 8 } });
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('/api/v1/conversations/8/add_message');
+    expect(init).toMatchObject({ method: 'POST', credentials: 'same-origin', body: '{"body":"hi"}' });
+    expect(init.headers['X-CSRF-Token']).toBe('tok123');
+  });
+
+  it('refuses any other request, and a page with no form token', async () => {
+    window.ENV = { current_user_id: '42' };
+    document.body.innerHTML = '<input name="authenticity_token" value="tok">';
+    const fetchImpl = vi.fn(async () => new Response('{}'));
+    install(fetchImpl);
+    command({ path: '/api/v1/users/self', payload: {} });
+    expect(await result()).toMatchObject({ ok: false, error: 'Not a message request.' });
+    posted = [];
+    document.body.innerHTML = '';
+    command({ path: '/api/v1/conversations', payload: { body: 'x' } });
+    expect((await result()).ok).toBe(false);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe('inject.js: attachments sent from Courseline', () => {
+  const command = (extra) =>
+    window.dispatchEvent(new MessageEvent('message', { data: { source: 'courseline-command', type: 'send', nonce: 'n2', ...extra }, source: window, origin: location.origin }));
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('uploads each file the way Canvas does, then sends the message with their ids', async () => {
+    window.ENV = { current_user_id: '42' };
+    document.body.innerHTML = '<input name="authenticity_token" value="tok">';
+    const fetchImpl = vi.fn(async (url) => {
+      if (url === '/api/v1/users/self/files') return new Response('{"upload_url":"https://storage.test/up","upload_params":{"key":"k"}}');
+      if (String(url).startsWith('https://storage.test/')) return new Response('{"id":77}', { status: 201 });
+      return new Response('{"id":8}');
+    });
+    install(fetchImpl);
+    command({ path: '/api/v1/conversations/8/add_message', payload: { body: 'hi' }, files: [{ name: 'a.txt', type: 'text/plain', data: btoa('hello') }] });
+    for (let i = 0; i < 30 && !posted.some((p) => p.type === 'sendResult' && p.nonce === 'n2'); i++) await tick();
+    expect(posted.find((p) => p.nonce === 'n2')).toMatchObject({ ok: true });
+    const [slot, upload, message] = fetchImpl.mock.calls;
+    expect(JSON.parse(slot[1].body)).toMatchObject({ name: 'a.txt', size: 5, parent_folder_path: 'conversation attachments' });
+    expect(upload[1]).toMatchObject({ method: 'POST', credentials: 'omit' }); // file storage on another host gets no cookies
+    expect([...upload[1].body.keys()]).toEqual(['key', 'file']);
+    expect(JSON.parse(message[1].body)).toEqual({ body: 'hi', attachment_ids: ['77'] });
+  });
+});
+
+describe('inject.js: reading messages for Courseline', () => {
+  it('reads both folders and each thread without marking anything read', async () => {
+    window.ENV = { current_user_id: '42' };
+    const fetchImpl = vi.fn(async (url) => {
+      if (String(url).includes('scope=inbox')) return new Response('while(1);[{"id":8,"subject":"Pi"}]');
+      if (String(url).includes('scope=sent')) return new Response('[{"id":9,"subject":"Q"}]');
+      return new Response(`{"id":${String(url).match(/conversations\/(\d+)/)[1]},"messages":[]}`);
+    });
+    install(fetchImpl);
+    window.dispatchEvent(new MessageEvent('message', { data: { source: 'courseline-command', type: 'mail', nonce: 'm1' }, source: window, origin: location.origin }));
+    for (let i = 0; i < 30 && !posted.some((p) => p.type === 'mailResult'); i++) await tick();
+    const r = posted.find((p) => p.type === 'mailResult');
+    expect(r).toMatchObject({ ok: true, lists: { inbox: [{ id: 8 }], sent: [{ id: 9 }] } });
+    expect(r.threads.map((c) => c.id)).toEqual([8, 9]);
+    const urls = fetchImpl.mock.calls.map(([u]) => u);
+    expect(urls.filter((u) => /conversations\/\d+/.test(u)).every((u) => u.includes('auto_mark_as_read=false'))).toBe(true);
+    expect(fetchImpl.mock.calls.every(([, init]) => !init?.method || init.method === 'GET')).toBe(true);
+  });
+});

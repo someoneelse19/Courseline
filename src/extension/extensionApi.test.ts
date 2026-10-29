@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CanvasApiError } from '../api/client';
 import type { CapturedRecord, Snapshot } from './bridge';
-import { coverage, courseUpdatedAt, createExtensionApi, failingKinds, freshnessByType, knownCourses, lastUpdatedAt, normalizeIds, pinnedIds } from './extensionApi';
+import { coverage, courseUpdatedAt, createExtensionApi, failingKinds, freshnessByType, gradesPageGroups, hiddenSections, mailFrom, modulesFromPage, peopleFrom, sensibleStatistics, knownCourses, lastUpdatedAt, normalizeIds, pinnedIds } from './extensionApi';
 
 const T0 = Date.parse('2026-10-11T10:00:00Z');
 const rec = (kind: string, courseId: number | null, body: unknown, at = T0, url = `https://school.test/api/v1/${kind}`): CapturedRecord => ({
@@ -346,3 +346,346 @@ describe('the same list captured under different query strings', () => {
   });
 });
 
+
+// What the extension reads from Canvas's own pages (ENV and the grades table), for a course whose school hides the
+// Assignments, Modules, Pages and Files tabs: only Home, Announcements, Grades and People are in its menu.
+describe('a course read from its pages, with tabs the school hides', () => {
+  const page = (kind: string, body: unknown, at = T0) => rec(kind, 9, body, at, `https://school.test/courses/9#page:${kind}`);
+  const nav = page('courseNav', { tabs: ['/courses/9', '/courses/9/announcements', '/courses/9/grades', '/courses/9/users'].map((href) => ({ href, label: href })) });
+  const grades = page('gradesPage', {
+    assignment_groups: [
+      { id: '70', group_weight: 40, rules: {}, assignments: [{ id: '700', points_possible: 10, due_at: dueOld, submission_types: ['online_upload'], omit_from_final_grade: false }] },
+      { id: '71', group_weight: 60, rules: {}, assignments: [{ id: '701', points_possible: 20, due_at: dueFuture, submission_types: ['none'] }] },
+      { id: '72', group_weight: 0, rules: {}, assignments: [] },
+    ],
+    submissions: [
+      { assignment_id: '700', score: 8, workflow_state: 'graded', excused: false },
+      { assignment_id: '701', score: null, workflow_state: 'unsubmitted', excused: false },
+    ],
+    assignments: [
+      { id: '700', name: 'Problem set 1', html_url: 'https://school.test/courses/9/assignments/700', assignment_group_id: '70' },
+      { id: '701', name: 'Midterm', html_url: 'https://school.test/courses/9/assignments/701', assignment_group_id: '71' },
+    ],
+    group_names: { '70': 'Homework', '71': 'Exams' },
+  });
+  const records = [rec('dashboardCards', null, [card('9', 'Calculus')]), nav, grades];
+  const api = createExtensionApi(snap(records));
+
+  it('builds the gradebook from the Grades page: names, weights, points and scores', async () => {
+    const groups = await api.getAssignmentGroups(9);
+    expect(groups.map((g) => [g.name, g.group_weight, g.assignments?.map((a) => a.name)])).toEqual([
+      ['Homework', 40, ['Problem set 1']],
+      ['Exams', 60, ['Midterm']],
+      ['Assignment group', 0, []],
+    ]);
+    expect(groups[0].assignments?.[0]).toMatchObject({ id: 700, points_possible: 10, submission: { score: 8, workflow_state: 'graded' } });
+    expect((await api.getAssignments(9)).map((a) => a.name)).toEqual(['Problem set 1', 'Midterm']);
+  });
+
+  it('works out the grade from it (graded work only, weights rescaled)', async () => {
+    const course = await api.getCourse(9);
+    expect(course.enrollments?.find((e) => e.type === 'student')?.computed_current_score).toBeCloseTo(80);
+  });
+
+  it('knows which tabs the school hides, and says so instead of "not synced"', async () => {
+    expect([...hiddenSections(snap(records), 9)].sort()).toEqual(['assignments', 'discussions', 'files', 'modules', 'pages', 'quizzes', 'syllabus']);
+    await expect(api.getModules(9)).rejects.toMatchObject({ kind: 'hidden', message: expect.stringMatching(/Units is not in this course’s Canvas menu/) });
+    expect(await api.getCourseFiles(9)).toBeNull(); // as the API answers a hidden Files area: only files in units
+    await expect(api.getCourseSyllabus(9)).rejects.toMatchObject({ kind: 'hidden' });
+    await expect(api.getAnnouncements(9)).rejects.toThrow(/not been synced/); // shown in the menu, just not opened yet
+    const fresh = freshnessByType(snap(records), 9);
+    expect(fresh.find((f) => f.key === 'units')).toMatchObject({ updatedAt: null, hidden: true });
+    expect(fresh.find((f) => f.key === 'assignments')).toMatchObject({ updatedAt: T0 });
+    expect(fresh.find((f) => f.key === 'grades')?.hidden).toBeUndefined();
+  });
+
+  it('assumes nothing is hidden before the course menu was captured', () => {
+    expect(hiddenSections(snap([grades]), 9).size).toBe(0);
+  });
+
+  it('serves the syllabus read from the syllabus page', async () => {
+    const withSyllabus = createExtensionApi(snap([...records.filter((r) => r !== nav), page('syllabus', { syllabus_body: '<p>Outline</p>' })]));
+    expect((await withSyllabus.getCourseSyllabus(9)).syllabus_body).toBe('<p>Outline</p>');
+  });
+
+  it('never blanks a field an API capture already had', () => {
+    const [g] = gradesPageGroups({ assignment_groups: [{ id: '1', assignments: [{ id: '2' }] }], submissions: [], assignments: [] });
+    expect(g).not.toHaveProperty('name');
+    expect(g.assignments?.[0]).not.toHaveProperty('name');
+  });
+});
+
+describe('more read from the page: modules, files, who is signed in, missing/late and class statistics', () => {
+  const page = (kind: string, body: unknown, at = T0, courseId: number | null = 9) =>
+    rec(kind, courseId, body, at, courseId ? `https://school.test/courses/${courseId}#page:${kind}` : `https://school.test/#page:${kind}`);
+  const card = { id: '9', originalName: 'Calculus (C1)', longName: 'Calculus (C1) - CALC', shortName: 'Calculus (C1)', courseCode: 'CALC', term: 'Fall', assetString: 'course_9' };
+
+  it('turns the Modules page into units, mapping Canvas model names to item types and page ids to slugs', () => {
+    const body = {
+      modules: [
+        {
+          id: '50',
+          name: 'Unit 1',
+          position: 1,
+          items: [
+            { id: '500', canvas_type: 'ContextModuleSubHeader', content_id: '0', title: 'Theory', indent: 0, position: 1 },
+            { id: '501', canvas_type: 'Attachment', content_id: '77', title: 'Notes.pdf', indent: 1, position: 2, html_url: 'https://school.test/courses/9/modules/items/501' },
+            { id: '502', canvas_type: 'WikiPage', content_id: '88', title: 'Welcome', indent: 0, position: 3 },
+            { id: '503', canvas_type: 'ExternalUrl', content_id: '1', title: 'Teams', external_url: 'https://teams.example', indent: 0, position: 4 },
+          ],
+        },
+      ],
+    };
+    const [unit] = modulesFromPage(body, 9, new Map([[88, 'welcome']]));
+    expect(unit).toMatchObject({ id: 50, name: 'Unit 1', items_count: 4 });
+    expect(unit.items?.map((i) => [i.type, i.content_id, i.page_url, i.external_url, i.indent])).toEqual([
+      ['SubHeader', undefined, undefined, undefined, 0],
+      ['File', 77, undefined, undefined, 1],
+      ['Page', 88, 'welcome', undefined, 0],
+      ['ExternalUrl', undefined, undefined, 'https://teams.example', 0],
+    ]);
+  });
+
+  it('serves units from the Modules page when no API module list was captured', async () => {
+    const api = createExtensionApi(
+      snap([
+        rec('dashboardCards', null, [card]),
+        page('modulesPage', { modules: [{ id: '50', name: 'Unit 1', position: 1, items: [{ id: '501', canvas_type: 'Attachment', content_id: '77', title: 'Notes.pdf', position: 1 }] }] }),
+      ]),
+    );
+    expect((await api.getModules(9)).map((m) => [m.name, m.items?.length])).toEqual([['Unit 1', 1]]);
+  });
+
+  it('lists the files the Files page loaded folder by folder, only for this course', async () => {
+    const file = (id: string, course: string) => ({ id, display_name: `f${id}.pdf`, size: 10, context_asset_string: `course_${course}`, updated_at: '2026-10-01T00:00:00Z' });
+    const folder = { id: '3', name: 'course files', full_name: 'course files', context_asset_string: 'course_9' };
+    const records = [rec('dashboardCards', null, [card]), rec('other', null, [file('1', '9'), file('2', '8'), folder], T0, 'https://school.test/api/v1/folders/4/all')];
+    records[1].route = 'GET /folders/:id/all';
+    const files = await createExtensionApi(snap(records)).getCourseFiles(9);
+    expect(files?.map((f) => [f.id, f.display_name])).toEqual([[1, 'f1.pdf']]);
+  });
+
+  it('says files are not synced (not hidden) when the Files tab is shown but was never opened', async () => {
+    const nav = page('courseNav', { tabs: ['/courses/9', '/courses/9/files'].map((href) => ({ href })) });
+    await expect(createExtensionApi(snap([rec('dashboardCards', null, [card]), nav])).getCourseFiles(9)).rejects.toThrow(/not been synced/);
+    const hiddenNav = page('courseNav', { tabs: [{ href: '/courses/9' }] });
+    expect(await createExtensionApi(snap([rec('dashboardCards', null, [card]), hiddenNav])).getCourseFiles(9)).toBeNull();
+  });
+
+  it('greets the student by the name Canvas shows, and names courses as the API does', async () => {
+    const api = createExtensionApi(snap([rec('dashboardCards', null, [card]), page('currentUser', { id: '42', display_name: 'Ada L' }, T0, null)]));
+    expect(await api.getProfile()).toMatchObject({ id: 42, name: 'Ada L' });
+    expect(await api.getCourse(9)).toMatchObject({ name: 'Calculus (C1)', course_code: 'CALC', term: { name: 'Fall' } });
+  });
+
+  it('keeps fields the Grades page lacks from an older capture, and adds missing, late and class statistics', async () => {
+    const older = rec('courseSubmissions', 9, [{ id: 's1', assignment_id: '700', submitted_at: '2026-10-02T00:00:00Z', graded_at: '2026-10-03T00:00:00Z', score: 5, workflow_state: 'graded' }], T0 - 1000, 'https://school.test/api/v1/courses/9/students/submissions');
+    const grades = page('gradesPage', {
+      assignment_groups: [{ id: '70', group_weight: 0, rules: {}, assignments: [{ id: '700', points_possible: 10 }, { id: '701', points_possible: 10, due_at: dueOld }] }],
+      submissions: [
+        { assignment_id: '700', score: 8, workflow_state: 'graded', excused: false },
+        { assignment_id: '701', score: null, workflow_state: 'unsubmitted', excused: false },
+      ],
+      assignments: [
+        { id: '700', name: 'Set 1', late: true, missing: false, score_statistics: { mean: 6, median: 7, max: 10, min: 1, upper_q: 8, lower_q: 4 } },
+        { id: '701', name: 'Set 2', late: false, missing: true },
+      ],
+      group_names: { '70': 'Homework' },
+    });
+    const api = createExtensionApi(snap([rec('dashboardCards', null, [card]), older, grades]));
+    const [group] = await api.getAssignmentGroups(9);
+    const [a700, a701] = group.assignments ?? [];
+    expect(a700).toMatchObject({ course_id: 9, score_statistics: { median: 7 }, submission: { score: 8, late: true, submitted_at: '2026-10-02T00:00:00Z', graded_at: '2026-10-03T00:00:00Z' } });
+    expect(a701.submission).toMatchObject({ missing: true, score: null });
+  });
+});
+
+describe('fixes from review', () => {
+  const page = (kind: string, body: unknown, at = T0) => rec(kind, 9, body, at, `https://school.test/courses/9#page:${kind}`);
+  const card9 = { id: '9', originalName: 'Calculus', assetString: 'course_9' };
+
+  it('keeps an embedded submission\'s fields when a newer Grades-page copy has fewer', async () => {
+    const groupsOld = rec('assignmentGroups', 9, [{ id: '70', name: 'Homework', position: 1, group_weight: 0, assignments: [{ ...assignment('700', 'Set 1', dueOld), course_id: '9', assignment_group_id: '70', submission: { assignment_id: '700', score: 5, submitted_at: '2026-10-02T00:00:00Z', grade: '5', workflow_state: 'graded' } }] }], T0 - 1000, 'https://school.test/api/v1/courses/9/assignment_groups');
+    const grades = page('gradesPage', { assignment_groups: [{ id: '70', assignments: [{ id: '700', points_possible: 10 }] }], submissions: [{ assignment_id: '700', score: 8, workflow_state: 'graded' }], assignments: [{ id: '700', name: 'Set 1' }] });
+    const [g] = await createExtensionApi(snap([rec('dashboardCards', null, [card9]), groupsOld, grades])).getAssignmentGroups(9);
+    expect(g.assignments?.[0].submission).toMatchObject({ score: 8, submitted_at: '2026-10-02T00:00:00Z', grade: '5' });
+  });
+
+  it('counts an assignment that moved group only in its newest group', async () => {
+    const before = rec('assignmentGroups', 9, [{ id: '70', name: 'A', position: 1, group_weight: 0, assignments: [assignment('700', 'Set 1', dueOld)] }], T0 - 1000, 'https://school.test/api/v1/courses/9/assignment_groups');
+    const after = page('gradesPage', { assignment_groups: [{ id: '70', assignments: [] }, { id: '71', assignments: [{ id: '700', points_possible: 10 }] }], submissions: [], assignments: [{ id: '700', name: 'Set 1' }], group_names: { '71': 'B' } });
+    const groups = await createExtensionApi(snap([rec('dashboardCards', null, [card9]), before, after])).getAssignmentGroups(9);
+    expect(groups.map((g) => [g.name, g.assignments?.map((a) => a.id)])).toEqual([['A', []], ['B', [700]]]);
+    expect(groups[1].assignments?.[0].html_url).toBe('https://school.test/courses/1/assignments/700'); // carried over
+  });
+
+  it('dates units and files from the Modules page and the folder listings', () => {
+    const listing = rec('folderContents', null, [{ id: '1', display_name: 'a.pdf', size: 1, context_asset_string: 'course_9' }], T0, 'https://school.test/api/v1/folders/3/all');
+    const fresh = freshnessByType(snap([rec('dashboardCards', null, [card9]), page('modulesPage', { modules: [] }), listing]), 9);
+    expect(fresh.find((f) => f.key === 'units')?.updatedAt).toBe(T0);
+    expect(fresh.find((f) => f.key === 'files')?.updatedAt).toBe(T0);
+  });
+
+  it('shows a Files tab that is not in the menu as such, even with no files captured', () => {
+    const nav = page('courseNav', { tabs: [{ href: '/courses/9' }] });
+    expect(freshnessByType(snap([rec('dashboardCards', null, [card9]), nav]), 9).find((f) => f.key === 'files')).toMatchObject({ hidden: true });
+  });
+});
+
+describe('matching the API: posted dates, missing flags and the upcoming window', () => {
+  const card9 = { id: '9', originalName: 'Calculus', assetString: 'course_9' };
+  const grades = rec('gradesPage', 9, {
+    assignment_groups: [{ id: '70', assignments: [{ id: '700', points_possible: 10 }, { id: '701', points_possible: 10, due_at: new Date(Date.now() + 3 * 86400e3).toISOString() }, { id: '702', points_possible: 10, due_at: new Date(Date.now() + 10 * 86400e3).toISOString() }] }],
+    submissions: [{ assignment_id: '700', score: null, workflow_state: 'unsubmitted' }],
+    assignments: [{ id: '700', name: 'Team formation' }, { id: '701', name: 'Soon' }, { id: '702', name: 'Later' }],
+  }, T0, 'https://school.test/courses/9#page:gradesPage');
+  const planner = rec('plannerItems', null, [
+    { plannable_type: 'assignment', plannable_id: '700', course_id: '9', plannable: { created_at: '2026-09-27T10:00:00Z', title: 'Team formation' }, submissions: { missing: true, late: false } },
+  ], T0, 'https://school.test/api/v1/planner/items');
+  const api = createExtensionApi(snap([rec('dashboardCards', null, [card9]), grades, planner]));
+
+  it('takes the posted date and Canvas\'s missing flag from planner items', async () => {
+    const a = (await api.getAssignments(9)).find((x) => x.id === 700);
+    expect(a).toMatchObject({ created_at: '2026-09-27T10:00:00Z', submission: { missing: true, late: false } });
+  });
+
+  it('lists as upcoming only what is due within the next week, as the API does', async () => {
+    expect((await api.getUpcoming()).map((e) => e.title)).toEqual(['Soon']);
+  });
+});
+
+describe('class statistics that do not add up are left out', () => {
+  it('keeps statistics in order and drops misread ones', () => {
+    expect(sensibleStatistics({ min: 0, lower_q: 3.75, median: 6.88, upper_q: 9.56, max: 10, mean: 6.17 })).toBeTruthy();
+    // "6.88" read as 688: the median is above the high score.
+    expect(sensibleStatistics({ min: 0, lower_q: 375, median: 688, upper_q: 956, max: 10, mean: 617 })).toBeUndefined();
+    expect(sensibleStatistics({ min: 8, lower_q: 9, median: 9, upper_q: 10, max: 10, mean: 93 })).toBeUndefined(); // mean out of range
+    expect(sensibleStatistics({ min: 1, max: 9, mean: 5 })).toBeUndefined(); // no median
+  });
+});
+
+describe('review fixes: statistics against points, planner flags with no submission', () => {
+  it('drops statistics that are all misread by the same factor (6.88 read as 688 on a 10-point assignment)', () => {
+    const scaled = { min: 0, lower_q: 375, median: 688, upper_q: 956, max: 1000, mean: 617 };
+    expect(sensibleStatistics(scaled)).toBeTruthy(); // in order, so only the points can tell
+    expect(sensibleStatistics(scaled, 10)).toBeUndefined();
+    expect(sensibleStatistics({ min: 0, lower_q: 3.75, median: 6.88, upper_q: 9.56, max: 10, mean: 6.17 }, 10)).toBeTruthy();
+    expect(sensibleStatistics({ min: 0, lower_q: 8, median: 11, upper_q: 12, max: 12, mean: 10 }, 10)).toBeTruthy(); // extra credit
+  });
+
+  it('keeps Canvas\'s missing flag from planner items even when no submission was captured', async () => {
+    const card9 = { id: '9', originalName: 'Calculus', assetString: 'course_9' };
+    const groups = rec('assignmentGroups', 9, [{ id: '70', name: 'G', position: 1, group_weight: 0, assignments: [{ ...assignment('700', 'Set', dueOld), course_id: '9' }] }], T0, 'https://school.test/api/v1/courses/9/assignment_groups');
+    const planner = rec('plannerItems', null, [{ plannable_type: 'assignment', plannable_id: '700', course_id: '9', plannable: {}, submissions: { missing: true } }], T0, 'https://school.test/api/v1/planner/items');
+    const [a] = await createExtensionApi(snap([rec('dashboardCards', null, [card9]), groups, planner])).getAssignments(9);
+    expect(a.submission).toEqual({ assignment_id: 700, missing: true });
+  });
+});
+
+describe('matching the API: order of courses, files and pages; empty discussions', () => {
+  const cards = [{ id: '2', originalName: 'Zoology', assetString: 'course_2' }, { id: '1', originalName: 'Algebra', assetString: 'course_1' }];
+
+  it('lists courses by name, as /courses answers', async () => {
+    expect((await createExtensionApi(snap([rec('dashboardCards', null, cards)])).getCourses()).map((c) => c.name)).toEqual(['Algebra', 'Zoology']);
+  });
+
+  it('lists files newest first', async () => {
+    const listing = rec('folderContents', null, [
+      { id: '1', display_name: 'old.pdf', size: 1, context_asset_string: 'course_1', updated_at: '2026-09-01T00:00:00Z' },
+      { id: '2', display_name: 'new.pdf', size: 1, context_asset_string: 'course_1', updated_at: '2026-10-01T00:00:00Z' },
+    ], T0, 'https://school.test/api/v1/folders/3/all');
+    const files = await createExtensionApi(snap([rec('dashboardCards', null, cards), listing])).getCourseFiles(1);
+    expect(files?.map((f) => f.display_name)).toEqual(['new.pdf', 'old.pdf']);
+  });
+
+  it('puts the front page first, then the pages in the order it links them', async () => {
+    const page = (url: string, extra: object = {}) => rec('page', 1, { url, title: url, body: '', ...extra }, T0, `https://school.test/courses/1#page:wikiPage:${url}`);
+    const front = rec('frontPage', 1, { url: 'index', title: 'Index', front_page: true, body: '<a href="/courses/1/pages/b">B</a> <a href="/courses/1/pages/a">A</a>' }, T0, 'https://school.test/courses/1#page:wikiPage');
+    const pages = await createExtensionApi(snap([rec('dashboardCards', null, cards), page('a'), page('z'), page('b'), front])).getPages(1);
+    expect(pages.map((p) => p.url)).toEqual(['index', 'b', 'a', 'z']);
+  });
+
+  it('a Discussions page that was opened and loaded nothing means no discussions', async () => {
+    const s = { ...snap([rec('dashboardCards', null, cards)]), visited: { 'https://school.test/courses/1/discussion_topics': T0 } };
+    expect(await createExtensionApi(s).getDiscussions(1)).toEqual([]);
+    await expect(createExtensionApi(snap([rec('dashboardCards', null, cards)])).getDiscussions(1)).rejects.toThrow(/not been synced/);
+  });
+
+  it('reads a discussion opened on its own (GraphQL), for its course only', async () => {
+    const node = (id: string, course: string, isAnnouncement = false) => ({ data: { legacyNode: { _id: id, title: `T${id}`, message: '<p>m</p>', postedAt: '2026-10-01T00:00:00Z', isAnnouncement, author: { displayName: 'Prof', htmlUrl: `https://school.test/courses/${course}/users/5` } } } });
+    const g = (body: unknown) => Object.assign(rec('other', null, body, T0, 'https://school.test/api/graphql'), { route: 'POST /api/graphql GetDiscussionQuery' });
+    const s = { ...snap([rec('dashboardCards', null, cards), g(node('10', '1')), g(node('11', '2')), g(node('12', '1', true))]), visited: { 'https://school.test/courses/1/discussion_topics': T0 } };
+    const api = createExtensionApi(s);
+    expect((await api.getDiscussions(1)).map((d) => [d.id, d.title, d.author?.display_name])).toEqual([[10, 'T10', 'Prof']]);
+    expect((await api.getAnnouncements(1)).map((d) => d.id)).toEqual([12]);
+  });
+});
+
+describe('the inbox, from what Canvas\'s own Inbox loaded', () => {
+  const gql = (nodes: unknown[], variables?: object, at = T0) =>
+    Object.assign(rec('other', null, { data: { legacyNode: { _id: '42', conversationsConnection: { nodes } } } }, at, 'https://school.test/api/graphql'), { route: 'POST /api/graphql GetConversationsQuery', variables });
+  const node = (id: string, subject: string, state: string, msg: object, people: string[], count = 1) => ({
+    workflowState: state,
+    conversation: {
+      _id: id,
+      subject,
+      conversationMessagesCount: count,
+      conversationParticipantsConnection: { nodes: people.map((n) => ({ user: { shortName: n } })) },
+      conversationMessagesConnection: { nodes: [msg] },
+    },
+  });
+  const m = (id: string, author: string, authorId: string, at: string, body: string) => ({ id, body, createdAt: at, author: { _id: authorId, name: author } });
+
+  it('lists conversations with their newest message, unread state and senders first', () => {
+    const mail = mailFrom([
+      gql([node('7', 'Pi', 'unread', m('a', 'Prof ', '5', '2026-09-26T16:16:28+02:00', 'Here'), ['Ana', 'Me ', 'Prof '], 3)], { scope: 'inbox' }),
+    ]);
+    const c = mail.get(7)!.conversation;
+    expect(c).toMatchObject({ subject: 'Pi', workflow_state: 'unread', last_message: 'Here', message_count: 3 });
+    expect(c.participants.map((p) => p.name)).toEqual(['Prof', 'Ana', 'Me']);
+    expect([...mail.get(7)!.scopes]).toEqual(['inbox']);
+  });
+
+  it('knows the sent folder from the query\'s variables, and adds what the extension sent', () => {
+    const sentRest = rec('conversation', null, { id: 8, subject: 'Q', workflow_state: 'read', participants: [{ id: 42, name: 'Me' }, { id: 5, name: 'Prof' }], messages: [{ id: 99, created_at: '2026-10-01T10:00:00Z', body: 'My question', author_id: 42 }] }, T0 + 5, 'https://school.test/api/v1/conversations/8');
+    const mail = mailFrom([gql([node('8', 'Q', 'read', m('b', 'Prof', '5', '2026-09-30T10:00:00Z', 'Ask'), ['Me', 'Prof'])], { scope: 'sent' }), sentRest]);
+    const e = mail.get(8)!;
+    expect([...e.scopes]).toEqual(['sent']);
+    expect([...e.messages.values()].map((x) => x.body).sort()).toEqual(['Ask', 'My question']);
+    expect(e.conversation.last_message).toBe('My question');
+  });
+
+  it('serves the inbox, a thread (newest first) and the unread count through the API', async () => {
+    const api = createExtensionApi(snap([rec('dashboardCards', null, [card('1', 'Bio')]), gql([node('7', 'Pi', 'unread', m('a', 'Prof', '5', '2026-09-26T16:16:28+02:00', 'Here'), ['Prof', 'Me'])])]));
+    expect((await api.getConversations('inbox')).map((c) => c.subject)).toEqual(['Pi']);
+    expect((await api.getConversation(7)).messages?.map((x) => x.body)).toEqual(['Here']);
+    expect(await api.getUnreadCount()).toBe(1);
+    await expect(createExtensionApi(snap([])).getConversations('inbox')).rejects.toThrow(/not been synced/);
+  });
+});
+
+describe('people to write to, from a course\'s People page', () => {
+  it('keeps teachers, TAs and classmates, by name', () => {
+    const people = Object.assign(rec('other', 9, [
+      { id: '5', name: 'Zoe Prof', enrollments: [{ type: 'TeacherEnrollment' }] },
+      { id: '6', name: 'Al Helper', enrollments: [{ type: 'TaEnrollment' }] },
+      { id: '7', name: 'Classmate', enrollments: [{ type: 'StudentEnrollment' }] },
+    ], T0, 'https://school.test/api/v1/courses/9/users'), { route: 'GET /courses/:id/users' });
+    expect(peopleFrom([people], 9)).toEqual([{ id: 6, name: 'Al Helper', role: 'ta' }, { id: 7, name: 'Classmate', role: 'student' }, { id: 5, name: 'Zoe Prof', role: 'teacher' }]);
+    expect(peopleFrom([people], 8)).toEqual([]);
+  });
+});
+
+describe('a thread opened in Canvas\'s Inbox, and its newest message from the list', () => {
+  it('is one message, not two, and its attachment keeps its name', () => {
+    const list = Object.assign(rec('other', null, { data: { legacyNode: { conversationsConnection: { nodes: [{ workflowState: 'read', conversation: { _id: '9', subject: 'Photo', conversationMessagesCount: 2, conversationParticipantsConnection: { nodes: [] }, conversationMessagesConnection: { nodes: [{ id: btoa('ConversationMessage-61'), body: 'here', createdAt: '2026-10-02T07:32:43+02:00', author: { _id: '42', name: 'Me' } }] } } }] } } } }, T0, 'https://school.test/api/graphql'), { route: 'POST /api/graphql GetConversationsQuery' });
+    const thread = Object.assign(rec('other', null, { data: { legacyNode: { __typename: 'Conversation', _id: '9', subject: 'Photo', contextName: 'Programming', conversationMessagesConnection: { nodes: [
+      { _id: '61', id: btoa('ConversationMessage-61'), body: 'here', createdAt: '2026-10-02T07:32:43+02:00', author: { _id: '42', name: 'Me' }, attachments: [{ _id: '5', displayName: 'photo.jpg' }] },
+      { _id: '60', id: btoa('ConversationMessage-60'), body: 'please send it', createdAt: '2026-10-02T05:31:00+02:00', author: { _id: '7', name: 'Ignacio' } },
+    ] } } } }, T0 + 1, 'https://school.test/api/graphql'), { route: 'POST /api/graphql GetConversationMessagesQuery' });
+    const e = mailFrom([list, thread]).get(9)!;
+    expect([...e.messages.values()].map((m) => [m.id, m.body]).sort()).toEqual([['60', 'please send it'], ['61', 'here']]);
+    expect(e.messages.get('61')?.attachments).toEqual([{ id: 5, display_name: 'photo.jpg' }]);
+    expect(e.conversation.context_name).toBe('Programming');
+  });
+});

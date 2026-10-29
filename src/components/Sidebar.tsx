@@ -1,5 +1,8 @@
+import { useEffect } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
-import { useVisibleCourses } from '../hooks/useCanvasData';
+import { useUnreadCount, useVisibleCourses } from '../hooks/useCanvasData';
+import { API_ONLY } from '../edition';
+import { ExtensionStatus } from './ExtensionStatus';
 import { CourseIcon, navIcons } from './icons';
 import { Spinner } from './ui';
 import { t } from '../i18n';
@@ -17,6 +20,12 @@ const item = (active: boolean) =>
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { data: courses, error } = useVisibleCourses();
+  const { data: unread, refetch: refetchUnread } = useUnreadCount();
+  // The unread count stays current while the app is open (and reloads at once after reading, see MessagesPage).
+  useEffect(() => {
+    const timer = setInterval(refetchUnread, 60_000);
+    return () => clearInterval(timer);
+  }, [refetchUnread]);
   const { pathname } = useLocation();
   const currentCourseId = pathname.match(/^\/courses\/(\d+)/)?.[1];
 
@@ -43,6 +52,16 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             {navIcons.calendar}
             <span className="truncate">{t('Calendar')}</span>
           </NavLink>
+          <NavLink to="/messages" className={({ isActive }) => item(isActive)}>
+            {navIcons.messages}
+            <span className="truncate">{t('Messages')}</span>
+            {!!unread && (
+              <span className="ml-auto min-w-5 rounded-full bg-accent-600 px-1.5 text-center text-[11px] font-semibold leading-5 text-white">
+                <span aria-hidden>{unread > 99 ? '99+' : unread}</span>
+                <span className="sr-only">{t('{n} unread', { n: unread })}</span>
+              </span>
+            )}
+          </NavLink>
 
           <h3 className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">{t('Courses')}</h3>
           {error ? (
@@ -61,6 +80,9 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
               </Link>
             ))
           )}
+
+          {/* Extension mode only: how current the captured data is (collapsed to a status dot). */}
+          {!API_ONLY && <ExtensionStatus />}
         </nav>
 
         <div className="border-t border-neutral-200 p-3 dark:border-neutral-800">

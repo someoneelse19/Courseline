@@ -28,8 +28,8 @@ function installChrome() {
     },
     windows: { create: async () => ({ id: 1 }), update: async () => {} },
     tabs: {
-      create: vi.fn(async () => ({ id: 7 })),
-      get: async () => ({ status: 'complete' }),
+      create: vi.fn(async ({ url }) => ((openedUrl = url), { id: 7 })),
+      get: async () => ({ status: 'complete', url: openedUrl }),
       remove: vi.fn(async () => {}),
       onUpdated: { addListener: () => {}, removeListener: () => {} },
       onRemoved: { addListener: (fn) => (removedListener = fn) },
@@ -37,6 +37,7 @@ function installChrome() {
   };
 }
 
+let openedUrl = '';
 const sender = (url = 'https://school.test/courses/1') => ({ tab: { id: 1 }, url });
 const app = () => sender('http://localhost:5173/');
 // Commands from the Courseline app arrive from its localhost tab (through bridge.js); captures from Canvas pages.
@@ -170,8 +171,11 @@ describe('background capture pipeline', () => {
     let reply;
     listener({ type: 'openPage', url: 'https://school.test/courses/1/announcements' }, app(), (r) => (reply = r));
     await new Promise((r) => setTimeout(r, 60));
-    // While the page loads, Canvas's own page makes a request that the capture script forwards.
-    await send(capture('https://school.test/api/v1/courses/1/announcements', [{ id: 1, title: 'Welcome', message: 'hi' }, { id: 2, title: 'Week 2' }]));
+    // While the page loads, Canvas's own page (in the opened tab, 7) makes a request that the capture script forwards.
+    // A capture from another tab at the same moment (another page of a parallel pull) is not this page's.
+    const inTab = (id) => ({ tab: { id }, url: 'https://school.test/courses/1/announcements' });
+    await send(capture('https://school.test/api/v1/courses/1/announcements', [{ id: 1, title: 'Welcome', message: 'hi' }, { id: 2, title: 'Week 2' }]), inTab(7));
+    await send(capture('https://school.test/api/v1/courses/1/modules', [{ id: 9, name: 'Other tab' }]), inTab(8));
     // Canvas's page finishes its requests and reports it has gone quiet: the pull moves on right then.
     const quietAt = Date.now();
     listener({ type: 'pageIdle' }, { tab: { id: 7 }, url: 'https://school.test/courses/1/announcements' });
@@ -185,8 +189,8 @@ describe('background capture pipeline', () => {
     expect(reply.items[0]).toMatchObject({ label: 'GET /courses/:id/announcements', sample: ['Welcome', 'Week 2'] });
     // It is remembered as opened, so the next batch of linked pages skips it.
     expect(store.visited['https://school.test/courses/1/announcements']).toBeGreaterThan(0);
-    // The hourly page count survives the worker being shut down: it is kept in session storage, not in memory.
-    expect(session.opened).toHaveLength(1);
+    // No hourly cap: nothing is counted.
+    expect(session.opened).toBeUndefined();
     expect(session.pullTabs).toEqual([]); // the tab was closed again
   }, 10000);
 
@@ -233,5 +237,91 @@ describe('background capture pipeline', () => {
     expect(good).toMatchObject({ kind: 'assignment', body: { name: 'Essay', description: 'good' } });
     expect(raw).toMatchObject({ kind: 'other', rejectedAs: 'assignment', route: 'GET /courses/:id/assignments/:id', body: { id: 5 } });
     expect(store.health.assignment).toMatchObject({ ok: 1, badShape: 1 });
+  });
+});
+
+describe('Stop with several tabs loading', () => {
+  it('a page that was still starting when Stop came does not keep its tab', async () => {
+    await send({ type: 'setCanvasHost', input: 'school.test' });
+    let reply;
+    listener({ type: 'openPage', url: 'https://school.test/courses/1/grades' }, app(), (r) => (reply = r));
+    listener({ type: 'cancelPull' }, app()); // before openPage has read the address or opened the tab
+    await new Promise((r) => setTimeout(r, 50));
+    expect(reply).toMatchObject({ ok: true, stopped: true, loaded: false });
+    const created = chrome.tabs.create.mock.calls.length;
+    if (created) expect(chrome.tabs.remove).toHaveBeenCalledWith(7);
+  });
+
+  it('closes tabs a pull opened before Chrome restarted the worker', async () => {
+    vi.resetModules();
+    installChrome();
+    session.pullTabs = [99];
+    await import('./background.js');
+    listener({ type: 'cancelPull' }, app());
+    await new Promise((r) => setTimeout(r, 30));
+    expect(chrome.tabs.remove).toHaveBeenCalledWith(99);
+  });
+});
+
+describe('sending a message from a Canvas tab', () => {
+  it('opens the saved Canvas in the background, has its page send it, saves the answer and closes the tab', async () => {
+    await send({ type: 'setCanvasHost', input: 'school.test' });
+    chrome.tabs.sendMessage = vi.fn(async (tabId, msg) => {
+      // The page script answers through relay.js with the nonce it was given.
+      setTimeout(() => listener({ type: 'sendResult', nonce: msg.nonce, where: 'school.test/profile/settings', ok: true, body: { id: 8, subject: 'Pi', messages: [{ id: 1, body: 'hi' }] } }, { tab: { id: tabId }, url: 'https://school.test/profile/settings' }), 5);
+    });
+    let reply;
+    listener({ type: 'sendMessage', request: { kind: 'reply', conversationId: 8, body: 'hi' } }, app(), (r) => (reply = r));
+    for (let i = 0; i < 50 && !reply; i++) await new Promise((r) => setTimeout(r, 20));
+    expect(chrome.tabs.create).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://school.test/profile/settings', active: false }));
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(7, expect.objectContaining({ type: 'courseline-send', path: '/api/v1/conversations/8/add_message', payload: { body: 'hi' } }));
+    expect(reply).toMatchObject({ ok: true, result: { id: 8 } });
+    expect(Object.values(store).some((r) => r?.kind === 'conversation' && r.body?.id === 8)).toBe(true);
+    expect(chrome.tabs.remove).toHaveBeenCalledWith(7);
+  });
+
+  it('refuses it from anywhere but the app, and a forged answer from another tab', async () => {
+    await send({ type: 'setCanvasHost', input: 'school.test' });
+    let reply = 'none';
+    listener({ type: 'sendMessage', request: { kind: 'reply', conversationId: 8, body: 'hi' } }, sender('https://school.test/'), (r) => (reply = r));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(reply).toBe('none');
+    expect(chrome.tabs.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('sending while signed out of Canvas', () => {
+  it('says so: the page script reports it ran on the login screen, not on Canvas\'s Settings page', async () => {
+    await send({ type: 'setCanvasHost', input: 'school.test' });
+    chrome.tabs.sendMessage = vi.fn(async (tabId, msg) => {
+      setTimeout(() => listener({ type: 'sendResult', nonce: msg.nonce, where: 'login.school.test/', ok: false, error: 'This is not a Canvas page.' }, { tab: { id: tabId }, url: 'https://login.school.test/' }), 5);
+    });
+    let reply;
+    listener({ type: 'sendMessage', request: { kind: 'reply', conversationId: 8, body: 'hi' } }, app(), (r) => (reply = r));
+    for (let i = 0; i < 50 && !reply; i++) await new Promise((r) => setTimeout(r, 20));
+    expect(reply).toMatchObject({ ok: false, error: expect.stringMatching(/not signed in to Canvas/) });
+    expect(chrome.tabs.remove).toHaveBeenCalledWith(7);
+  });
+});
+
+describe('reading messages when Messages is opened in the app', () => {
+  it('reads lists and threads from a Canvas tab, saves them, and waits two minutes before reading again', async () => {
+    await send({ type: 'setCanvasHost', input: 'school.test' });
+    chrome.tabs.sendMessage = vi.fn(async (tabId, msg) => {
+      setTimeout(() => listener({ type: 'mailResult', nonce: msg.nonce, where: 'school.test/profile/settings', ok: true, lists: { inbox: [{ id: 8, subject: 'Pi' }], sent: [] }, threads: [{ id: 8, subject: 'Pi', messages: [{ id: 1, body: 'hi' }] }] }, { tab: { id: tabId }, url: 'https://school.test/profile/settings' }), 5);
+    });
+    let reply;
+    listener({ type: 'refreshMail' }, app(), (r) => (reply = r));
+    for (let i = 0; i < 50 && !reply; i++) await new Promise((r) => setTimeout(r, 20));
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(7, expect.objectContaining({ type: 'courseline-mail' }));
+    expect(reply).toMatchObject({ ok: true });
+    expect(store['cap:school.test/api/v1/conversations?scope=inbox']).toMatchObject({ kind: 'conversation' });
+    expect(store['cap:school.test/api/v1/conversations/8'].body.messages).toHaveLength(1);
+    expect(chrome.tabs.remove).toHaveBeenCalledWith(7);
+
+    let again;
+    listener({ type: 'refreshMail' }, app(), (r) => (again = r));
+    for (let i = 0; i < 20 && !again; i++) await new Promise((r) => setTimeout(r, 10));
+    expect(again).toMatchObject({ ok: true, skipped: true });
   });
 });

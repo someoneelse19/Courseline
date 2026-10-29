@@ -14,6 +14,7 @@ let startReply: { ok: true; runId: string; total: number } | { ok: false; error:
 let planListeners: Array<() => void>;
 let snapshotLoads: number;
 const cancelPull = vi.fn(async () => {});
+const endChain = vi.fn(async () => {});
 
 vi.mock('../extension/bridge', () => ({
   loadSnapshot: async () => {
@@ -29,6 +30,7 @@ vi.mock('../extension/bridge', () => ({
     return startReply;
   },
   cancelPull: () => cancelPull(),
+  endChain: () => endChain(),
   onPullEvent: (cb: (e: PullEvent) => void) => {
     listeners.push(cb);
     return () => (listeners = listeners.filter((l) => l !== cb));
@@ -75,9 +77,9 @@ describe('PullProvider', () => {
     await act(async () => api.requestSync());
     await tick();
     expect(api.state?.phase).toBe('confirm');
-    expect(api.state?.planCount).toBe(4 + 10); // account pages + ten pages for one course
+    expect(api.state?.planCount).toBe(4 + 11); // account pages + eleven pages for one course (home included)
     // The confirmation is in the page itself.
-    expect(document.body.textContent).toContain('This will open 14 Canvas pages');
+    expect(document.body.textContent).toContain('This will open 15 Canvas pages');
     expect(document.body.textContent).toContain('background tabs');
     expect(document.body.textContent).toContain('Start');
     expect(started).toEqual([]);
@@ -92,7 +94,7 @@ describe('PullProvider', () => {
     await tick();
     await act(async () => api.setDepth('essential'));
     await tick();
-    expect(api.state?.planCount).toBe(4);
+    expect(api.state?.planCount).toBe(6);
   });
 
   it('runs on Start, updates each page as events arrive, and finishes with a summary', async () => {
@@ -102,10 +104,12 @@ describe('PullProvider', () => {
     await act(async () => api.start());
     await tick();
     expect(started[0].map((s) => s.url)).toEqual([
+      'https://school.test/courses/1',
       'https://school.test/courses/1/assignments',
       'https://school.test/courses/1/grades',
       'https://school.test/courses/1/modules',
       'https://school.test/courses/1/pages',
+      'https://school.test/courses/1/files',
     ]);
     expect(api.state?.phase).toBe('running');
     await emit({ type: 'pullProgress', runId: 'r1', index: 0, total: 4, step: started[0][0], state: 'visiting' });
@@ -150,8 +154,8 @@ describe('PullProvider', () => {
     await emit({ type: 'pullDone', runId: 'r1', cancelled: false, results: [{ step: started[0][0], captured: 5 }] });
     await tick();
     expect(started).toHaveLength(2);
-    expect(started[1]).toHaveLength(4);
-    expect(api.state?.rows).toHaveLength(1 + 4);
+    expect(started[1]).toHaveLength(6);
+    expect(api.state?.rows).toHaveLength(1 + 6);
     expect(api.state?.phase).toBe('running');
   });
 
@@ -184,7 +188,7 @@ describe('PullProvider', () => {
     expect(api.state?.message).toBe('A sync is already running.');
   });
 
-  it('pulls the linked pages in batches of 80, skips opened ones, and says how many are left', async () => {
+  it('pulls every linked page in one run (no batch cap) and skips opened ones next time', async () => {
     const links = Array.from({ length: 85 }, (_, i) => `/courses/1/assignments/${i + 1}`);
     snapshot = snap([
       rec('dashboardCards', null, [{ id: '1', longName: 'Biology' }]),
@@ -193,31 +197,29 @@ describe('PullProvider', () => {
     await mount();
     await act(async () => api.requestDeepSync());
     await tick();
-    expect(api.state).toMatchObject({ phase: 'confirm', planCount: 80, planTotal: 85 });
-    expect(document.body.textContent).toContain('85 pages found; this run opens the first 80');
+    expect(api.state).toMatchObject({ phase: 'confirm', planCount: 85 });
 
     await act(async () => api.start());
     await tick();
-    expect(started[0]).toHaveLength(80);
+    expect(started[0]).toHaveLength(85);
     expect(started[0][0].label).toBe('Biology · Assignment · A1');
 
-    // The extension opened them, and remembers: the next batch is the rest.
+    // The extension opened them, and remembers: nothing is left.
     const visited = Object.fromEntries(started[0].map((s) => [s.url, Date.now()]));
     snapshot = { ...snapshot!, visited };
     await emit({ type: 'pullDone', runId: 'r1', cancelled: false, results: [] });
     await tick();
     expect(api.state?.phase).toBe('done');
-    expect(api.state?.remaining).toBe(5);
-    expect(document.body.textContent).toContain('5 more linked pages have not been opened yet');
+    expect(api.state?.remaining ?? 0).toBe(0);
   });
 
-  it('cuts a plan that is longer than one run and says how long it really was; Start twice opens one run', async () => {
+  it('opens the whole plan however long it is; Start twice opens one run', async () => {
     const cards = Array.from({ length: 21 }, (_, i) => ({ id: String(i + 1), longName: `Course ${i + 1}` }));
     snapshot = snap([rec('dashboardCards', null, cards)]);
     await mount();
     await act(async () => api.requestSync());
     await tick();
-    expect(api.state).toMatchObject({ phase: 'confirm', planCount: 200, planTotal: 4 + 21 * 10 });
+    expect(api.state).toMatchObject({ phase: 'confirm', planCount: 4 + 21 * 11 });
     // A double click on Start must not start two runs.
     await act(async () => {
       api.start();
@@ -225,7 +227,7 @@ describe('PullProvider', () => {
     });
     await tick();
     expect(started).toHaveLength(1);
-    expect(started[0]).toHaveLength(200);
+    expect(started[0]).toHaveLength(4 + 21 * 11);
   });
 
   it('the popup\'s "Sync in Courseline" shows the plan in the open page, but not over a run that is going', async () => {
@@ -267,5 +269,56 @@ describe('PullProvider', () => {
     await tick();
     expect(started).toHaveLength(1); // ...but the student had pressed Stop, so nothing more opens
     expect(api.state).toMatchObject({ phase: 'done', cancelled: true });
+  });
+
+  it('one Sync now opens the course pages, then the linked pages, then the pages those link to, until nothing new', async () => {
+    const linking = (...ids: number[]) => rec('assignmentGroups', 1, [{ id: '1', name: 'G', assignments: ids.map((id) => ({ id: String(id), name: `A${id}`, html_url: `/courses/1/assignments/${id}` })) }]);
+    snapshot = snap([...withCourses.records, linking(5)]);
+    await mount();
+    await act(async () => api.requestSync({ confirm: false }));
+    await tick();
+    expect(started).toHaveLength(1);
+    expect(started[0].some((s) => s.url.endsWith('/courses/1/modules'))).toBe(true);
+
+    // Round 1 found a link to assignment 5.
+    startReply = { ok: true, runId: 'r2', total: 1 };
+    await emit({ type: 'pullDone', runId: 'r1', cancelled: false, results: [] });
+    await tick();
+    expect(started[1].map((s) => s.url)).toEqual(['https://school.test/courses/1/assignments/5']);
+
+    // Assignment 5's page linked to assignment 6: the pass goes on, without opening 5 again.
+    snapshot = snap([...withCourses.records, linking(5, 6)]);
+    startReply = { ok: true, runId: 'r3', total: 1 };
+    await emit({ type: 'pullDone', runId: 'r2', cancelled: false, results: [] });
+    await tick();
+    expect(started[2].map((s) => s.url)).toEqual(['https://school.test/courses/1/assignments/6']);
+
+    // Nothing new: the pass ends.
+    await emit({ type: 'pullDone', runId: 'r3', cancelled: false, results: [] });
+    await tick();
+    expect(started).toHaveLength(3);
+    expect(api.state?.phase).toBe('done');
+  });
+
+  it('essentials only does not follow links', async () => {
+    snapshot = snap([...withCourses.records, rec('assignmentGroups', 1, [{ id: '1', name: 'G', assignments: [{ id: '5', name: 'A5', html_url: '/courses/1/assignments/5' }] }])]);
+    await mount();
+    await act(async () => api.requestSync({ confirm: false, depth: 'essential' }));
+    await tick();
+    await emit({ type: 'pullDone', runId: 'r1', cancelled: false, results: [] });
+    await tick();
+    expect(started).toHaveLength(1);
+    expect(api.state?.phase).toBe('done');
+  });
+
+  it('tells the extension the pass is over, so nothing can continue it', async () => {
+    await mount();
+    await act(async () => api.requestSync({ confirm: false, depth: 'essential' }));
+    await tick();
+    endChain.mockClear();
+    await emit({ type: 'pullDone', runId: 'r1', cancelled: false, results: [] });
+    await tick();
+    expect(api.state?.phase).toBe('done');
+    expect(endChain).toHaveBeenCalledTimes(1);
   });
 });

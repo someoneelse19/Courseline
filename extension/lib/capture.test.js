@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classify, cleanPinnedIds, expiredKeys, keepCourse, keysToClear, sameOrigin, stripSensitive } from './capture.js';
+import { classify, classifyPage, cleanPinnedIds, expiredKeys, keepCourse, keysToClear, sameOrigin, stripSensitive } from './capture.js';
 
 const base = 'https://school.instructure.com/api/v1';
 
@@ -162,5 +162,55 @@ describe('keysToClear', () => {
   it('removes captures and what is derived from them, but never the student\'s own settings', () => {
     const keys = keysToClear({ 'cap:a': {}, health: {}, visited: {}, pinned: [1], unmapped: {}, shapes: {}, canvasHost: 'x', appPinned: [2], appOrigin: 'http://localhost:5173' });
     expect(keys.sort()).toEqual(['cap:a', 'health', 'pinned', 'shapes', 'unmapped', 'visited']);
+  });
+});
+
+describe('classifyPage (data read from the page itself)', () => {
+  const at = (kind) => `https://school.test/courses/9#page:${kind}`;
+  const grades = { assignment_groups: [{ id: '1', assignments: [] }], submissions: [], assignments: [] };
+
+  it('files each kind under the course, one record per course and kind', () => {
+    expect(classifyPage('gradesPage', at('gradesPage'), grades)).toMatchObject({ kind: 'gradesPage', courseId: 9, shapeOk: true, key: 'school.test/courses/9#page:gradesPage', host: 'school.test' });
+    expect(classifyPage('courseNav', at('courseNav'), { tabs: [{ href: '/courses/9/grades' }] })).toMatchObject({ kind: 'courseNav', shapeOk: true });
+    expect(classifyPage('syllabus', at('syllabus'), { syllabus_body: '' })).toMatchObject({ kind: 'syllabus', shapeOk: true });
+  });
+
+  it('files a wiki page as the front page or a page, the same kinds the API readers use', () => {
+    const page = { url: 'welcome', title: 'Welcome', body: '<p>Hi</p>' };
+    expect(classifyPage('wikiPage', at('wikiPage'), { ...page, front_page: true })).toMatchObject({ kind: 'frontPage', key: 'school.test/courses/9#page:wikiPage' });
+    expect(classifyPage('wikiPage', at('wikiPage'), page)).toMatchObject({ kind: 'page', key: 'school.test/courses/9#page:wikiPage:welcome' });
+  });
+
+  it('flags an unexpected shape, and refuses unknown kinds and addresses that are not a course', () => {
+    expect(classifyPage('gradesPage', at('gradesPage'), { submissions: [] }).shapeOk).toBe(false);
+    expect(classifyPage('cookies', at('cookies'), {})).toBeNull();
+    expect(classifyPage('toString', at('x'), {})).toBeNull();
+    expect(classifyPage('gradesPage', 'https://school.test/courses/9/grades', grades)).toBeNull();
+    expect(classifyPage('gradesPage', 'not a url', grades)).toBeNull();
+  });
+});
+
+describe('classify: folder listings and what is read from the page about the account', () => {
+  it('files a folder listing as folderContents (no course in the address)', () => {
+    expect(classify('https://school.test/api/v1/folders/12/all?per_page=50', [{ id: '1', display_name: 'a.pdf' }])).toMatchObject({ kind: 'folderContents', courseId: null, shapeOk: true });
+  });
+
+  it('files who is signed in under the Canvas root, and nowhere else', () => {
+    expect(classifyPage('currentUser', 'https://school.test/#page:currentUser', { id: '42', display_name: 'Ada' })).toMatchObject({ kind: 'currentUser', courseId: null, key: 'school.test/#page:currentUser', shapeOk: true });
+    expect(classifyPage('currentUser', 'https://school.test/courses/9#page:currentUser', { id: '42', display_name: 'Ada' })).toBeNull();
+    expect(classifyPage('modulesPage', 'https://school.test/courses/9#page:modulesPage', { modules: [{ id: '1', items: [] }] })).toMatchObject({ kind: 'modulesPage', courseId: 9, shapeOk: true });
+  });
+
+  it('strips the uploader avatar link that folder listings carry', () => {
+    expect(stripSensitive({ user: { display_name: 'T', avatar_image_url: 'https://x/a.png' } })).toEqual({ user: { display_name: 'T' } });
+  });
+});
+
+describe('classifyPage: grading periods', () => {
+  it('keeps each grading period the Grades page showed as its own record', () => {
+    const body = (gp) => ({ assignment_groups: [], submissions: [], assignments: [], grading_period_id: gp });
+    expect(classifyPage('gradesPage', 'https://school.test/courses/9#page:gradesPage', body('12')).key).toBe('school.test/courses/9#page:gradesPage:gp12');
+    expect(classifyPage('gradesPage', 'https://school.test/courses/9#page:gradesPage', body(undefined)).key).toBe('school.test/courses/9#page:gradesPage');
+    expect(classifyPage('gradesPage', 'https://school.test/courses/9#page:gradesPage', body('x/../y')).key).toBe('school.test/courses/9#page:gradesPage');
   });
 });

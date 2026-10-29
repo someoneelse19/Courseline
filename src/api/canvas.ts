@@ -1,9 +1,16 @@
 // Canvas endpoints. One small function per resource; add new features here.
 import { CanvasApiError, createClient, type ClientConfig } from './client';
-import type { Assignment, AssignmentGroup, Course, CourseFile, DiscussionTopic, Module, ModuleItem, Page, Submission, UpcomingEvent, UserProfile } from './types';
+import type { Assignment, AssignmentGroup, Conversation, Course, CourseFile, DiscussionTopic, MailScope, Module, ModuleItem, NewMessage, Page, Recipient, Submission, UpcomingEvent, UserProfile } from './types';
 
 export function createCanvasApi(config: ClientConfig) {
   const client = createClient(config);
+
+  /** Message attachments go to the student's own "conversation attachments" folder, one at a time, as Canvas does. */
+  async function uploadAttachments(files: File[]): Promise<string[]> {
+    const ids: string[] = [];
+    for (const file of files) ids.push(String((await client.uploadFile('/users/self/files', file, { parent_folder_path: 'conversation attachments' })).id));
+    return ids;
+  }
 
   const api = {
     /** Also doubles as the "is this token valid?" check at login. */
@@ -200,6 +207,59 @@ export function createCanvasApi(config: ClientConfig) {
      * allowed to comment on their own submissions, even before submitting anything.
      * QUIRK: the user id must be the real id; `self` isn't accepted on this PUT.
      */
+    // --- Inbox ---------------------------------------------------------------------------------------------------
+
+    /** The inbox or the sent folder, newest activity first. */
+    getConversations: async (scope: MailScope) => {
+      // QUIRK: in the sent folder Canvas describes your own newest message as last_authored_message(_at) and may leave
+      // last_message(_at) empty; the list wants one pair either way.
+      const list = await client.getAll<Conversation & { last_authored_message?: string | null; last_authored_message_at?: string | null }>('/conversations', { scope, per_page: 50 });
+      return list.map(({ last_authored_message, last_authored_message_at, ...c }) =>
+        scope === 'sent' ? { ...c, last_message: last_authored_message ?? c.last_message, last_message_at: last_authored_message_at ?? c.last_message_at } : c,
+      );
+    },
+
+    /** One conversation with its whole thread (newest message first). Opening it marks it read, as in Canvas. */
+    getConversation: (id: number) => client.get<Conversation>(`/conversations/${id}`),
+
+    /** Mark a conversation read (opening it with GET already does; this makes sure, and says so at once). */
+    markConversationRead: (id: number) => client.send<Conversation>('PUT', `/conversations/${id}`, { conversation: { workflow_state: 'read' } }),
+
+    /** Unread conversations in the inbox (Canvas sends the number as a string). */
+    getUnreadCount: async () => Number((await client.get<{ unread_count: string | number }>('/conversations/unread_count')).unread_count) || 0,
+
+    /** Reply in a conversation (files are uploaded first); Canvas answers with the conversation and the new message. */
+    replyToConversation: async (id: number, body: string, files: File[] = []) => {
+      const attachmentIds = await uploadAttachments(files);
+      return client.send<Conversation>('POST', `/conversations/${id}/add_message`, { body, ...(attachmentIds.length ? { attachment_ids: attachmentIds } : {}) });
+    },
+
+    /** Start a conversation. Several recipients get one shared conversation (group_conversation), as in Canvas. */
+    createConversation: async (m: NewMessage) => {
+      const attachmentIds = await uploadAttachments(m.files ?? []);
+      return client.send<Conversation[]>('POST', '/conversations', {
+        recipients: m.recipients.map(String),
+        subject: m.subject,
+        body: m.body,
+        group_conversation: true,
+        ...(m.contextCode ? { context_code: m.contextCode } : {}),
+        ...(attachmentIds.length ? { attachment_ids: attachmentIds } : {}),
+      });
+    },
+
+    /** Who the student can write to about a course: its teachers, TAs and classmates (the course's class list). */
+    getCourseRecipients: async (courseId: number): Promise<Recipient[]> => {
+      const users = await client.getAll<{ id: number; name: string; enrollments?: Array<{ type: string }> }>(`/courses/${courseId}/users`, {
+        enrollment_type: ['teacher', 'ta', 'student'],
+        include: ['enrollments'],
+      });
+      const roleOf = (u: (typeof users)[number]) => {
+        const types = u.enrollments?.map((e) => e.type) ?? [];
+        return types.includes('TeacherEnrollment') ? 'teacher' : types.includes('TaEnrollment') ? 'ta' : 'student';
+      };
+      return users.map((u) => ({ id: u.id, name: u.name, role: roleOf(u) }));
+    },
+
     postSubmissionComment: (courseId: number, assignmentId: number, userId: number, text: string) =>
       client.send<Submission>('PUT', `/courses/${courseId}/assignments/${assignmentId}/submissions/${userId}`, {
         comment: { text_comment: text },

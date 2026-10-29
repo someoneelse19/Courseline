@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanSteps, MAX_STEPS, runPull, withinHourlyCap } from './pullRunner.js';
+import { cleanSteps, runPull } from './pullRunner.js';
 
 const steps = [1, 2, 3].map((n) => ({ url: `https://h/u${n}`, label: `p${n}` }));
 const base = { pause: async () => {}, isCancelled: () => false };
@@ -44,25 +44,56 @@ describe('runPull', () => {
   });
 });
 
-describe('cleanSteps', () => {
-  it('keeps https steps with a label, drops the rest, and caps the count', () => {
-    const out = cleanSteps([{ url: 'https://h/a', label: 'A' }, { url: 'http://h/b' }, { url: 'javascript:1' }, { label: 'no url' }, 'x', { url: 'https://h/c' }]);
-    expect(out).toEqual([{ url: 'https://h/a', label: 'A' }, { url: 'https://h/c', label: 'https://h/c' }]);
-    const many = Array.from({ length: 200 }, (_, i) => ({ url: `https://h/${i}`, label: String(i) }));
-    expect(cleanSteps(many)).toHaveLength(MAX_STEPS);
-    expect(cleanSteps('nope')).toEqual([]);
+describe('runPull with several tabs at once', () => {
+  it('keeps up to `concurrency` pages loading, never more, and returns results in list order', async () => {
+    const many = Array.from({ length: 9 }, (_, i) => ({ url: `https://h/${i}`, label: String(i) }));
+    let open = 0;
+    let peak = 0;
+    const out = await runPull({
+      ...base,
+      steps: many,
+      concurrency: 4,
+      visit: async (s) => {
+        open++;
+        peak = Math.max(peak, open);
+        await new Promise((r) => setTimeout(r, 5 + (Number(s.label) % 3) * 5));
+        open--;
+        return { captured: Number(s.label) };
+      },
+    });
+    expect(peak).toBe(4);
+    expect(out.results.map((r) => r.captured)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(out.cancelled).toBe(false);
+  });
+
+  it('starts no new page once cancelled, and lets the ones loading finish', async () => {
+    const many = Array.from({ length: 10 }, (_, i) => ({ url: `https://h/${i}`, label: String(i) }));
+    let cancelled = false;
+    const started = [];
+    const out = await runPull({
+      ...base,
+      steps: many,
+      concurrency: 3,
+      isCancelled: () => cancelled,
+      visit: async (s) => {
+        started.push(s.label);
+        if (s.label === '1') cancelled = true;
+        await new Promise((r) => setTimeout(r, 5));
+        return {};
+      },
+    });
+    expect(out.cancelled).toBe(true);
+    expect(started).toEqual(['0', '1']); // the third worker saw the cancel before taking a page
+    expect(out.results).toHaveLength(2);
   });
 });
 
-describe('withinHourlyCap', () => {
-  const now = 10_000_000;
-  it('allows pages while under the cap and drops opens older than an hour', () => {
-    expect(withinHourlyCap([now - 7_200_000, now - 60_000], now)).toEqual([now - 60_000]);
-  });
-
-  it('refuses once the cap is reached', () => {
-    const full = Array.from({ length: 300 }, (_, i) => now - i * 1000);
-    expect(withinHourlyCap(full, now)).toBeNull();
-    expect(withinHourlyCap(full.slice(1), now)).toHaveLength(299);
+describe('cleanSteps', () => {
+  it('keeps https steps with a label, drops the rest, and does not cap the count', () => {
+    const out = cleanSteps([{ url: 'https://h/a', label: 'A' }, { url: 'http://h/b' }, { url: 'javascript:1' }, { label: 'no url' }, 'x', { url: 'https://h/c' }]);
+    expect(out).toEqual([{ url: 'https://h/a', label: 'A' }, { url: 'https://h/c', label: 'https://h/c' }]);
+    const many = Array.from({ length: 900 }, (_, i) => ({ url: `https://h/${i}`, label: String(i) }));
+    expect(cleanSteps(many)).toHaveLength(900);
+    expect(cleanSteps('nope')).toEqual([]);
   });
 });

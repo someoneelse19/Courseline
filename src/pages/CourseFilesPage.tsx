@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { CourseFile, Module, ModuleItem } from '../api/types';
+import { CanvasApiError } from '../api/client';
 import { EmptyState, ErrorMessage, Spinner } from '../components/ui';
 import { useApi, useAuth } from '../context/AuthContext';
 import { useCourseFiles, useModules, usePage } from '../hooks/useCanvasData';
@@ -34,25 +35,30 @@ export function CourseFilesPage() {
   const [mode, setMode] = useState<Mode>('files');
   const [query, setQuery] = useState('');
 
-  if (modules.error) return <ErrorMessage error={modules.error} onRetry={modules.refetch} />;
-  if (files.error) return <ErrorMessage error={files.error} onRetry={files.refetch} />;
-  if (!modules.data || files.data === undefined) return <Spinner />;
+  // Extension mode: units the extension cannot see, or a Files list not synced yet, still leave the rest to show.
+  const unitsHidden = modules.error instanceof CanvasApiError && modules.error.kind === 'hidden';
+  const filesNotSynced = files.error instanceof CanvasApiError && files.error.kind === 'not_found';
+  if (modules.error && !unitsHidden) return <ErrorMessage error={modules.error} onRetry={modules.refetch} />;
+  if (files.error && !filesNotSynced) return <ErrorMessage error={files.error} onRetry={files.refetch} />;
+  if ((!modules.data && !unitsHidden) || (files.data === undefined && !filesNotSynced)) return <Spinner />;
+  const moduleList = modules.data ?? [];
+  const fileList = filesNotSynced ? [] : files.data;
 
-  const fileById = new Map((files.data ?? []).map((f) => [f.id, f]));
+  const fileById = new Map((fileList ?? []).map((f) => [f.id, f]));
   const q = query.trim().toLowerCase();
   const wanted = (item: ModuleItem) => {
     if (mode === 'files' && item.type !== 'File' && item.type !== 'Page') return false;
     return !q || item.title.toLowerCase().includes(q);
   };
 
-  const units = modules.data
+  const units = moduleList
     .map((m) => ({ module: m, items: (m.items ?? []).filter(wanted) }))
     // In files mode, headers alone don't justify showing a unit.
     .filter((u) => u.items.some((i) => i.type !== 'SubHeader'));
 
-  const usedFileIds = new Set(modules.data.flatMap((m) => (m.items ?? []).filter((i) => i.type === 'File').map((i) => i.content_id)));
-  const loose = (files.data ?? []).filter((f) => !usedFileIds.has(f.id) && (!q || f.display_name.toLowerCase().includes(q)));
-  const hiddenUnits = modules.data.length - units.length;
+  const usedFileIds = new Set(moduleList.flatMap((m) => (m.items ?? []).filter((i) => i.type === 'File').map((i) => i.content_id)));
+  const loose = (fileList ?? []).filter((f) => !usedFileIds.has(f.id) && (!q || f.display_name.toLowerCase().includes(q)));
+  const hiddenUnits = moduleList.length - units.length;
 
   return (
     <>
@@ -73,8 +79,14 @@ export function CourseFilesPage() {
         </select>
       </div>
 
-      {modules.data.length === 0 && <EmptyState>{t('This course doesn’t use units (modules), so there’s nothing to group by.')}</EmptyState>}
-      {files.data === null && (
+      {unitsHidden && modules.error && <div className="mb-3"><ErrorMessage error={modules.error} /></div>}
+      {!unitsHidden && moduleList.length === 0 && <EmptyState>{t('This course doesn’t use units (modules), so there’s nothing to group by.')}</EmptyState>}
+      {filesNotSynced && (
+        <p className="mb-3 rounded-md bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+          {t('The Files list has not been synced yet, so only files linked from units are shown. Open Files in Canvas, or press Sync now.')}
+        </p>
+      )}
+      {fileList === null && (
         <p className="mb-3 rounded-md bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
           {t('This course hides its Files area, so only files linked from units are shown (without size/date details).')}
         </p>
@@ -99,7 +111,7 @@ export function CourseFilesPage() {
         )}
       </div>
 
-      {modules.data.length > 0 && units.length === 0 && loose.length === 0 && <EmptyState>{t('Nothing matches.')}</EmptyState>}
+      {moduleList.length > 0 && units.length === 0 && loose.length === 0 && <EmptyState>{t('Nothing matches.')}</EmptyState>}
       {hiddenUnits > 0 && units.length > 0 && !q && (
         <p className="mt-3 text-xs text-neutral-500 dark:text-neutral-400">
           {hiddenUnits === 1

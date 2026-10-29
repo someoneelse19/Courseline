@@ -39,15 +39,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // tab closes, and the confirmation, the preview and Stop are all in the app. Pages are opened one at a time by the
 // background script, in a background tab.
 let pull = null;
-// The run that just finished, so the app can continue a confirmed plan (it opens the dashboard first, then the
-// courses it brought in) without a second click.
+// The run that just finished, so the app can continue a confirmed plan without another click: the dashboard first,
+// then the courses it brought in, then the pages those link to, round after round until nothing new is found. Each
+// continuation must name the run that has just ended, within CONTINUE_WITHIN_MS, and a stopped run ends the chain.
 let lastRun = null;
 const CONTINUE_WITHIN_MS = 2 * 60 * 1000;
 
 async function startPull(m) {
   if (pull) return post({ id: m.id, ok: false, busy: true });
-  // A run needs a real click on the page, or to be the one continuation of a run a click just started (the app opens
-  // the dashboard first, then the courses it brought in). A script on the page cannot start one by itself.
+  // A run needs a real click on the page, or to continue the run that has just ended (a chain a click started). A
+  // script on the page cannot start one by itself.
   const clicked = !!navigator.userActivation?.isActive;
   const continues = typeof m.continueFrom === 'string' && lastRun && lastRun.id === m.continueFrom && !lastRun.cancelled && Date.now() - lastRun.endedAt < CONTINUE_WITHIN_MS;
   if (!clicked && !continues) {
@@ -55,16 +56,17 @@ async function startPull(m) {
   }
   // Claim the slot before anything is awaited, so a second message that arrives meanwhile (a double click) is turned away.
   pull = { cancelled: false };
-  // A continuation is used up, and a run that was itself a continuation cannot be continued: chaining needs a click.
+  // A continuation is used up: the next one must name this run.
   if (continues) lastRun = null;
   try {
-    const { runPull, cleanSteps, PAUSE_MS } = await import(chrome.runtime.getURL('lib/pullRunner.js'));
+    const { runPull, cleanSteps, PAUSE_MS, CONCURRENCY } = await import(chrome.runtime.getURL('lib/pullRunner.js'));
     const steps = cleanSteps(m.steps);
     if (!steps.length) return post({ id: m.id, ok: false, error: 'There was nothing to open.' });
     post({ id: m.id, ok: true, runId: m.id, total: steps.length });
     const out = await runPull({
       steps,
       isCancelled: () => pull.cancelled,
+      concurrency: CONCURRENCY, // several background tabs at once
       pause: () => sleep(PAUSE_MS),
       visit: async (step) => {
         const r = await chrome.runtime.sendMessage({ type: 'openPage', url: step.url });
@@ -73,7 +75,7 @@ async function startPull(m) {
       },
       onProgress: (p) => post({ type: 'pullProgress', runId: m.id, ...p }),
     });
-    if (!continues) lastRun = { id: m.id, endedAt: Date.now(), cancelled: out.cancelled };
+    lastRun = { id: m.id, endedAt: Date.now(), cancelled: out.cancelled };
     post({ type: 'pullDone', runId: m.id, cancelled: out.cancelled, results: out.results });
   } catch (e) {
     post({ type: 'pullDone', runId: m.id, cancelled: false, results: [], error: String(e?.message ?? e) });
@@ -99,8 +101,28 @@ window.addEventListener('message', async (event) => {
     } else if (m.type === 'pull') {
       void startPull(m);
     } else if (m.type === 'cancelPull') {
+      // Stop ends the chain too, also between rounds (when no run is going and the app is working out the next one).
       if (pull) pull.cancelled = true;
+      lastRun = null;
       chrome.runtime.sendMessage({ type: 'cancelPull' }).catch(() => {});
+      post({ id: m.id, ok: true });
+    } else if (m.type === 'sendMessage') {
+      // Sending a message changes something in Canvas, so it needs a real click (or key press) on Send in Courseline,
+      // and only a reply or a new message of a sane size gets through (lib/message.js).
+      if (!navigator.userActivation?.isActive) return post({ id: m.id, ok: false, error: 'A message is only sent from a click on Send in Courseline.' });
+      const { cleanSendRequest } = await import(chrome.runtime.getURL('lib/message.js'));
+      const request = cleanSendRequest(m.request);
+      if (!request) return post({ id: m.id, ok: false, error: 'That message is empty or not complete.' });
+      const result = await chrome.runtime.sendMessage({ type: 'sendMessage', request });
+      post({ id: m.id, ...(result ?? { ok: false, error: 'The extension did not answer.' }) });
+    } else if (m.type === 'refreshMail') {
+      // Reading messages opens a Canvas tab in the background, so it too needs a click (opening Messages is one).
+      if (!navigator.userActivation?.isActive) return post({ id: m.id, ok: false, needsClick: true, error: 'Messages load from a click in Courseline.' });
+      const result = await chrome.runtime.sendMessage({ type: 'refreshMail' });
+      post({ id: m.id, ...(result ?? { ok: false, error: 'The extension did not answer.' }) });
+    } else if (m.type === 'endChain') {
+      // The app has no more rounds to run: nothing may continue the last one.
+      if (!pull) lastRun = null;
       post({ id: m.id, ok: true });
     } else if (m.type === 'setCanvasHost') {
       const result = await chrome.runtime.sendMessage({ type: 'setCanvasHost', input: typeof m.input === 'string' ? m.input : '' });

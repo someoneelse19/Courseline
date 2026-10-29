@@ -217,4 +217,64 @@ export interface Page {
   body?: string; // HTML content, may contain embedded files/links
   created_at?: string;
   updated_at?: string;
+  front_page?: boolean; // the course home page
+}
+
+// Inbox (Canvas "conversations"). A conversation has a subject and a thread of plain-text messages between people.
+export interface ConversationParticipant {
+  id: CanvasId;
+  name: string;
+  avatar_url?: string;
+}
+
+export interface ConversationMessage {
+  id: CanvasId | string; // a number from the API; a string id from Canvas's GraphQL (extension mode)
+  created_at: string;
+  body: string; // plain text with newlines (never HTML)
+  author_id: CanvasId;
+  /** Extension mode: the author's name as Canvas's GraphQL gave it (the API gives participants instead). */
+  author_name?: string;
+  attachments?: MessageAttachment[];
+}
+
+/** A file attached to a message. The API gives a signed `url` (works without a token) and, for images, a thumbnail. */
+export interface MessageAttachment {
+  id: CanvasId;
+  display_name: string;
+  url?: string;
+  thumbnail_url?: string | null;
+  'content-type'?: string;
+  mime_class?: string; // "image", "pdf", "doc", "ppt", "xls", "code", "video", "audio", ...
+  size?: number;
+}
+
+export interface Conversation {
+  id: CanvasId;
+  subject: string | null;
+  workflow_state: 'read' | 'unread' | 'archived' | string;
+  last_message: string | null;
+  last_message_at: string | null;
+  message_count: number;
+  participants: ConversationParticipant[];
+  context_name?: string;
+  context_code?: string; // "course_123"
+  /** Newest first, as the API answers; only on a single conversation (GET /conversations/:id). */
+  messages?: ConversationMessage[];
+}
+
+export type MailScope = 'inbox' | 'sent';
+
+/** Someone the student can write to in a course: a teacher, a TA or a classmate. */
+export interface Recipient {
+  id: CanvasId;
+  name: string;
+  role?: 'teacher' | 'ta' | 'student' | string;
+}
+
+export interface NewMessage {
+  recipients: number[];
+  subject: string;
+  body: string;
+  contextCode?: string; // "course_123": which course the message is about
+  files?: File[]; // attached: uploaded to the student's "conversation attachments" folder first
 }
