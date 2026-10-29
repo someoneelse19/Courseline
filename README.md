@@ -18,12 +18,15 @@ second way in. Both have every other feature. The only difference is [`edition.j
 - **Course pages and modules in one list.** Collapsible, reorderable, remembered per course, so a course looks the same
   whether the teacher built it from Pages or from Modules.
 - **In-app file viewer.** PDF, Word, Excel, PowerPoint, images and code open in a viewer with page numbers, typed zoom
-  and an explicit Download button. Nothing downloads unless you press that button.
+  and an explicit Download button. Nothing downloads unless you press that button. Spreadsheets keep their cell
+  colours, fonts, borders, column widths and merged cells, on a white page even in dark mode.
 - **In-depth grades page.** Grade over time, assignment-group breakdown with weights and drop rules, what-if scores
   and a "what do I need to reach X%" calculator.
 - **Messages that feel like texting.** Your Canvas Inbox and sent messages as conversations, each a thread of
-  bubbles with its subject on top; reply with Enter, or start a new message to a course's teachers (Canvas's own
-  "message this teacher" links open it filled in). Works with a token and with the extension.
+  bubbles with its subject on top as the chat name; reply with Enter, attach files (images and files preview inline),
+  or start a new message to a course's teachers and classmates (Canvas's own "message this teacher" links open it
+  filled in). With a token, opening a conversation marks it read and the sidebar shows an unread count. Works with a
+  token and, on `dev`, with the extension.
 - **Dark mode and a custom accent color**, plus a setting to pick which courses to show.
 - **AI export tab in every course**: packs the syllabus, units, pages, assignments and file text into a zip an AI can use as a tutor (stays on your computer).
 - **No access token needed, optionally.** A Chrome-based browser extension (in `extension/`) saves the data your own
@@ -35,11 +38,13 @@ second way in. Both have every other feature. The only difference is [`edition.j
 
 ## Screenshots
 
-Screenshots use made-up course data.
+Screenshots use made-up course data, signed in with a token, so they look the same on `main` and `dev`.
 
-| Course pages and modules in one view | Grades: trend, groups, what-if |
+| Course pages and modules in one view | Grades: trend, groups, class median, what-if |
 |---|---|
 | ![Course pages, dark mode](docs/screenshots/course-pages.png) | ![Grades page](docs/screenshots/grades.png) |
+| **Messages: conversations as chats, with attachments** | **Spreadsheet viewer: the file's own colours and borders** |
+| ![Messages page with a conversation open](docs/screenshots/messages.png) | ![A colour-coded spreadsheet in the in-app viewer, dark mode](docs/screenshots/viewer-xlsx.png) |
 | **PDF viewer** | **PowerPoint viewer** |
 | ![PDF in the in-app viewer](docs/screenshots/viewer-pdf.png) | ![A slide deck in the in-app viewer](docs/screenshots/viewer-slides.png) |
 | **Calendar, colored by course and status** | |
@@ -49,6 +54,8 @@ Developer documentation (architecture, every file, how to change anything, known
 **[DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md)**.
 
 ## Use it without a token
+
+> **`dev` branch only.** The API-token edition on `main` has no extension support; check out `dev` to use this.
 
 Canvas is making access tokens harder to get, so Courseline can also work from the browser extension in `extension/`.
 It works in Chrome, Arc, Edge, Brave and other Chromium browsers.
@@ -133,8 +140,9 @@ in to Canvas).
 - Each person uses their **own** token. Revoke tokens you no longer need (Settings → Approved Integrations).
 - Never commit `.env`. It is in `.gitignore`.
 - The token is only ever sent to the Canvas address you entered, over https (an `http://` address is upgraded), and
-  never to file storage or any other host. Instructor HTML and spreadsheet cells are sanitized before display.
-- The browser extension keeps nothing until you save your Canvas address, never saves credentials, email addresses
+  never to file storage or any other host. Instructor HTML is sanitized before display; spreadsheet cells and
+  messages are shown as plain text (links only when they are http or https).
+- (`dev` only) The browser extension keeps nothing until you save your Canvas address, never saves credentials, email addresses
   or capability links, and only takes commands from the Courseline app running on `localhost`. The full list of known
   risks is in [DEVELOPER_GUIDE.md §9](DEVELOPER_GUIDE.md#9-security-model).
 
@@ -142,7 +150,7 @@ in to Canvas).
 
 In day-to-day use by the author on real school courses. Covered by automated tests: the API client (pagination, error
 mapping, downloads, file upload), grade calculation, HTML sanitizing, the data cache, accent colors, the submission
-form, and a smoke test that renders every screen against a fake Canvas. The screens and the file viewer were also checked in a real browser, in light and dark mode and at phone width.
+form, messages, spreadsheet formatting, the API-token edition's sign-in, and a smoke test that renders every screen against a fake Canvas. The screens and the file viewer were also checked in a real browser, in light and dark mode and at phone width.
 
 Canvas installations differ a little between schools. If you use this at a new school, try a submission on a throwaway
 assignment first. If your school's file storage refuses browser uploads, the app says so and points you to "Submit in
