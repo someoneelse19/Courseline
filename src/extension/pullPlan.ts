@@ -39,14 +39,19 @@ const ACCOUNT_PAGES: Array<[string, string]> = [
 export interface CourseRef {
   id: number;
   name: string | null;
-  /** Course tabs the school hides in Canvas (see hiddenSections). Their pages only redirect home, so they are skipped. */
+  /** Course tabs the school hides in Canvas (see hiddenSections). Their pages only redirect home, so they are skipped
+   * (except ALWAYS_TRIED). */
   hidden?: ReadonlySet<CourseSection>;
 }
+
+// Opened even when the course menu leaves them out. Some schools serve Discussions though the menu leaves it out (live
+// finding, Oct 30, 2026); whether it opened is read from the landed page (`listPage`), so a redirect costs one page.
+const ALWAYS_TRIED: ReadonlySet<CourseSection> = new Set(['discussions']);
 
 /** Is this course page one the school hides? (Its address is the tab's, or under it, like assignments/syllabus.) */
 function isHidden(course: CourseRef, path: string): boolean {
   if (!course.hidden?.size || !path) return false;
-  return [...course.hidden].some((section) => SECTION_PATHS[section].includes(`/${path}`));
+  return [...course.hidden].some((section) => !ALWAYS_TRIED.has(section) && SECTION_PATHS[section].includes(`/${path}`));
 }
 
 const courseName = (c: CourseRef) => c.name ?? t('Course {id}', { id: c.id });

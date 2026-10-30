@@ -25,6 +25,7 @@ export interface Enrollment {
   computed_final_score?: number | null; // percent, ungraded work counts as 0
   computed_current_grade?: string | null; // letter grade, if the course uses a scheme
   computed_final_grade?: string | null;
+  estimated?: boolean; // extension mode only: worked out by Courseline, not Canvas's own total
 }
 
 export interface Term {
@@ -123,6 +124,8 @@ export interface Assignment {
   omit_from_final_grade?: boolean;
   // include[]=score_statistics (needs include[]=submission); absent when the instructor hides distributions.
   score_statistics?: ScoreStatistics;
+  instructions_unknown?: boolean; // extension mode only: no captured source carried the description (not "there is none")
+  description_removed?: boolean; // extension mode only: the instructions held a link that works without a login, so were not kept
 }
 
 export interface ScoreStatistics {

@@ -10,6 +10,7 @@ import type { Assignment, AssignmentGroup, Conversation, ConversationMessage, Co
 import { computeGrade, toModel } from '../lib/grades';
 import { t } from '../i18n';
 import { filesForExtension, sendMessage, type CapturedRecord, type Snapshot } from './bridge';
+import { checkedInstant, checkedNumber, checkedStatistics, dedupeIssues, ignoreIssues, looksLikeAssignmentOf, normalizeInstant, type IssueContext, type IssueSink, type ValueIssue } from './valueChecks';
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -153,23 +154,43 @@ export function assignmentFromObjects(candidates: Obj[]): Partial<Assignment> {
   return out;
 }
 
+/** A rubric as the screens draw it: criteria, each with its ratings. */
+const validRubric = (v: unknown): v is NonNullable<Assignment['rubric']> => Array.isArray(v) && v.length > 0 && v.every((c) => isObj(c) && Array.isArray(c.ratings));
+
 /**
- * Class statistics read from the page, only when they make sense: every number finite, and in order (low, lower
- * quartile, median, upper quartile, high), with the mean in range. Anything else was misread and is left out.
+ * What an assignment's own page (kind `assignmentPage`) adds to an assignment known from elsewhere: only the fields
+ * that are still empty. The page carries no dates (its date text is in the student's language and is never read).
  */
-export function sensibleStatistics(stats: unknown, pointsPossible?: unknown): Obj | undefined {
-  if (!isObj(stats)) return undefined;
-  const order = ['min', 'lower_q', 'median', 'upper_q', 'max'].map((k) => stats[k]).filter((v) => v !== undefined && v !== null);
-  const { min, max, mean, median } = stats;
-  if (![min, max, mean, median].every((v) => typeof v === 'number' && Number.isFinite(v))) return undefined;
-  if (!order.every((v, i) => typeof v === 'number' && Number.isFinite(v) && (i === 0 || v >= (order[i - 1] as number)))) return undefined;
-  if ((mean as number) < (min as number) || (mean as number) > (max as number)) return undefined;
-  // Every number misread by the same factor stays in order, so also check them against what the assignment is worth
-  // (with room for extra credit).
-  const points = Number(pointsPossible);
-  if (points > 0 && ((median as number) > points * 1.5 || (max as number) > points * 2)) return undefined;
-  return stats;
+function fillFromPage(target: Obj, page: Obj): void {
+  if (!target.name && typeof page.name === 'string' && page.name) target.name = page.name;
+  if (target.points_possible == null && typeof page.points_possible === 'number') target.points_possible = page.points_possible;
+  if (target.description == null && typeof page.description === 'string') target.description = page.description;
+  if (target.rubric == null && validRubric(page.rubric)) target.rubric = page.rubric;
+  if (!target.html_url && typeof page.html_url === 'string' && page.html_url) target.html_url = page.html_url;
 }
+
+/**
+ * An assignment's dates in UTC "Z", as the API gives them, so they sort and compare with each other whatever source
+ * they came from. A date that does not add up is removed (and told to `onIssue`); null stays null.
+ */
+function normalizeAssignmentDates(a: Obj, courseId: number, onIssue: IssueSink): void {
+  for (const field of ['due_at', 'unlock_at', 'lock_at', 'created_at']) {
+    if (!(field in a)) continue;
+    const ctx = defined({ courseId, itemId: typeof a.id === 'number' ? a.id : undefined, item: typeof a.name === 'string' ? a.name : undefined, field }) as unknown as IssueContext;
+    const v = checkedInstant(a[field], ctx, onIssue);
+    if (v === undefined) delete a[field];
+    else if (v !== null) a[field] = v;
+  }
+}
+
+/** A date in UTC "Z" when it is one; anything else as it was (mail dates are only sorted, never dropped). */
+function utc<T>(v: T): T | string {
+  const r = normalizeInstant(v);
+  return r.ok && r.value !== null ? r.value : v;
+}
+
+// Class statistics that make sense (moved to valueChecks.ts; still exported from here for the screens and tests).
+export { sensibleStatistics } from './valueChecks';
 
 /** Copy of `o` without the keys whose value is undefined, null or '' (so merging it never blanks a known field). */
 const defined = (o: Obj): Obj => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== null && v !== ''));
@@ -178,26 +199,31 @@ const defined = (o: Obj): Obj => Object.fromEntries(Object.entries(o).filter(([,
  * Assignment groups from a captured Grades page (kind `gradesPage`, read from the page by the extension): Canvas's
  * ENV.assignment_groups (weights, drop rules, and per assignment its points, due date and omit flag), with the names
  * and links from the page's table. Shaped like the API's assignment_groups, so the grade maths reads it as is.
+ * Due dates come in UTC (ENV writes them with the course's offset); a value that does not add up is left out and told
+ * to `onIssue`.
  */
-export function gradesPageGroups(body: unknown, courseId?: number): AssignmentGroup[] {
+export function gradesPageGroups(body: unknown, courseId?: number, onIssue: IssueSink = ignoreIssues): AssignmentGroup[] {
   if (!isObj(body)) return [];
   const rows = new Map(asArray(body.assignments).map((a) => [String(a.id), a] as const));
   const groupNames = isObj(body.group_names) ? body.group_names : {};
   return asArray(body.assignment_groups).map((g, index) => {
     const assignments = asArray(g.assignments).map((a) => {
       const row = rows.get(String(a.id)) ?? {};
+      const name = typeof row.name === 'string' ? row.name : undefined;
+      const ctx = (field: string): IssueContext => defined({ courseId, itemId: Number(a.id) || undefined, item: name, field }) as unknown as IssueContext;
+      const points = checkedNumber(a.points_possible, ctx('points_possible'), onIssue);
       return normalizeIds(
         defined({
           id: a.id,
-          name: typeof row.name === 'string' ? row.name : undefined,
+          name,
           html_url: row.html_url,
-          points_possible: a.points_possible,
-          due_at: a.due_at,
+          points_possible: points,
+          due_at: checkedInstant(a.due_at, ctx('due_at'), onIssue),
           omit_from_final_grade: a.omit_from_final_grade,
           submission_types: a.submission_types,
           assignment_group_id: g.id,
           course_id: courseId,
-          score_statistics: sensibleStatistics(row.score_statistics, a.points_possible),
+          score_statistics: checkedStatistics(row.score_statistics, points ?? undefined, ctx('score_statistics'), onIssue),
         }),
       ) as unknown as Assignment;
     });
@@ -278,7 +304,8 @@ const messageFrom = (m: Obj): ConversationMessage | null => {
   const author = isObj(m.author) ? m.author : {};
   return {
     id: String(id),
-    created_at: String(m.createdAt ?? m.created_at ?? ''),
+    // In UTC "Z" so messages from GraphQL (with an offset) and REST sort together.
+    created_at: String(utc(m.createdAt ?? m.created_at ?? '')),
     body,
     author_id: Number(author._id ?? m.author_id) || 0,
     ...(typeof (author.name ?? author.shortName) === 'string' ? { author_name: String(author.name ?? author.shortName).trim() } : {}),
@@ -384,6 +411,7 @@ export function mailFrom(records: readonly CapturedRecord[]): Map<number, MailEn
       delete c.last_authored_message;
       delete c.last_authored_message_at;
       const n = normalizeIds(c) as unknown as Conversation;
+      if (typeof n.last_message_at === 'string') n.last_message_at = utc(n.last_message_at);
       e.conversation = { ...e.conversation, ...defined(n as unknown as Obj), participants: n.participants?.length ? n.participants : e.conversation.participants } as Conversation;
       delete e.conversation.messages;
       addMessages(e, c.messages);
@@ -573,12 +601,12 @@ export interface Freshness {
 // The captured kinds behind each thing a student recognises. `account` types are not about one course.
 // `section`: the Canvas course tab it comes from, so a tab the school hides reads "hidden in Canvas", not "not synced".
 const FRESHNESS_TYPES: { key: FreshnessKey; kinds: string[]; core: boolean; account?: boolean; section?: CourseSection }[] = [
-  { key: 'assignments', kinds: ['assignments', 'assignment', 'assignmentGroups', 'gradesPage'], core: true, section: 'assignments' },
+  { key: 'assignments', kinds: ['assignments', 'assignment', 'assignmentGroups', 'gradesPage', 'assignmentPage'], core: true, section: 'assignments' },
   { key: 'grades', kinds: ['courseSubmissions', 'submission', 'gradesPage'], core: true },
   { key: 'units', kinds: ['modules', 'moduleItems', 'modulesPage'], core: true, section: 'modules' },
   { key: 'pages', kinds: ['pages', 'page', 'frontPage'], core: true, section: 'pages' },
   { key: 'files', kinds: ['files'], core: false, section: 'files' },
-  { key: 'announcements', kinds: ['announcements', 'discussions'], core: false },
+  { key: 'announcements', kinds: ['announcements', 'discussions', 'listPage'], core: false },
   { key: 'upcoming', kinds: ['plannerItems', 'upcoming', 'todo', 'missingSubmissions', 'calendarEvents'], core: false, account: true },
   { key: 'course', kinds: ['course', 'userCourses', 'dashboardCards', 'GetUserCourses', 'tabs', 'enrollments', 'colors', 'courseNav', 'syllabus'], core: false },
 ];
@@ -628,10 +656,89 @@ export function baseUrlOf(snapshot: Snapshot): string | null {
   return host ? `https://${host}` : null;
 }
 
-export function createExtensionApi(snapshot: Snapshot): CanvasApi {
+export function createExtensionApi(snapshot: Snapshot, onIssue: IssueSink = ignoreIssues): CanvasApi {
+  return extensionInternals(snapshot, onIssue).api;
+}
+
+const issuesBySnapshot = new WeakMap<Snapshot, ValueIssue[]>();
+
+/**
+ * The values Courseline left out because they did not add up (see valueChecks.ts), for the working courses: what
+ * every screen would read, checked once per snapshot. Each value once.
+ */
+export function valueIssues(snapshot: Snapshot): ValueIssue[] {
+  const cached = issuesBySnapshot.get(snapshot);
+  if (cached) return cached;
+  const found: ValueIssue[] = [];
+  const x = extensionInternals(snapshot, (i) => found.push(i));
+  const working = workingCourses(snapshot);
+  for (const c of working) {
+    x.assignmentsOf(c.id);
+    x.topicsOf(c.id);
+    x.courseWithGrade(c);
+  }
+  // A rubric the assignment's own page had but could not be read (the newest page of each assignment).
+  const ds = new Dataset(snapshot);
+  for (const c of working) {
+    const newest = new Map<number, Obj>();
+    for (const r of ds.of('assignmentPage', c.id)) if (isObj(r.body)) newest.set(Number(r.body.id), r.body);
+    for (const [itemId, body] of newest) {
+      if (body.rubric_unreadable !== true || !Number.isInteger(itemId)) continue;
+      found.push({ kind: 'rubric', courseId: c.id, itemId, ...(typeof body.name === 'string' ? { item: body.name } : {}), field: 'rubric', value: null, reason: 'unreadable' });
+    }
+  }
+  const out = dedupeIssues(found);
+  issuesBySnapshot.set(snapshot, out);
+  return out;
+}
+
+/**
+ * The snapshot without the responses that failed their shape check (`rejectedAs`): they are kept for diagnosis only,
+ * and the popup tells the student they were not used, so no reader (by kind, by route or by id) may see them.
+ */
+const usableBySnapshot = new WeakMap<Snapshot, Snapshot>();
+export function usableSnapshot(snapshot: Snapshot): Snapshot {
+  let out = usableBySnapshot.get(snapshot);
+  if (!out) {
+    out = snapshot.records.some((r) => r.rejectedAs) ? { ...snapshot, records: snapshot.records.filter((r) => !r.rejectedAs) } : snapshot;
+    usableBySnapshot.set(snapshot, out);
+  }
+  return out;
+}
+
+function extensionInternals(fullSnapshot: Snapshot, onIssue: IssueSink) {
+  const snapshot = usableSnapshot(fullSnapshot);
   const ds = new Dataset(snapshot);
   let byId: Map<string, Obj[]> | null = null;
   const objectsWithId = (id: number | string) => (byId ??= indexById(snapshot.records)).get(String(id)) ?? [];
+
+  // Each assignment's own page (kind assignmentPage), by assignment id: the newest capture of each.
+  function pageDetailsOf(courseId: number): Map<number, { at: number; body: Obj }> {
+    const out = new Map<number, { at: number; body: Obj }>();
+    for (const r of ds.of('assignmentPage', courseId)) {
+      if (!isObj(r.body)) continue;
+      const body = normalizeIds(r.body);
+      const id = Number(body.id);
+      if (Number.isInteger(id) && id > 0) out.set(id, { at: r.capturedAt, body }); // oldest first, so the newest wins
+    }
+    return out;
+  }
+
+  // When a score for this course was last captured: the submissions list, a submission, gradebook groups, an
+  // assignment list or an assignment that carry submissions, or a Grades page.
+  function newestScoreAt(courseId: number): number {
+    const carriesSubmission = (r: CapturedRecord) =>
+      asArray(r.body).some((x) => isObj(x.submission) || asArray(x.assignments).some((a) => isObj(a.submission)));
+    const scored = [
+      ...ds.of('courseSubmissions', courseId),
+      ...ds.of('submission', courseId),
+      ...ds.of('gradesPage', courseId),
+      ...ds.of('assignmentGroups', courseId).filter(carriesSubmission),
+      ...ds.of('assignments', courseId).filter(carriesSubmission),
+      ...ds.of('assignment', courseId).filter((r) => isObj(r.body) && isObj(r.body.submission)),
+    ];
+    return newestRecord(scored)?.capturedAt ?? 0;
+  }
 
   // Assignments for a course: from the gradebook groups and the plain assignment list, with the student's own
   // submission attached from the submissions list.
@@ -650,12 +757,26 @@ export function createExtensionApi(snapshot: Snapshot): CanvasApi {
     }
     // The Grades page's own data (window.ENV plus the names from its table), read by the extension from the page.
     // Its submissions join the list above; its groups join the gradebook groups below, in capture order.
-    const fromGradesPage = ds.of('gradesPage', courseId).map((r) => ({ r, groups: gradesPageGroups(r.body, courseId) }));
-    for (const r of ds.of('gradesPage', courseId)) {
+    // A value that does not add up is left out of every capture, but only the newest capture of each grading period
+    // reports it: an older one that a newer capture has since replaced is not the student's problem.
+    const gradesPages = ds.of('gradesPage', courseId);
+    const newestPerPeriod = new Map<string, CapturedRecord>();
+    for (const r of gradesPages) newestPerPeriod.set(String(isObj(r.body) ? (r.body.grading_period_id ?? '') : ''), r);
+    const reporting = new Set(newestPerPeriod.values());
+    const sinkFor = (r: CapturedRecord): IssueSink => (reporting.has(r) ? onIssue : ignoreIssues);
+    const fromGradesPage = gradesPages.map((r) => ({ r, groups: gradesPageGroups(r.body, courseId, sinkFor(r)) }));
+    for (const r of gradesPages) {
       const rows = new Map(asArray(isObj(r.body) ? r.body.assignments : []).map((a) => [Number(a.id), a] as const));
       for (const s of normalizeIds(asArray(isObj(r.body) ? r.body.submissions : []))) {
         const aid = Number(s.assignment_id);
         if (!Number.isInteger(aid) || (submissionAt.get(aid) ?? 0) > r.capturedAt) continue;
+        // A score that is not a number is left out (an older capture's stays); null is "not graded" and is kept.
+        if ('score' in s) {
+          const name = rows.get(aid)?.name;
+          const score = checkedNumber(s.score, { courseId, itemId: aid, ...(typeof name === 'string' ? { item: name } : {}), field: 'score' }, sinkFor(r));
+          if (score === undefined) delete s.score;
+          else s.score = score;
+        }
         // ENV.submissions has fewer fields than the API's (no submitted_at, graded_at, late, missing): it updates what
         // it has and keeps the rest from an older capture. The row's status pill says missing / late.
         const row = rows.get(aid);
@@ -705,6 +826,9 @@ export function createExtensionApi(snapshot: Snapshot): CanvasApi {
       if (item.plannable_type !== 'assignment' || Number(item.course_id) !== courseId) continue;
       planned.set(Number(item.plannable_id), item);
     }
+    // The assignment's own page fills what the lists left empty (a course whose Assignments tab is hidden has only the
+    // Grades page's data: no instructions, no rubric, and no name for a row Canvas does not link).
+    const pageDetails = pageDetailsOf(courseId);
     const finish = (a: Assignment): Assignment => {
       const embedded = a.submission ?? plain.get(a.id)?.submission;
       const listed = submissions.get(a.id);
@@ -725,7 +849,19 @@ export function createExtensionApi(snapshot: Snapshot): CanvasApi {
         if (next !== base || submission) submission = next;
       }
       const merged: Assignment = { ...plain.get(a.id), ...a, submission };
-      if (merged.created_at === undefined && typeof plannable.created_at === 'string') merged.created_at = plannable.created_at;
+      const page = pageDetails.get(a.id);
+      if (page) fillFromPage(merged as unknown as Obj, page.body);
+      const ctx = (field: string): IssueContext => ({ courseId, itemId: a.id, ...(merged.name ? { item: merged.name } : {}), field });
+      if (merged.created_at === undefined && plannable.created_at !== undefined) {
+        const created = checkedInstant(plannable.created_at, ctx('created_at'), onIssue);
+        if (typeof created === 'string') merged.created_at = created;
+      }
+      // A due date no other source gave (or one that did not add up and was left out) from planner items.
+      if (merged.due_at === undefined && plannable.due_at !== undefined) {
+        const due = checkedInstant(plannable.due_at, ctx('due_at'), onIssue);
+        if (typeof due === 'string') merged.due_at = due;
+      }
+      normalizeAssignmentDates(merged as unknown as Obj, courseId, onIssue);
       return merged;
     };
     for (const g of groups.values()) {
@@ -745,7 +881,34 @@ export function createExtensionApi(snapshot: Snapshot): CanvasApi {
     const submissionsById = new Map<number, Submission>();
     for (const s of ds.items('courseSubmissions', courseId)) submissionsById.set(Number(normalizeIds(s).assignment_id), normalizeIds(s) as unknown as Submission);
     for (const a of normalizeIds(ds.items('assignments', courseId)) as unknown as Assignment[]) {
-      if (!merged.has(a.id)) merged.set(a.id, { ...a, submission: a.submission ?? submissionsById.get(a.id) });
+      if (merged.has(a.id)) continue;
+      const entry = { ...a, submission: a.submission ?? submissionsById.get(a.id) };
+      normalizeAssignmentDates(entry as unknown as Obj, courseId, onIssue);
+      merged.set(a.id, entry);
+    }
+    // Assignments only their own page knows about (opened from a link, never listed). Not in any group, so they never
+    // count in the grade. The due date, if any, from planner items: the page's own date text is never read.
+    const pageOnly = [...pageDetailsOf(courseId)].filter(([id]) => !merged.has(id));
+    if (pageOnly.length) {
+      const dueFromPlanner = new Map<number, unknown>();
+      for (const item of ds.items('plannerItems')) {
+        if (item.plannable_type !== 'assignment' || Number(item.course_id) !== courseId || !isObj(item.plannable)) continue;
+        if (item.plannable.due_at !== undefined) dueFromPlanner.set(Number(item.plannable_id), item.plannable.due_at);
+      }
+      for (const [id, { body }] of pageOnly) {
+        const entry: Obj = {
+          id,
+          course_id: courseId,
+          name: body.name,
+          html_url: body.html_url,
+          points_possible: typeof body.points_possible === 'number' ? body.points_possible : undefined,
+          description: typeof body.description === 'string' ? body.description : undefined,
+          rubric: validRubric(body.rubric) ? body.rubric : undefined,
+          due_at: checkedInstant(dueFromPlanner.get(id), { courseId, itemId: id, ...(typeof body.name === 'string' ? { item: body.name } : {}), field: 'due_at' }, onIssue) ?? undefined,
+          submission: submissionsById.get(id),
+        };
+        merged.set(id, Object.fromEntries(Object.entries(entry).filter(([, v]) => v !== undefined)) as unknown as Assignment);
+      }
     }
     return [...merged.values()].sort((a, b) => (a.due_at ?? '9999').localeCompare(b.due_at ?? '9999'));
   }
@@ -756,20 +919,47 @@ export function createExtensionApi(snapshot: Snapshot): CanvasApi {
       ds.items('userCourses').find((c) => Number(c.id) === summary.id) ??
       {};
     const course = normalizeIds(full) as unknown as Course;
-    // The dashboard card knows the course code and the term name when the captured course record does not.
+    // The dashboard card knows the course code when the captured course record does not.
     const card = ds.items('dashboardCards').find((c) => Number(c.id ?? /^course_(\d+)$/.exec(String(c.assetString ?? ''))?.[1]) === summary.id);
-    if (card) {
-      if (!course.course_code && typeof card.courseCode === 'string') course.course_code = card.courseCode;
-      if (!course.term && typeof card.term === 'string' && card.term) course.term = { name: card.term } as Course['term'];
+    if (card && !course.course_code && typeof card.courseCode === 'string') course.course_code = card.courseCode;
+    // The term: a term object first (the courses list, then Canvas's GraphQL course list), the card's text last (the
+    // card can show a different label than the term's name, which is what the API gives).
+    if (!course.term?.name) {
+      const fromList = ds.items('userCourses').find((c) => Number(c.id) === summary.id)?.term;
+      const fromGraphql = ds
+        .newestFirst('GetUserCourses')
+        .flatMap((r) => asArray((r.body as { data?: { legacyNode?: { enrollments?: unknown } } })?.data?.legacyNode?.enrollments))
+        .map((e) => (isObj(e.course) ? e.course : {}))
+        .find((c) => Number(c._id) === summary.id && isObj(c.term) && typeof c.term.name === 'string' && c.term.name);
+      if (isObj(fromList) && typeof fromList.name === 'string' && fromList.name) course.term = normalizeIds(fromList) as unknown as Course['term'];
+      else if (fromGraphql && isObj(fromGraphql.term)) course.term = { name: fromGraphql.term.name } as Course['term'];
+      else if (card && typeof card.term === 'string' && card.term) course.term = { name: card.term } as Course['term'];
+    }
+    const gradesRec = ds.newest('gradesPage', summary.id);
+    const page = isObj(gradesRec?.body) ? gradesRec.body : {};
+    // Whether the course weights its groups: the course record's own flag, else the Grades page's ENV ("percent" is
+    // weighted, "equal" is not). The Grades screen reads the same field, so both agree.
+    if (typeof course.apply_assignment_group_weights !== 'boolean' && typeof page.group_weighting_scheme === 'string') {
+      course.apply_assignment_group_weights = page.group_weighting_scheme === 'percent';
     }
     const groups = groupsOf(summary.id);
     const existing = course.enrollments?.find((e) => e.type === 'student');
     let enrollment: Enrollment = { type: 'student', enrollment_state: 'active', ...existing };
-    // Canvas's own totals if the page carried them; otherwise worked out from the scores that were captured.
+    // Canvas's own total: from the course record if it carried one, else as the Grades page showed it (the page with no
+    // grading period chosen, or "All grading periods" (0), so the course's whole total), and only when no score was
+    // captured after that page (a newer score would make its total stale). Otherwise worked out from the scores that
+    // were captured, and marked as an estimate.
     if (existing?.computed_current_score === undefined && groups.length) {
-      const model = toModel(groups);
-      const result = computeGrade(model.groups, model.items, { weighted: !!course.apply_assignment_group_weights });
-      enrollment = { ...enrollment, computed_current_score: result.current, computed_final_score: result.final };
+      const wholeCourse = page.grading_period_id === undefined || String(page.grading_period_id) === '0';
+      const current = gradesRec !== undefined && gradesRec.capturedAt >= newestScoreAt(summary.id);
+      const shown = wholeCourse && current && typeof page.canvas_total === 'number' && Number.isFinite(page.canvas_total) ? page.canvas_total : undefined;
+      if (shown !== undefined) {
+        enrollment = { ...enrollment, computed_current_score: shown };
+      } else {
+        const model = toModel(groups);
+        const result = computeGrade(model.groups, model.items, { weighted: !!course.apply_assignment_group_weights });
+        enrollment = { ...enrollment, computed_current_score: result.current, computed_final_score: result.final, estimated: true };
+      }
     }
     return {
       ...course,
@@ -811,7 +1001,14 @@ export function createExtensionApi(snapshot: Snapshot): CanvasApi {
     let haveDiscussions = false;
     const add = (target: Map<number, DiscussionTopic>, o: Obj, isAnnouncement: boolean) => {
       const topic = normalizeIds({ ...o, is_announcement: isAnnouncement }) as unknown as DiscussionTopic;
-      if (typeof topic.id === 'number' && typeof topic.title === 'string') target.set(topic.id, { ...target.get(topic.id), ...topic });
+      if (typeof topic.id !== 'number' || typeof topic.title !== 'string') return;
+      // In UTC "Z" (GraphQL writes an offset), so the newest-first order is right; a date that does not add up is left out.
+      if ('posted_at' in topic) {
+        const posted = checkedInstant(topic.posted_at, { courseId, itemId: topic.id, item: topic.title, field: 'posted_at' }, onIssue);
+        if (posted === undefined) delete (topic as Partial<DiscussionTopic>).posted_at;
+        else topic.posted_at = posted;
+      }
+      target.set(topic.id, { ...target.get(topic.id), ...topic });
     };
     for (const r of ds.of('discussions', courseId)) {
       const asked = /[?&]only_announcements=true/.test(r.url);
@@ -823,7 +1020,8 @@ export function createExtensionApi(snapshot: Snapshot): CanvasApi {
       }
     }
     for (const r of ds.of('announcements')) {
-      if (!r.url.includes(`course_${courseId}`)) continue; // an account-wide list, asked for this course
+      // An account-wide list, asked for this course (course_17 must not match course_174293).
+      if (!new RegExp(`course_${courseId}(?!\\d)`).test(r.url)) continue;
       haveAnnouncements = true;
       for (const o of asArray(r.body)) if (o.context_code === `course_${courseId}`) add(announcements, o, true);
     }
@@ -844,7 +1042,12 @@ export function createExtensionApi(snapshot: Snapshot): CanvasApi {
       else haveDiscussions = true;
     }
     // The page was opened and Canvas loaded no topics for it: the course has none (that page sends no list when empty).
-    const opened = (path: string) => Object.keys(snapshot.visited ?? {}).some((u) => u.replace(/\/$/, '').endsWith(`/courses/${courseId}/${path}`));
+    // "Opened" is what the landed page said (listPage: sent only when the tab really is that list, never after a
+    // redirect to the course home). `visited` holds the address asked for, even when Canvas redirected, so on its own it
+    // counts only when the course menu shows the tab.
+    const listed = (path: string) => ds.of('listPage', courseId).some((r) => isObj(r.body) && r.body.path === path);
+    const visited = (path: string) => Object.keys(snapshot.visited ?? {}).some((u) => u.replace(/\/$/, '').endsWith(`/courses/${courseId}/${path}`));
+    const opened = (path: string) => listed(path) || (!hidden(courseId, path === 'announcements' ? 'announcements' : 'discussions') && visited(path));
     if (!haveDiscussions && opened('discussion_topics')) haveDiscussions = true;
     if (!haveAnnouncements && opened('announcements')) haveAnnouncements = true;
     const newest = (m: Map<number, DiscussionTopic>) => [...m.values()].sort((a, b) => (b.posted_at ?? '').localeCompare(a.posted_at ?? ''));
@@ -907,7 +1110,7 @@ export function createExtensionApi(snapshot: Snapshot): CanvasApi {
     people: t('People'),
   };
 
-  return {
+  const api: CanvasApi = {
     getProfile: async () => profile(),
 
     // Every current course, so Settings can list all of them to choose from; screens narrow it with the app's filter.
@@ -997,14 +1200,41 @@ export function createExtensionApi(snapshot: Snapshot): CanvasApi {
 
     getAssignment: async (courseId, assignmentId) => {
       const found = assignmentsOf(courseId).find((a) => a.id === assignmentId);
-      // A visited assignment page carries the full description, which the lists do not.
-      const detail = ds.newestFirst('assignment', courseId).map((r) => normalizeIds(r.body) as unknown as Assignment).find((a) => a.id === assignmentId);
+      // A visited assignment page carries the full description, which the lists do not: the API's detail (kind
+      // assignment) where Canvas fetches it, or what the page drew on the server (kind assignmentPage) where it does not.
+      const ofThis = (r: CapturedRecord) => isObj(r.body) && Number(normalizeIds(r.body).id) === assignmentId;
+      const apiRec = ds.newestFirst('assignment', courseId).find(ofThis);
+      const pageRec = ds.newestFirst('assignmentPage', courseId).find(ofThis);
+      const apiBody = apiRec ? normalizeIds(apiRec.body as Obj) : undefined;
+      const pageBody = pageRec ? normalizeIds(pageRec.body as Obj) : undefined;
       // The same assignment as it came back from a newer Canvas page (GraphQL), found by its id.
-      const scavenged = assignmentFromObjects(objectsWithId(assignmentId).filter((o) => typeof o.name === 'string' || 'description' in o));
-      if (!found && !detail && scavenged.name === undefined) throw notSynced('This assignment');
-      const merged = { ...found, ...detail } as Assignment;
-      for (const [k, v] of Object.entries(scavenged)) if ((merged as unknown as Obj)[k] == null) (merged as unknown as Obj)[k] = v;
-      return merged;
+      // Ids are unique per kind only: objects that are something else (a user, a module, another course's assignment) are skipped.
+      const scavenged = assignmentFromObjects(
+        objectsWithId(assignmentId).filter((o) => (typeof o.name === 'string' || 'description' in o) && looksLikeAssignmentOf(o, courseId, assignmentId)),
+      );
+      if (!found && !apiRec && !pageRec && scavenged.name === undefined) throw notSynced('This assignment');
+      const merged: Obj = { ...found, ...apiBody };
+      if (pageRec && pageBody) {
+        // Instructions and rubric: the page's when nothing else has them, or when it was read after the API's detail.
+        const pageWins = (k: string) => merged[k] == null || !apiRec || pageRec.capturedAt > apiRec.capturedAt;
+        if (typeof pageBody.description === 'string' && pageWins('description')) merged.description = pageBody.description;
+        if (validRubric(pageBody.rubric) && pageWins('rubric')) merged.rubric = pageBody.rubric;
+        // Title, points and link only fill gaps. The page never carries dates, so the Grades page's or API's due date stays.
+        if (merged.name == null && typeof pageBody.name === 'string') merged.name = pageBody.name;
+        if (merged.points_possible == null && typeof pageBody.points_possible === 'number') merged.points_possible = pageBody.points_possible;
+        if (merged.html_url == null && typeof pageBody.html_url === 'string') merged.html_url = pageBody.html_url;
+      }
+      for (const [k, v] of Object.entries(scavenged)) if (merged[k] == null) merged[k] = v;
+      // Instructions the extension did not keep because they hold a link that works without a login (a calendar feed
+      // or a tool's sessionless launch): known to exist, and no later sync will bring them.
+      const removed = [found, apiBody, pageBody].some((o) => isObj(o) && o.description_removed === true);
+      if (typeof merged.description === 'string' && merged.description) delete merged.description_removed;
+      else if (removed) merged.description_removed = true;
+      // No source said what the instructions are (not even "none"): the screen says they were not synced yet.
+      const saysDescription = (o: unknown) => isObj(o) && (Object.prototype.hasOwnProperty.call(o, 'description') || o.description_removed === true);
+      if (![found, apiBody, pageBody].some(saysDescription) && scavenged.description === undefined) merged.instructions_unknown = true;
+      normalizeAssignmentDates(merged, courseId, onIssue);
+      return merged as unknown as Assignment;
     },
 
     getMySubmission: async (courseId, assignmentId) => {
@@ -1075,4 +1305,5 @@ export function createExtensionApi(snapshot: Snapshot): CanvasApi {
       return out.sort((x, y) => (x.start_at ?? '').localeCompare(y.start_at ?? ''));
     },
   };
+  return { api, assignmentsOf, topicsOf, courseWithGrade };
 }

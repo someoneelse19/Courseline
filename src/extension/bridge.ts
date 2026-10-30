@@ -12,6 +12,8 @@ export interface CapturedRecord {
   url: string;
   capturedAt: number; // ms since epoch
   body: unknown;
+  /** A known route that came back in an unexpected format (kept raw as kind 'other'): the kind it failed. Never read. */
+  rejectedAs?: string;
   /** GraphQL reads: the variables the page sent (which folder, which course...). */
   variables?: Record<string, unknown>;
 }

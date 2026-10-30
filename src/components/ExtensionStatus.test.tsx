@@ -84,3 +84,26 @@ describe('ExtensionStatus per-type freshness', () => {
     await off.unmount();
   });
 });
+
+describe('ExtensionStatus: values that did not add up', () => {
+  it('lists them by course, says what to do, and marks the status amber; nothing when every value was fine', async () => {
+    const clean = await render('/');
+    expect(clean.text()).not.toContain('did not add up');
+    await clean.unmount();
+
+    const gradesPage = {
+      assignment_groups: [{ id: '10', group_weight: 0, assignments: [{ id: '5', points_possible: 10, due_at: '20 de oct a las 11:15' }] }],
+      submissions: [],
+      assignments: [{ id: '5', name: 'Lab report' }],
+    };
+    auth = { source: 'extension', snapshot: { ...snapshot, records: [...snapshot.records, rec('gradesPage', 1, gradesPage, 60e3)] } };
+    const view = await render('/');
+    expect(view.text()).toContain('Some values from Canvas did not add up, so Courseline left them out:');
+    expect(view.items()).toContain('Biology · dates: Lab report');
+    expect(view.text()).toContain('What to do: check these in Canvas.');
+    expect(view.text()).toContain('Needs attention');
+    expect(document.querySelector('.bg-amber-500')).not.toBeNull();
+    expect(document.querySelector('.bg-red-500')).toBeNull(); // red stays for a format Canvas changed
+    await view.unmount();
+  });
+});

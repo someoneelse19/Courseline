@@ -79,7 +79,9 @@ It works in Chrome, Arc, Edge, Brave and other Chromium browsers.
    and everything that was captured. The sidebar's **Extension** item, under your courses, says how current the data is
    and has Sync now and a refresh for each kind of data.
 
-What it can and cannot do: it shows courses, assignments, grades (worked out from the scores it saw), units, pages,
+What it can and cannot do: it shows courses, assignments, grades (Canvas's own total when its Grades page shows one for the
+whole course, that is in a course without grading periods or with "All grading periods" chosen, and no newer score has
+been seen since; otherwise worked out from the scores it saw and marked as an estimate), units, pages,
 announcements, discussions and the syllabus. Some of that Canvas builds into the page instead of loading it (the Grades
 page, the course home page, the syllabus), and the extension reads it from the page too. **Messages** work too: when you open
 Messages in Courseline, the extension reads your inbox, your sent folder and their threads from a Canvas tab it opens in
@@ -89,7 +91,12 @@ your Canvas). Opening files, submitting work and
 replying to assignment feedback need a token (those buttons say so and send you to Canvas). **If your school hides a course tab
 in Canvas** (some courses only show Home, Announcements, Grades and People), no Canvas page ever loads that data, so the
 extension cannot see it: Courseline says it is not in this course's Canvas menu there, and a token shows it. The Grades page still gives
-those courses their assignments and grade. It only reads what your own Canvas pages load, only from the address you saved, and keeps
+those courses their assignments and grade, and Sync now (not "Essentials only") opens each assignment's own page, which
+still opens there, for its title, instructions, points and rubric; due dates still come from the Grades page. Discussions
+is tried even when it is not in the menu (some schools serve it anyway). Units, Pages, Files, Syllabus and Quizzes of
+such a course stay out of reach without a token. A value from Canvas that cannot be right (a date with no time zone,
+a number it cannot read, class statistics that do not add up) is left out rather than shown, and listed under the
+sidebar's **Extension** item with what to do. It only reads what your own Canvas pages load, only from the address you saved, and keeps
 it on your computer. Read the security notes in [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md#9-security-model) before
 sharing it with anyone.
 

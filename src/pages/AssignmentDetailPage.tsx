@@ -73,7 +73,15 @@ export function AssignmentDetailPage() {
           )}
 
           <Card title={t('Instructions')}>
-            {a.description ? <HtmlContent html={a.description} /> : <EmptyState>{t('No instructions provided.')}</EmptyState>}
+            {a.description ? (
+              <HtmlContent html={a.description} />
+            ) : a.description_removed ? (
+              <EmptyState>{t('These instructions contain a link that works without signing in, so Courseline does not keep them. Open this assignment in Canvas to read them.')}</EmptyState>
+            ) : a.instructions_unknown ? (
+              <EmptyState>{t('Instructions have not been synced yet. Press Sync now, or open this assignment in Canvas.')}</EmptyState>
+            ) : (
+              <EmptyState>{t('No instructions provided.')}</EmptyState>
+            )}
           </Card>
 
           {attachedFiles.length > 0 && (
