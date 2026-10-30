@@ -7,9 +7,11 @@ React · TypeScript · Vite · Tailwind CSS 4
 
 **Two editions, one codebase.** The `main` branch is the **API-token edition**: sign-in by access token only, and
 the app never looks for or talks to the browser extension. The `dev` branch is the full app, with the extension as a
-second way in. Both have every other feature. The only difference is [`edition.json`](edition.json)
-(`"apiOnly": true` on `main`, `false` on `dev`), so merging `dev` into `main` keeps `main` API-only as long as
-`edition.json` is never changed on `dev`. Any build can be made API-only with `COURSELINE_EDITION=api`.
+second way in. Both have every other feature. They differ only in [`edition.json`](edition.json) (`"apiOnly": true`
+on `main`, `false` on `dev`) and in the `extension/` folder, which `main` does not have. Merging `dev` into `main` keeps
+`main` API-only as long as `edition.json` is never changed on `dev` (see
+[Branches and editions](DEVELOPER_GUIDE.md#branches-and-editions) for the merge). Any build can be made API-only with
+`COURSELINE_EDITION=api`.
 
 ![Courseline dashboard](docs/screenshots/dashboard.png)
 
@@ -164,7 +166,7 @@ in to Canvas).
 
 In day-to-day use by the author on real school courses. Covered by automated tests: the API client (pagination, error
 mapping, downloads, file upload), grade calculation, HTML sanitizing, the data cache, accent colors, the submission
-form, messages, spreadsheet formatting, the system clock, the API-token edition's sign-in, the browser extension's logic and the app's extension mode (these run on both branches), and a smoke test that renders every screen except Messages against a fake Canvas. On `dev`, `npm run e2e` also drives the extension in a real Chrome against a mock Canvas. The screens and the file viewer were also checked in a real browser, in light and dark mode and at phone width.
+form, messages, spreadsheet formatting, the system clock, the API-token edition's sign-in, the app's extension mode (on both branches), the browser extension's own logic (on `dev`, where `extension/` is), and a smoke test that renders every screen except Messages against a fake Canvas. On `dev`, `npm run e2e` also drives the extension in a real Chrome against a mock Canvas. The screens and the file viewer were also checked in a real browser, in light and dark mode and at phone width.
 
 Canvas installations differ a little between schools. If you use this at a new school, try a submission on a throwaway
 assignment first. If your school's file storage refuses browser uploads, the app says so and points you to "Submit in

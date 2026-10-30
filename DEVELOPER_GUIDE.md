@@ -148,12 +148,13 @@ alone does not start it. When you change the extension or the screens it feeds, 
 
 ### Branches and editions
 
-Two editions are built from this one codebase. The only file that differs between the branches is `edition.json`.
+Two editions are built from this one codebase. The branches differ only in `edition.json` and in `extension/`, which
+`main` does not have.
 
 | Branch | `edition.json` | What it builds |
 |---|---|---|
 | `dev` | `"apiOnly": false` | The full app: token sign-in **and** the browser extension (`extension/`) as a second way in. All work happens here. |
-| `main` | `"apiOnly": true` | The **API-token edition**: sign-in by access token only, and the app never looks for or talks to the extension. `vite.config.ts` removes `<meta name="courseline-app">` from the page (so `extension/bridge.js` ignores it) and defines `__API_ONLY__`, which `src/edition.ts` exports as `API_ONLY` (see the `edition.json` row in [5](#5-file-by-file-map) for what it turns off). The `extension/` folder is still in the tree, unused. |
+| `main` | `"apiOnly": true` | The **API-token edition**: sign-in by access token only, and the app never looks for or talks to the extension. `vite.config.ts` removes `<meta name="courseline-app">` from the page (so `extension/bridge.js` ignores it) and defines `__API_ONLY__`, which `src/edition.ts` exports as `API_ONLY` (see the `edition.json` row in [5](#5-file-by-file-map) for what it turns off). The browser extension's `extension/` folder is removed (the app-side `src/extension/` stays: the app imports it, and `API_ONLY` keeps it switched off). |
 
 The switch applies to `npm run dev` as well as `npm run build`. `COURSELINE_EDITION=api` makes either one API-only on any
 branch. Tests always run the full app (Vite mode `test` ignores both switches), so every feature is tested on both
@@ -164,10 +165,14 @@ Release flow: work on `dev`, then merge `dev` into `main`.
 ```bash
 git checkout dev        # commit here; git push origin dev (CI does not run for this push)
 git checkout main
-git merge dev           # edition.json keeps main's "apiOnly": true
+git merge --no-commit dev; git rm -r -q --ignore-unmatch extension; git commit --no-edit
 git push origin main    # starts CI: typecheck, tests, and a build of the API-token edition
 git checkout dev
 ```
+
+The middle line merges and then takes `extension/` back out, so new or changed extension files never land on `main`. When
+`dev` changed a file in `extension/`, the merge stops with a "deleted in HEAD and modified in dev" conflict; the `git rm`
+resolves it. Any other conflict makes the commit fail: fix it, `git add` it, and run `git commit --no-edit` again.
 
 **Never edit `edition.json` on `dev`.** Then only `main` has changed it, and every merge keeps `main`'s version. If it
 ever does change on `dev`, check after the merge that `git show main:edition.json` still says `"apiOnly": true`.
@@ -1009,7 +1014,8 @@ For components, render with `react-dom/client` inside `act` (see `SubmissionForm
 Tests always run the full app, on both branches: `vite.config.ts` turns the edition switch off in Vitest's `test` mode,
 so `edition.json` saying `"apiOnly": true` on `main` changes nothing here. To test what the API-token edition shows,
 mock the switch as `pages/LoginPage.apiOnly.test.tsx` does: `vi.mock('../edition', () => ({ API_ONLY: true }))`. The
-extension's own logic is tested by `extension/**/*.test.js` (plain JS, run by the same `npm test`). `npm run e2e` (a real
+extension's own logic is tested by `extension/**/*.test.js` (plain JS, run by the same `npm test`; `dev` only, since
+`main` has no `extension/`). `npm run e2e` (a real
 Chrome with the unpacked extension against a mock Canvas; start `npm run dev` first) is separate: neither `npm test` nor
 CI runs it, and it needs the full app, so run it on `dev` (on `main` the app ignores the extension).
 
@@ -1226,14 +1232,16 @@ dist/index.html` prints `0`). Without the variable, the dev server on `dev` is t
 
 ### Ship a change to the API-token edition (`main`)
 
-`main` is the API-token edition and `dev` the full app. They share all code and docs and differ only in `edition.json`.
+`main` is the API-token edition and `dev` the full app. They share all code and docs and differ only in `edition.json`
+and the `extension/` folder (not on `main`).
 
 1. Work and commit on `dev`. **Never edit `edition.json` on `dev`**: as long as `dev` leaves it alone, a merge never
    carries `dev`'s `"apiOnly": false` into `main`.
 2. On `dev`: `npm run typecheck && npm test && npm run build`, and `COURSELINE_EDITION=api npm run build` to check that
    the API-only bundle builds.
-3. `git checkout main && git merge dev`. Then `cat edition.json` must still print `{ "apiOnly": true }` (if the merge
-   stopped on that file, keep `main`'s version).
+3. `git checkout main`, then `git merge --no-commit dev; git rm -r -q --ignore-unmatch extension; git commit --no-edit`
+   (this keeps `extension/` off `main`; see [Branches and editions](#branches-and-editions) for conflicts). Then
+   `cat edition.json` must still print `{ "apiOnly": true }` and `ls extension` must fail.
 4. Push `main`. CI (`.github/workflows/ci.yml`: typecheck, test, build) runs on pushes to `main` and on pull requests,
    not on pushes to `dev`.
 5. Switch back to `dev` to keep working.
@@ -1467,8 +1475,9 @@ its popup (4–7, 11, 12, 15), but the app never reads what it holds.
   support on custom controls.
 - **Commit** small, working steps (see [3](#before-you-change-anything)).
 - **Branches and editions:** work on `dev` (the full app, with the extension), then merge `dev` into `main` (the
-  API-token edition). Keep `edition.json` the only difference between them (`"apiOnly": true` on `main`): never edit it
-  on `dev`, so a merge keeps `main` API-only. Anything that looks for or talks to the extension goes behind `API_ONLY`
+  API-token edition), taking `extension/` back out in the merge (see [Branches and editions](#branches-and-editions)).
+  `edition.json` is the only other difference (`"apiOnly": true` on `main`): never edit it on `dev`, so a merge keeps
+  `main` API-only. Anything that looks for or talks to the extension goes behind `API_ONLY`
   from `src/edition.ts`. To see the API-only app on `dev`, run `COURSELINE_EDITION=api npm run dev` (or build with
   it). Tests always run the full app; to test the API-only path, mock `../edition` as `LoginPage.apiOnly.test.tsx` does.
 

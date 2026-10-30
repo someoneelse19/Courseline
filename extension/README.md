@@ -3,8 +3,8 @@
 Saves the Canvas data your own browsing loads, so the Courseline app can show it without an access token. Plain
 JavaScript, no build step: load this folder as an unpacked extension.
 
-**For the `dev` branch only.** The API-token edition on `main` has this folder too (and runs its unit tests), but its
-app never looks for or talks to the extension: the build leaves out `<meta name="courseline-app">`, so `bridge.js`
+**For the `dev` branch only.** The API-token edition on `main` does not have this folder, and its app never looks for
+or talks to the extension: the build leaves out `<meta name="courseline-app">`, so even an installed `bridge.js`
 ignores the page. Use `dev` (and no `COURSELINE_EDITION=api`) with the extension.
 
 **Install:** `chrome://extensions` → Developer mode → Load unpacked → this folder. Then open Courseline (on `dev`:
@@ -50,7 +50,7 @@ messages), `background.js` (storage, background tabs for Sync now and Messages),
 on localhost and runs the sync loop, 4 tabs at once), `popup.*` (status, address, export), `lib/` (pure logic,
 unit-tested; `lib/pullRunner.js` and `lib/message.js` are also loaded by `bridge.js`).
 
-**Tests:** `npm test` (unit, on both branches) and, on `dev` only, `npm run e2e` (a real Chrome with this extension, a
+**Tests:** `npm test` (unit) and `npm run e2e` (a real Chrome with this extension, a
 mock Canvas and the real app: start `npm run dev` on port 5173 first, and set `CHROME_PATH` if Chrome is not in
 `/Applications`; see `e2e/`; it does not cover Messages). Manual checks: [TESTING.md](TESTING.md). The architecture
 and the security register are in [../DEVELOPER_GUIDE.md](../DEVELOPER_GUIDE.md).
