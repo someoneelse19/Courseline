@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { CanvasApiError } from '../api/client';
 import type { CapturedRecord, Snapshot } from './bridge';
-import { coverage, courseUpdatedAt, createExtensionApi, failingKinds, freshnessByType, gradesPageGroups, hiddenSections, mailFrom, modulesFromPage, peopleFrom, sensibleStatistics, knownCourses, lastUpdatedAt, normalizeIds, pinnedIds } from './extensionApi';
+import { coverage, courseUpdatedAt, createExtensionApi, failingKinds, freshnessByType, gradesPageGroups, hiddenSections, mailFrom, modulesFromPage, peopleFrom, sensibleStatistics, knownCourses, lastUpdatedAt, normalizeIds, pinnedIds, valueIssues } from './extensionApi';
+import { computeGrade, toModel } from '../lib/grades';
 
 const T0 = Date.parse('2026-10-11T10:00:00Z');
 const rec = (kind: string, courseId: number | null, body: unknown, at = T0, url = `https://school.test/api/v1/${kind}`): CapturedRecord => ({
@@ -655,6 +656,23 @@ describe('the inbox, from what Canvas\'s own Inbox loaded', () => {
     expect(e.conversation.last_message).toBe('My question');
   });
 
+  it('sorts GraphQL messages (with an offset) and REST messages (in UTC) by when they were written, not as text', async () => {
+    // 07:32 in Madrid is 05:32 UTC: before the REST message at 06:00 UTC, though "07:32" sorts after "06:00" as text.
+    const rest = rec('conversation', null, { id: 7, subject: 'Pi', workflow_state: 'read', participants: [], messages: [{ id: 99, created_at: '2026-10-02T06:00:00Z', body: 'Later (REST)', author_id: 42 }] }, T0 + 5, 'https://school.test/api/v1/conversations/7');
+    const api = createExtensionApi(snap([gql([node('7', 'Pi', 'read', m('a', 'Prof', '5', '2026-10-02T07:32:43+02:00', 'Earlier (GraphQL)'), ['Prof', 'Me'])], { scope: 'inbox' }), rest]));
+    const thread = await api.getConversation(7);
+    expect(thread.messages?.map((x) => [x.body, x.created_at])).toEqual([['Later (REST)', '2026-10-02T06:00:00Z'], ['Earlier (GraphQL)', '2026-10-02T05:32:43Z']]);
+    expect(thread.last_message).toBe('Later (REST)');
+  });
+
+  it('orders the inbox by a REST list\'s last_message_at in UTC', async () => {
+    // A REST list says 07:00+02:00 (05:00 UTC); a GraphQL conversation's newest message is 06:00 UTC, so it is newer.
+    const list = Object.assign(rec('other', null, [{ id: 20, subject: 'Older', workflow_state: 'read', last_message: 'x', last_message_at: '2026-10-02T07:00:00+02:00', participants: [] }], T0, 'https://school.test/api/v1/conversations?scope=inbox'), { route: 'GET /conversations' });
+    const api = createExtensionApi(snap([list, gql([node('21', 'Newer', 'read', m('n', 'Prof', '5', '2026-10-02T06:00:00Z', 'y'), ['Prof'])], { scope: 'inbox' })]));
+    const inbox = await api.getConversations('inbox');
+    expect(inbox.map((c) => [c.subject, c.last_message_at])).toEqual([['Newer', '2026-10-02T06:00:00Z'], ['Older', '2026-10-02T05:00:00Z']]);
+  });
+
   it('serves the inbox, a thread (newest first) and the unread count through the API', async () => {
     const api = createExtensionApi(snap([rec('dashboardCards', null, [card('1', 'Bio')]), gql([node('7', 'Pi', 'unread', m('a', 'Prof', '5', '2026-09-26T16:16:28+02:00', 'Here'), ['Prof', 'Me'])])]));
     expect((await api.getConversations('inbox')).map((c) => c.subject)).toEqual(['Pi']);
@@ -686,6 +704,295 @@ describe('a thread opened in Canvas\'s Inbox, and its newest message from the li
     const e = mailFrom([list, thread]).get(9)!;
     expect([...e.messages.values()].map((m) => [m.id, m.body]).sort()).toEqual([['60', 'please send it'], ['61', 'here']]);
     expect(e.messages.get('61')?.attachments).toEqual([{ id: 5, display_name: 'photo.jpg' }]);
+    // Kept in UTC "Z", so they sort with REST messages.
+    expect(e.messages.get('61')?.created_at).toBe('2026-10-02T05:32:43Z');
+    expect(e.messages.get('60')?.created_at).toBe('2026-10-02T03:31:00Z');
+    expect(e.conversation.last_message_at).toBe('2026-10-02T05:32:43Z');
     expect(e.conversation.context_name).toBe('Programming');
+  });
+});
+
+describe('a restricted course: each assignment read from its own page', () => {
+  const at4 = (kind: string, body: unknown, at = T0) => rec(kind, 4, body, at, `https://school.test/courses/4#page:${kind}`);
+  // The live school's menu for such a course: Home, Announcements, Grades, People.
+  const nav = at4('courseNav', { tabs: ['/courses/4', '/courses/4/announcements', '/courses/4/grades', '/courses/4/users'].map((href) => ({ href, label: href })) });
+  const due41 = '2026-11-20T11:15:00+01:00';
+  const due41Utc = '2026-11-20T10:15:00Z'; // as the app keeps it: in UTC
+  const grades = at4('gradesPage', {
+    assignment_groups: [{ id: '40', group_weight: 0, rules: {}, assignments: [{ id: '41', points_possible: 10, due_at: due41, submission_types: ['online_upload'] }, { id: '42', points_possible: 5, due_at: null, submission_types: ['none'] }] }],
+    submissions: [{ assignment_id: '41', score: 7, workflow_state: 'graded' }],
+    assignments: [{ id: '41', name: 'Ecuaciones', html_url: 'https://school.test/courses/4/assignments/41', assignment_group_id: '40' }, { id: '42', name: '', assignment_group_id: '40' }],
+  });
+  const rubric = [{ id: 'c1', description: 'Procedimiento', points: 10, ratings: [{ id: 'r1a', description: 'Completo', points: 10 }] }];
+  const page41 = (extra: object = {}, at = T0 + 1000) =>
+    at4('assignmentPage', { id: '41', course_id: '4', name: 'Ecuaciones (página)', html_url: 'https://school.test/courses/4/assignments/41', description: '<p>Resuelve los ejercicios.</p>', points_possible: 12, rubric, ...extra }, at);
+  const page42 = at4('assignmentPage', { id: '42', course_id: '4', name: 'Práctica', html_url: 'https://school.test/courses/4/assignments/42', description: '' });
+  const cards = rec('dashboardCards', null, [card('4', 'Álgebra')]);
+  const api = (...more: CapturedRecord[]) => createExtensionApi(snap([cards, nav, grades, ...more]));
+
+  it('fills instructions, points and the rubric from the assignment page, keeping the Grades page due date', async () => {
+    const a = await api(page41({ points_possible: undefined })).getAssignment(4, 41);
+    expect(a).toMatchObject({ id: 41, name: 'Ecuaciones', description: '<p>Resuelve los ejercicios.</p>', points_possible: 10, due_at: due41Utc });
+    expect(a.rubric?.map((c) => c.description)).toEqual(['Procedimiento']);
+    expect(a.instructions_unknown).toBeUndefined();
+    // The list carries the same, from the page.
+    const listed = (await api(page41()).getAssignments(4)).find((x) => x.id === 41);
+    expect(listed).toMatchObject({ description: '<p>Resuelve los ejercicios.</p>', due_at: due41Utc, submission: { score: 7 } });
+  });
+
+  it('a newer page record beats an older API detail for the instructions, and an older one does not', async () => {
+    const detail = (at: number) => rec('assignment', 4, { id: '41', name: 'Ecuaciones', description: '<p>From the API</p>', due_at: '2026-11-20T10:15:00Z' }, at, 'https://school.test/api/v1/courses/4/assignments/41');
+    const newerPage = await api(detail(T0), page41({}, T0 + 5000)).getAssignment(4, 41);
+    expect(newerPage.description).toBe('<p>Resuelve los ejercicios.</p>');
+    expect(newerPage.due_at).toBe('2026-11-20T10:15:00Z'); // the page never carries a date
+    const olderPage = await api(detail(T0 + 5000), page41({}, T0)).getAssignment(4, 41);
+    expect(olderPage.description).toBe('<p>From the API</p>');
+    expect(olderPage.rubric?.[0].id).toBe('c1'); // the API's detail had no rubric: the page's fills it
+  });
+
+  it('page title and points only fill gaps (the Grades page values stay); a row with no name gets the page title', async () => {
+    const s = api(page41(), page42);
+    const a = await s.getAssignment(4, 41);
+    expect(a.name).toBe('Ecuaciones');
+    expect(a.points_possible).toBe(10);
+    const groups = await s.getAssignmentGroups(4);
+    expect(groups[0].assignments?.map((x) => x.name)).toEqual(['Ecuaciones', 'Práctica']);
+    // Without its page, the unnamed row still gets a placeholder.
+    expect((await api().getAssignmentGroups(4))[0].assignments?.[1].name).toBe('Assignment 42');
+  });
+
+  it('lists an assignment only its page knows about, due date from planner items, outside the grade', async () => {
+    const page43 = at4('assignmentPage', { id: '43', course_id: '4', name: 'Repaso', html_url: 'https://school.test/courses/4/assignments/43', points_possible: 100 });
+    const planner = rec('plannerItems', null, [{ plannable_type: 'assignment', plannable_id: '43', course_id: '4', plannable: { title: 'Repaso', due_at: '2026-12-01T09:00:00Z' } }], T0, 'https://school.test/api/v1/planner/items');
+    const s = api(page43, planner);
+    const listed = await s.getAssignments(4);
+    expect(listed.map((x) => x.id)).toEqual([41, 43, 42]); // by due date, undated last
+    expect(listed.find((x) => x.id === 43)).toEqual({ id: 43, course_id: 4, name: 'Repaso', html_url: 'https://school.test/courses/4/assignments/43', points_possible: 100, due_at: '2026-12-01T09:00:00Z' });
+    expect((await s.getAssignmentGroups(4)).flatMap((g) => g.assignments?.map((x) => x.id))).toEqual([41, 42]);
+    const grade = (await s.getCourse(4)).enrollments?.find((e) => e.type === 'student')?.computed_current_score;
+    expect(grade).toBeCloseTo(70); // 7 of 10; the 100 points of the page-only assignment are not counted
+    expect(await s.getAssignment(4, 43)).toMatchObject({ name: 'Repaso', points_possible: 100 });
+    expect((await s.getAssignment(4, 43)).instructions_unknown).toBe(true); // its page had no instructions element
+  });
+
+  it('says instructions are not synced (not "none") until a source carried them; an empty description reads as none', async () => {
+    const before = await api().getAssignment(4, 41);
+    expect(before.description).toBeUndefined();
+    expect(before.instructions_unknown).toBe(true);
+    const empty = await api(page42).getAssignment(4, 42);
+    expect(empty.description).toBe('');
+    expect(empty.instructions_unknown).toBeUndefined();
+    // An API detail that says "none" (null) is an answer too.
+    const none = await api(rec('assignment', 4, { id: '41', name: 'Ecuaciones', description: null }, T0, 'https://school.test/api/v1/courses/4/assignments/41')).getAssignment(4, 41);
+    expect(none.instructions_unknown).toBeUndefined();
+  });
+
+  it('instructions dropped for a link that works without a login are known to exist, not "not synced yet"', async () => {
+    // As stored after stripSensitive: the description is gone and a marker stands in its place.
+    const stripped = at4('assignmentPage', { id: '41', course_id: '4', name: 'Ecuaciones', html_url: 'https://school.test/courses/4/assignments/41', description_removed: true }, T0 + 1000);
+    const a = await api(stripped).getAssignment(4, 41);
+    expect(a.description).toBeUndefined();
+    expect(a.description_removed).toBe(true);
+    expect(a.instructions_unknown).toBeUndefined();
+    // Another source that kept the instructions wins, and the marker goes.
+    const detail = rec('assignment', 4, { id: '41', name: 'Ecuaciones', description: '<p>From the API</p>' }, T0, 'https://school.test/api/v1/courses/4/assignments/41');
+    const kept = await api(detail, stripped).getAssignment(4, 41);
+    expect(kept.description).toBe('<p>From the API</p>');
+    expect(kept.description_removed).toBeUndefined();
+  });
+
+  it('counts assignment pages as assignments data in the freshness chip', () => {
+    const s = snap([cards, nav, page41({}, T0 + 7000)]);
+    expect(freshnessByType(s, 4, T0 + 8000).find((f) => f.key === 'assignments')).toMatchObject({ updatedAt: T0 + 7000 });
+    expect(freshnessByType(s, 4, T0 + 8000).find((f) => f.key === 'assignments')?.hidden).toBeUndefined();
+  });
+
+  it('discussions: an opened page (listPage) means none; a redirect leaves the hidden note; visited alone counts only when the menu shows the tab', async () => {
+    const visited = { 'https://school.test/courses/4/discussion_topics': T0, 'https://school.test/courses/4/announcements': T0 };
+    // Opened, and the landed page was the list: no discussions.
+    const opened = createExtensionApi({ ...snap([cards, nav, at4('listPage', { path: 'discussion_topics' })]), visited });
+    expect(await opened.getDiscussions(4)).toEqual([]);
+    // Asked for, but Canvas redirected to the course home (no listPage): the menu leaves it out, so it is hidden.
+    const redirected = createExtensionApi({ ...snap([cards, nav]), visited });
+    await expect(redirected.getDiscussions(4)).rejects.toMatchObject({ kind: 'hidden' });
+    // The menu shows Announcements: having opened it is enough (its list sends nothing when empty).
+    expect(await redirected.getAnnouncements(4)).toEqual([]);
+    // No menu captured: nothing is assumed hidden, so a visit still counts.
+    expect(await createExtensionApi({ ...snap([cards]), visited }).getDiscussions(4)).toEqual([]);
+  });
+});
+
+describe('values that do not add up', () => {
+  const at9 = (kind: string, body: unknown, at = T0) => rec(kind, 9, body, at, `https://school.test/courses/9#page:${kind}`);
+  const cards9 = rec('dashboardCards', null, [card('9', 'Calculus')]);
+  const gradesPage = (assignments: object[], extra: object = {}, at = T0) =>
+    at9('gradesPage', {
+      assignment_groups: [{ id: '90', group_weight: 0, rules: {}, assignments }],
+      submissions: [],
+      assignments: assignments.map((a) => ({ id: (a as { id: string }).id, name: `Set ${(a as { id: string }).id}`, assignment_group_id: '90' })),
+      ...extra,
+    }, at);
+
+  it('a Grades-page due date with an offset is shown in UTC and sorts with the API\'s dates', async () => {
+    const fromApi = rec('assignments', 9, [{ id: '700', name: 'From the API', due_at: '2026-11-20T10:30:00Z', points_possible: 10 }]);
+    // 11:15 in Madrid is 10:15 UTC: before the API's 10:30 UTC, though "11:15" sorts after "10:30" as text.
+    const api = createExtensionApi(snap([cards9, fromApi, gradesPage([{ id: '701', points_possible: 10, due_at: '2026-11-20T11:15:00+01:00' }])]));
+    const list = await api.getAssignments(9);
+    expect(list.map((a) => [a.id, a.due_at])).toEqual([[701, '2026-11-20T10:15:00Z'], [700, '2026-11-20T10:30:00Z']]);
+    expect(valueIssues(snap([cards9, fromApi]))).toEqual([]);
+  });
+
+  it('a due date the Grades page could not give is taken from planner items', async () => {
+    const planner = rec('plannerItems', null, [{ plannable_type: 'assignment', plannable_id: '701', course_id: '9', plannable: { title: 'Set 701', due_at: '2026-11-20T10:15:00Z', created_at: '2026-10-01T08:00:00+02:00' } }]);
+    const s = snap([cards9, planner, gradesPage([{ id: '701', points_possible: 10, due_at: '2026-11-20T11:15:00' }])]);
+    const [a] = await createExtensionApi(s).getAssignments(9);
+    expect(a).toMatchObject({ id: 701, due_at: '2026-11-20T10:15:00Z', created_at: '2026-10-01T06:00:00Z' });
+    expect(valueIssues(s)).toEqual([{ kind: 'date', courseId: 9, itemId: 701, item: 'Set 701', field: 'due_at', value: '2026-11-20T11:15:00', reason: 'no time zone' }]);
+  });
+
+  it('valueIssues lists dropped statistics and unreadable dates for working courses only, once each', () => {
+    const misread = { min: 0, lower_q: 375, median: 688, upper_q: 956, max: 1000, mean: 617 };
+    const withStats = (stats: object, at: number) => {
+      const r = gradesPage([{ id: '701', points_possible: 10, due_at: '20 de oct' }], {}, at);
+      (r.body as { assignments: { score_statistics?: object }[] }).assignments[0].score_statistics = stats;
+      return r;
+    };
+    // An older capture misread a score too; the newest one did not: only what the newest capture says is listed.
+    const older = gradesPage([{ id: '702', points_possible: 'diez', due_at: null }], {}, T0 - 1000);
+    const otherCourse = rec('gradesPage', 8, (gradesPage([{ id: '801', points_possible: 10, due_at: 'mañana' }]).body), T0, 'https://school.test/courses/8#page:gradesPage');
+    const s = snap([cards9, rec('course', 8, { id: 8, name: 'Not pinned' }), older, withStats(misread, T0), otherCourse]);
+    const issues = valueIssues(s);
+    expect(issues.map((i) => [i.kind, i.courseId, i.itemId, i.field])).toEqual([
+      ['date', 9, 701, 'due_at'],
+      ['statistics', 9, 701, 'score_statistics'],
+    ]);
+    expect(valueIssues(s)).toBe(issues); // worked out once per snapshot
+  });
+
+  it('an object of another kind with the same id never fills an assignment', async () => {
+    const other = (body: unknown) => Object.assign(rec('other', 9, body), { route: 'POST /api/graphql Something' });
+    const s = snap([
+      cards9,
+      gradesPage([{ id: '41', points_possible: 10, due_at: null }]),
+      other({ data: { user: { _id: '41', name: 'Ana', sortable_name: 'Ana', description: '<p>About me</p>' } } }),
+      other({ data: { module: { id: '41', name: 'Unit 1', items_count: 2, description: '<p>Unit text</p>' } } }),
+      other({ data: { assignment: { _id: '41', name: 'Elsewhere', description: '<p>Other course</p>', htmlUrl: 'https://school.test/courses/8/assignments/41' } } }),
+    ]);
+    const a = await createExtensionApi(s).getAssignment(9, 41);
+    expect(a.name).toBe('Set 41');
+    expect(a.description).toBeUndefined();
+    expect(a.instructions_unknown).toBe(true);
+  });
+
+  it('announcements for course 17 do not pick up course 174293\'s list', async () => {
+    const list = rec('announcements', null, [{ id: '1', title: 'Bienvenidos', context_code: 'course_174293', posted_at: '2026-10-01T10:00:00+02:00' }], T0, 'https://school.test/api/v1/announcements?context_codes[]=course_174293');
+    const api = createExtensionApi(snap([list]));
+    await expect(api.getAnnouncements(17)).rejects.toMatchObject({ kind: 'not_found' });
+    expect((await api.getAnnouncements(174293)).map((x) => [x.title, x.posted_at])).toEqual([['Bienvenidos', '2026-10-01T08:00:00Z']]);
+  });
+
+  it('uses Canvas\'s own total from the Grades page (no grading periods) instead of an estimate', async () => {
+    const page = (extra: object) => {
+      const r = gradesPage([{ id: '701', points_possible: 10, due_at: null }], extra);
+      (r.body as { submissions: object[] }).submissions = [{ assignment_id: '701', score: 7 }];
+      return r;
+    };
+    const own = (await createExtensionApi(snap([cards9, page({ canvas_total: 72.5 })])).getCourse(9)).enrollments?.find((e) => e.type === 'student');
+    expect(own).toMatchObject({ computed_current_score: 72.5 });
+    expect(own?.estimated).toBeUndefined();
+    expect(own?.computed_final_score).toBeUndefined();
+    // A page showing one grading period shows that period's total, not the course's: worked out instead.
+    const period = (await createExtensionApi(snap([cards9, page({ canvas_total: 72.5, grading_period_id: '12' })])).getCourse(9)).enrollments?.find((e) => e.type === 'student');
+    expect(period).toMatchObject({ computed_current_score: 70, estimated: true });
+    // "All grading periods" (0) shows the course's whole total: Canvas's own.
+    const all = (await createExtensionApi(snap([cards9, page({ canvas_total: 72.5, grading_period_id: '0' })])).getCourse(9)).enrollments?.find((e) => e.type === 'student');
+    expect(all).toMatchObject({ computed_current_score: 72.5 });
+    expect(all?.estimated).toBeUndefined();
+  });
+
+  it('does not use the Grades page\'s total once a newer score was captured (it would be stale)', async () => {
+    const page = gradesPage([{ id: '701', points_possible: 10, due_at: null }], { canvas_total: 80 });
+    (page.body as { submissions: object[] }).submissions = [{ assignment_id: '701', score: 8 }];
+    const enrollmentWith = async (records: CapturedRecord[]) => (await createExtensionApi(snap([cards9, page, ...records])).getCourse(9)).enrollments?.find((e) => e.type === 'student');
+    // A day later the student's score came in through the submissions list: 2/10.
+    const newer = rec('courseSubmissions', 9, [{ id: 's701', assignment_id: '701', workflow_state: 'graded', score: 2 }], T0 + 86400e3);
+    expect(await enrollmentWith([newer])).toMatchObject({ computed_current_score: 20, estimated: true });
+    // Or through gradebook groups that carry the submission.
+    const groups = rec('assignmentGroups', 9, [{ id: '90', name: 'G', group_weight: 0, assignments: [{ id: '701', points_possible: 10, submission: { assignment_id: '701', score: 2 } }] }], T0 + 86400e3);
+    expect(await enrollmentWith([groups])).toMatchObject({ estimated: true });
+    // Groups without submissions say nothing about scores: Canvas's total still stands.
+    const bare = rec('assignmentGroups', 9, [{ id: '90', name: 'G', group_weight: 0, assignments: [{ id: '701', points_possible: 10 }] }], T0 + 86400e3);
+    expect(await enrollmentWith([bare])).toMatchObject({ computed_current_score: 80 });
+    // A score captured before the Grades page is older than its total.
+    const older = rec('courseSubmissions', 9, [{ id: 's701', assignment_id: '701', workflow_state: 'graded', score: 2 }], T0 - 86400e3);
+    expect((await enrollmentWith([older]))?.estimated).toBeUndefined();
+  });
+
+  it('marks a worked-out grade as an estimate', async () => {
+    const api = createExtensionApi(snap(base));
+    const enrollment = (await api.getCourse(1)).enrollments?.find((e) => e.type === 'student');
+    const model = toModel(await api.getAssignmentGroups(1));
+    const expected = computeGrade(model.groups, model.items, { weighted: false });
+    expect(enrollment).toMatchObject({ estimated: true, computed_current_score: expected.current, computed_final_score: expected.final });
+  });
+
+  it('takes the weighting from the Grades page when the course record does not say', async () => {
+    const page = (scheme: string, course: CapturedRecord[] = []) => {
+      const r = at9('gradesPage', {
+        assignment_groups: [
+          { id: '90', group_weight: 75, rules: {}, assignments: [{ id: '701', points_possible: 10 }] },
+          { id: '91', group_weight: 25, rules: {}, assignments: [{ id: '702', points_possible: 10 }] },
+        ],
+        submissions: [{ assignment_id: '701', score: 10 }, { assignment_id: '702', score: 0 }],
+        assignments: [],
+        group_weighting_scheme: scheme,
+      });
+      return createExtensionApi(snap([cards9, ...course, r])).getCourse(9);
+    };
+    expect(await page('percent')).toMatchObject({ apply_assignment_group_weights: true, enrollments: [{ computed_current_score: 75 }] });
+    expect(await page('equal')).toMatchObject({ apply_assignment_group_weights: false, enrollments: [{ computed_current_score: 50 }] });
+    // The course record's own flag wins.
+    expect(await page('percent', [rec('course', 9, { id: 9, name: 'Calculus', apply_assignment_group_weights: false })])).toMatchObject({ apply_assignment_group_weights: false });
+  });
+
+  it('names the term from a term object before the dashboard card', async () => {
+    const cardFall = rec('dashboardCards', null, [{ ...card('9', 'Calculus'), term: 'Fall' }]);
+    const course = rec('course', 9, { id: 9, name: 'Calculus' });
+    const list = rec('userCourses', null, [{ id: '9', name: 'Calculus', term: { id: '3', name: '2026-27 First semester' } }]);
+    const gql = rec('GetUserCourses', null, { data: { legacyNode: { enrollments: [{ concluded: false, course: { _id: '9', contextName: 'Calculus', term: { name: 'Primer semestre' } } }] } } });
+    const termOf = async (records: CapturedRecord[]) => (await createExtensionApi(snap(records)).getCourse(9)).term?.name;
+    expect(await termOf([cardFall, course, list, gql])).toBe('2026-27 First semester');
+    expect(await termOf([cardFall, course, gql])).toBe('Primer semestre');
+    expect(await termOf([cardFall, course])).toBe('Fall');
+  });
+
+  it('an unreadable rubric on an assignment page is listed', () => {
+    const page = (extra: object, at = T0) => at9('assignmentPage', { id: '41', course_id: '9', name: 'Informe', html_url: 'https://school.test/courses/9/assignments/41', ...extra }, at);
+    expect(valueIssues(snap([cards9, page({ rubric_unreadable: true })]))).toEqual([{ kind: 'rubric', courseId: 9, itemId: 41, item: 'Informe', field: 'rubric', value: null, reason: 'unreadable' }]);
+    // Read again later, and readable this time: nothing to list.
+    expect(valueIssues(snap([cards9, page({ rubric_unreadable: true }), page({}, T0 + 1000)]))).toEqual([]);
+  });
+});
+
+describe('responses that failed their shape check are kept aside, not used', () => {
+  const cards9 = rec('dashboardCards', null, [card('9', 'Calculus')]);
+  const groups = rec('assignmentGroups', 9, [{ id: '90', name: 'G', group_weight: 0, assignments: [{ id: '701', name: 'Set 701', points_possible: 10, course_id: '9' }] }]);
+  const rejected = (body: unknown, route: string, rejectedAs: string) =>
+    Object.assign(rec('other', 9, body, T0 + 1000, 'https://school.test/api/v1/courses/9/assignments/701'), { route, rejectedAs });
+
+  it('no field of an assignment is filled from a rejected body found by its id', async () => {
+    const odd = rejected({ id: '701', name: 'Renamed', course_id: '9', description: '<p>From the rejected body</p>', due_at: '2026-11-20T10:15:00Z', unusual: true }, 'GET /courses/:id/assignments/:id', 'assignment');
+    const a = await createExtensionApi(snap([cards9, groups, odd])).getAssignment(9, 701);
+    expect(a.name).toBe('Set 701');
+    expect(a.description).toBeUndefined();
+    expect(a.due_at).toBeUndefined();
+    // The same body, accepted as an ordinary (unread) response, would have filled them.
+    const plain = Object.assign(rec('other', 9, odd.body, T0 + 1000, odd.url), { route: odd.route });
+    expect((await createExtensionApi(snap([cards9, groups, plain])).getAssignment(9, 701)).description).toBe('<p>From the rejected body</p>');
+  });
+
+  it('nor are people read from a rejected class list', async () => {
+    const people = rejected([{ id: '5', name: 'Zoe Prof', enrollments: [{ type: 'TeacherEnrollment' }] }], 'GET /courses/:id/users', 'enrollments');
+    expect(await createExtensionApi(snap([cards9, people])).getCourseRecipients(9)).toEqual([]);
   });
 });

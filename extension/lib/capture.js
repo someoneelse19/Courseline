@@ -146,15 +146,27 @@ export function classify(rawUrl, body, operation, variables) {
   };
 }
 
-// Data Canvas builds into the page itself instead of fetching it (window.ENV, and the grades table), read by inject.js
+// Data Canvas builds into the page itself instead of fetching it (window.ENV, and the page's HTML), read by inject.js
 // once the page is recognised as Canvas. Some of a course only ever arrives this way: the student Grades page fetches
-// no assignments or scores, and the course home's front page is in ENV.WIKI_PAGE. [kind, shape check]
+// no assignments or scores, the course home's front page is in ENV.WIKI_PAGE, and an assignment's own page is drawn on
+// the server (no API call carries it). The kinds: courseNav, gradesPage, syllabus, wikiPage, modulesPage,
+// assignmentPage (one per assignment), listPage (an Announcements or Discussions page that really opened, not a redirect
+// to the course home) and currentUser. [kind, shape check]
 const PAGE_KINDS = {
   courseNav: (b) => isObj(b) && allObjs(b.tabs) && b.tabs.every((t) => typeof t.href === 'string'),
   gradesPage: (b) => isObj(b) && allObjs(b.assignment_groups) && allObjs(b.submissions) && allObjs(b.assignments),
   syllabus: (b) => isObj(b) && typeof b.syllabus_body === 'string',
   wikiPage: (b) => has(b, 'url', 'title') && typeof b.body === 'string',
   modulesPage: (b) => isObj(b) && allObjs(b.modules) && b.modules.every((m) => allObjs(m.items)),
+  assignmentPage: (b) =>
+    has(b, 'id', 'name') &&
+    /^\d{1,15}$/.test(String(b.id)) &&
+    typeof b.name === 'string' &&
+    b.name.length > 0 &&
+    (b.description === undefined || typeof b.description === 'string') &&
+    (b.points_possible === undefined || (typeof b.points_possible === 'number' && Number.isFinite(b.points_possible))) &&
+    (b.rubric === undefined || (allObjs(b.rubric) && b.rubric.every((c) => allObjs(c.ratings)))),
+  listPage: (b) => isObj(b) && (b.path === 'announcements' || b.path === 'discussion_topics'),
   // Not about a course: who is signed in. Filed under the Canvas root (`https://<host>/#page:currentUser`).
   currentUser: (b) => has(b, 'id', 'display_name'),
 };
@@ -188,6 +200,9 @@ export function classifyPage(page, rawUrl, body) {
   }
   // One record per grading period the Grades page showed, so viewing one period never replaces another.
   if (page === 'gradesPage' && /^\d{1,15}$/.test(String(body?.grading_period_id ?? ''))) key += `:gp${body.grading_period_id}`;
+  // One record per assignment page, and one per list page (Announcements, Discussions).
+  if (page === 'assignmentPage' && /^\d{1,15}$/.test(String(body?.id ?? ''))) key += `:a${body.id}`;
+  if (page === 'listPage' && typeof body?.path === 'string') key += `:${body.path.slice(0, 40)}`;
   return { kind, courseId: Number(course[1]), shapeOk, key, host: url.host, route: `PAGE /courses/:id ${page}` };
 }
 
@@ -212,8 +227,24 @@ const SENSITIVE_KEYS = new Set([
 ]);
 
 // A "capability URL" works for anyone who has it, with no login: a calendar feed, or a file link carrying its
-// `verifier`. They are credentials too, wherever they turn up.
-const CAPABILITY_URL = /[?&]verifier=|\/feeds\/(calendars|users)\/|\/sessionless_launch|[?&]access_token=/i;
+// `verifier`. They are credentials too, wherever they turn up. (In HTML the separator before a parameter is `&amp;`.)
+const CAPABILITY_URL = /(?:[?&]|&amp;)verifier=|\/feeds\/(calendars|users)\/|\/sessionless_launch|(?:[?&]|&amp;)access_token=/i;
+const CAPABILITY_PARAM = /(\?|&amp;|&)(?:verifier|access_token)=[^&#"'\s<>]*(&amp;|&)?/i;
+
+/**
+ * HTML (instructions, a page body) with the `verifier` and `access_token` parameters taken out of every link, so a file
+ * link still leads to the file (the student's own login opens it) but no longer works for anyone else. Calendar feeds
+ * and LTI `sessionless_launch` links are not rewritten: a string that still has one is dropped whole by stripSensitive
+ * (which leaves `<key>_removed: true` in its place).
+ */
+export function scrubCapabilityParams(s) {
+  // One parameter at a time, until none is left: "?verifier=x&b=1" -> "?b=1", "?a=1&amp;verifier=x" -> "?a=1",
+  // "?verifier=x" -> "" (a lone `?` goes too).
+  for (let i = 0; i < 1000 && CAPABILITY_PARAM.test(s); i++) {
+    s = s.replace(CAPABILITY_PARAM, (m, sep, next) => (sep === '?' ? (next ? '?' : '') : (next ?? '')));
+  }
+  return s;
+}
 
 /** Copy of a response without email addresses, login ids, avatar links, credentials and capability URLs. */
 export function stripSensitive(value) {
@@ -222,7 +253,17 @@ export function stripSensitive(value) {
   const out = {};
   for (const [key, v] of Object.entries(value)) {
     if (SENSITIVE_KEYS.has(key)) continue;
-    if (typeof v === 'string' && CAPABILITY_URL.test(v)) continue;
+    if (typeof v === 'string' && CAPABILITY_URL.test(v)) {
+      // HTML keeps its links without the parameter; a plain URL field (or HTML still carrying a feed) is dropped.
+      // Dropped HTML leaves a marker (`description_removed: true`), so the app can say the text was there but not kept
+      // instead of "not synced yet", which no later sync would change.
+      if (/<[a-z!/]/i.test(v)) {
+        const scrubbed = scrubCapabilityParams(v);
+        if (!CAPABILITY_URL.test(scrubbed)) out[key] = scrubbed;
+        else out[`${key}_removed`] = true;
+      }
+      continue;
+    }
     out[key] = stripSensitive(v);
   }
   return out;

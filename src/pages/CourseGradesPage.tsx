@@ -85,8 +85,9 @@ export function CourseGradesPage() {
   if (model.items.length === 0) return <EmptyState>{t('No graded assignments in this course yet.')}</EmptyState>;
 
   const enrollment = course.data.enrollments?.find((e) => e.type === 'student');
-  const canvasCurrent = enrollment?.computed_current_score ?? null;
-  const canvasFinal = enrollment?.computed_final_score ?? null;
+  // An estimate (the extension worked it out, Canvas's own total was not seen) is not Canvas's figure.
+  const canvasCurrent = enrollment?.estimated ? null : (enrollment?.computed_current_score ?? null);
+  const canvasFinal = enrollment?.estimated ? null : (enrollment?.computed_final_score ?? null);
   const headline = canvasCurrent ?? real.current;
   const finalHeadline = canvasFinal ?? real.final;
   // Our maths mirrors Canvas, but if it ever disagrees (rules we don't model), say so instead of hiding it.
@@ -134,6 +135,7 @@ export function CourseGradesPage() {
             <>
               {enrollment?.computed_current_grade ? `${enrollment.computed_current_grade} · ` : ''}{t('graded work only')}
               {mismatch && <span className="block">{t('Rebuilt here from your scores: {value}', { value: pct(real.current) })}</span>}
+              {enrollment?.estimated && <span className="block">{t('Worked out by Courseline from the scores it has seen')}</span>}
             </>
           }
         >

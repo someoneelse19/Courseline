@@ -26,12 +26,20 @@ describe('planSync', () => {
 
   it('skips the tabs a school hides in Canvas (their pages only redirect to the course home)', () => {
     const restricted = { ...bio, hidden: new Set(['assignments', 'modules', 'pages', 'files', 'syllabus', 'quizzes', 'discussions'] as const) };
-    expect(planCourse('h.test', restricted).map((s) => s.url.replace('https://h.test/courses/1', ''))).toEqual(['', '/grades', '/announcements', '/users']);
+    expect(planCourse('h.test', restricted).map((s) => s.url.replace('https://h.test/courses/1', ''))).toEqual(['', '/grades', '/announcements', '/discussion_topics', '/users']);
     expect(stepsForKind('h.test', restricted, 'units', 'Units')).toEqual([]);
     // A kind whose own tab is hidden is refreshed from the page that still carries it.
     expect(stepsForKind('h.test', restricted, 'assignments', 'Assignments')[0].url).toBe('https://h.test/courses/1/grades');
     expect(stepsForKind('h.test', restricted, 'pages', 'Pages')[0].url).toBe('https://h.test/courses/1');
     expect(stepsForKind('h.test', restricted, 'grades', 'Grades')).toHaveLength(1);
+  });
+
+  it('still opens Discussions when the menu leaves it out (some schools serve it anyway)', () => {
+    const noDiscussions = { ...bio, hidden: new Set(['discussions'] as const) };
+    expect(planCourse('h.test', noDiscussions).map((s) => s.url)).toContain('https://h.test/courses/1/discussion_topics');
+    expect(planCourse('h.test', noDiscussions)).toHaveLength(11);
+    // "Essentials only" never opened it, hidden or not.
+    expect(planCourse('h.test', noDiscussions, 'essential').map((s) => s.url)).not.toContain('https://h.test/courses/1/discussion_topics');
   });
 
   it('everything (the default): the account pages once, then eleven pages per course', () => {

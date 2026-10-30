@@ -51,7 +51,8 @@
   // Some of a course never crosses /api/: Canvas builds it into the page. The student Grades page puts the
   // assignment groups (weights, drop rules, points) and the student's own scores in window.ENV and the assignment
   // names only in its table; the course home has its front page in ENV.WIKI_PAGE; the syllabus page has
-  // ENV.SYLLABUS_BODY; and which course tabs the school shows is only in the course menu. This reads those once the
+  // ENV.SYLLABUS_BODY; an assignment's own page is drawn on the server; and which course tabs the school shows is only
+  // in the course menu (and whether a list page really opened, only in where the tab landed). This reads those once the
   // page is known to be Canvas. Still passive: it reads what is already on the page, sends no request, reads no cookie.
   function whenParsed(fn) {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn, { once: true });
@@ -59,6 +60,7 @@
   }
 
   let pageRead = false;
+  let gradesSent = null; // { course, total }: the Grades page record already sent, and the total it carried
   function readPage() {
     if (pageRead) return;
     pageRead = true;
@@ -80,19 +82,50 @@
       if (!env || typeof env !== 'object') return;
       if (env.WIKI_PAGE && typeof env.WIKI_PAGE === 'object') page('wikiPage', env.WIKI_PAGE);
       if (typeof env.SYLLABUS_BODY === 'string') page('syllabus', { syllabus_body: env.SYLLABUS_BODY });
-      if (ownGradesPage(env) && Array.isArray(env.assignment_groups) && Array.isArray(env.submissions)) page('gradesPage', gradesPage(env));
+      if (ownGradesPage(env) && Array.isArray(env.assignment_groups) && Array.isArray(env.submissions)) {
+        const body = gradesPage(env);
+        gradesSent = { course, total: body.canvas_total };
+        page('gradesPage', body);
+      }
+      const ap = assignmentPage(env);
+      if (ap && ap.course_id === course) page('assignmentPage', ap);
+      // Only when this really is the list page: a school that hides the tab redirects to the course home instead, and
+      // the extension cannot tell that from the address it asked for.
+      const list = /^\/courses\/(\d+)\/(announcements|discussion_topics)\/?$/.exec(location.pathname);
+      if (list && list[1] === course) page('listPage', { path: list[2] });
       readLatePage();
     } catch {
       // A page laid out differently: nothing read, and never disturb the page.
     }
   }
 
-  // What Canvas keeps drawing after the page has loaded: the Modules page renders its items with JavaScript. Read when
-  // the page is parsed, on its load event, and once more when it has gone quiet; sent again only when it changed.
+  // What Canvas keeps drawing after the page has loaded: the Modules page renders its items with JavaScript, and the
+  // Grades page's own JavaScript fills in the Total cell (its ready handlers run after this script's DOMContentLoaded
+  // listener, so the cell is usually still empty when the page is first read). Read when the page is parsed, on its
+  // load event, and once more when it has gone quiet; sent again only when it changed.
   let lastModules = '';
   function readLatePage() {
+    if (state !== 'canvas' || window.__courselineCapture !== self) return;
+    readLateTotal();
+    readLateModules();
+  }
+
+  function readLateTotal() {
     try {
-      if (state !== 'canvas' || !/^\/courses\/\d+\/modules\/?$/.test(location.pathname) || !document.querySelector('#context_modules')) return;
+      if (!gradesSent) return;
+      const total = canvasTotal();
+      if (total === undefined || total === gradesSent.total) return;
+      const body = gradesPage(window.ENV);
+      gradesSent.total = body.canvas_total;
+      send({ url: `${location.origin}/courses/${gradesSent.course}#page:gradesPage`, status: 200, body, page: 'gradesPage' });
+    } catch {
+      /* never disturb the page */
+    }
+  }
+
+  function readLateModules() {
+    try {
+      if (!/^\/courses\/\d+\/modules\/?$/.test(location.pathname) || !document.querySelector('#context_modules')) return;
       const course = /^\/courses\/(\d+)/.exec(location.pathname)[1];
       const body = modulesPage();
       const text = JSON.stringify(body);
@@ -153,7 +186,33 @@
       assignments,
       group_names: groupNames,
       grading_period_id: period === undefined || period === null || period === '' ? undefined : String(period),
+      group_weighting_scheme: typeof env.group_weighting_scheme === 'string' ? env.group_weighting_scheme : undefined,
+      canvas_total: canvasTotal(),
     };
+  }
+
+  // Canvas's own total as the Grades page shows it (the "Total" row), as a percentage. Only a percentage with exactly
+  // one number in it is read; a hidden total, or a points-only display ("17.5 / 20"), gives nothing.
+  function canvasTotal() {
+    const text = document.querySelector('#submission_final-grade .grade')?.textContent ?? '';
+    if (!text.includes('%')) return undefined;
+    const tokens = text.match(/-?\d+(?:[.,]\d+)*/g) ?? [];
+    if (tokens.length !== 1) return undefined;
+    const n = parseShownNumber(tokens[0]);
+    return Number.isFinite(n) && n >= 0 && n <= 1000 ? n : undefined;
+  }
+
+  // A number as the page shows it. The page's language does not say how Canvas writes numbers (a Spanish page still
+  // writes 6.88), so each is read by its own shape: with both marks, the last one is the decimal mark; a single mark
+  // followed by exactly three digits groups thousands (Canvas rounds statistics to two decimals); otherwise it is the
+  // decimal mark.
+  function parseShownNumber(token) {
+    const t = token.replace(/[\s\u00a0\u202f]/g, '');
+    const marks = t.match(/[.,]/g) ?? [];
+    if (!marks.length) return Number(t);
+    const last = Math.max(t.lastIndexOf('.'), t.lastIndexOf(','));
+    const decimalAt = new Set(marks).size > 1 || (marks.length === 1 && t.length - last - 1 !== 3) ? last : -1;
+    return Number([...t].map((c, i) => (i === decimalAt ? '.' : /[.,]/.test(c) ? '' : c)).join(''));
   }
 
   // The class statistics Canvas shows under an assignment (table#score_details_<id>), when the instructor shows them.
@@ -162,22 +221,66 @@
   function scoreStatistics(id) {
     const cells = document.querySelectorAll(`#score_details_${id} tbody tr td`);
     if (cells.length < 3) return undefined;
-    // The page's language does not say how Canvas writes these (a Spanish page still writes 6.88), so each number is
-    // read by its own shape: with both marks, the last one is the decimal mark; a single mark followed by exactly three
-    // digits groups thousands (Canvas rounds statistics to two decimals); otherwise it is the decimal mark.
-    const toNumber = (token) => {
-      const t = token.replace(/[\s\u00a0\u202f]/g, '');
-      const marks = t.match(/[.,]/g) ?? [];
-      if (!marks.length) return Number(t);
-      const last = Math.max(t.lastIndexOf('.'), t.lastIndexOf(','));
-      const decimalAt = new Set(marks).size > 1 || (marks.length === 1 && t.length - last - 1 !== 3) ? last : -1;
-      return Number([...t].map((c, i) => (i === decimalAt ? '.' : /[.,]/.test(c) ? '' : c)).join(''));
-    };
     // Each cell holds exactly two numbers (mean and median, high and upper quartile, low and lower quartile).
-    const nums = (cell) => (cell.textContent.match(/-?\d+(?:[.,\u00a0\u202f]\d+)*/g) ?? []).map(toNumber);
+    const nums = (cell) => (cell.textContent.match(/-?\d+(?:[.,\u00a0\u202f]\d+)*/g) ?? []).map(parseShownNumber);
     const [a, b, c] = [nums(cells[0]), nums(cells[1]), nums(cells[2])];
     if (a.length !== 2 || b.length !== 2 || c.length !== 2 || ![...a, ...b, ...c].every(Number.isFinite)) return undefined;
     return { mean: a[0], median: a[1], max: b[0], upper_q: b[1], min: c[0], lower_q: c[1] };
+  }
+
+  // An assignment's own page (/courses/<id>/assignments/<id>). Canvas draws it on the server and makes no API call for
+  // it, so where the school hides the Assignments tab this is the only place its instructions and rubric show. The
+  // title and instructions come from the HTML, the points and rubric from ENV. Never the dates: the page writes them
+  // in the student's language ("20 de oct a las 11:15"), so .display_date, .display_time, .date_text and the
+  // .student-assignment-overview list are not read, and no due_at, lock_at or unlock_at is sent. The due date comes
+  // from the Grades page's ENV and planner items instead.
+  function assignmentPage(env) {
+    const m = /^\/courses\/(\d+)\/assignments\/(\d+)\/?$/.exec(location.pathname);
+    if (!m) return null;
+    const [, cid, aid] = m;
+    if (String(env.ASSIGNMENT_ID) !== aid) return null;
+    if (env.COURSE_ID !== undefined && String(env.COURSE_ID) !== cid) return null;
+    if (!document.querySelector('#assignment_show')) return null;
+    const name = document.querySelector('#assignment_show h1.title')?.textContent.replace(/\s+/g, ' ').trim();
+    if (!name) return null;
+    const body = { id: aid, course_id: cid, name, html_url: `${location.origin}/courses/${cid}/assignments/${aid}` };
+    const description = document.querySelector('#assignment_show .description.user_content');
+    if (description) {
+      // The instructions as written: without the screen-reader text and icons Canvas adds inside them.
+      const copy = description.cloneNode(true);
+      copy.querySelectorAll('.screenreader-only, .ui-helper-hidden-accessible, .external_link_icon').forEach((e) => e.remove());
+      body.description = copy.innerHTML.trim();
+    }
+    const points = env.ASSIGNMENT_POINTS_POSSIBLE;
+    if ((typeof points === 'number' && Number.isFinite(points)) || (typeof points === 'string' && /^-?\d+(\.\d+)?$/.test(points))) body.points_possible = Number(points);
+    // null: the assignment has no rubric. An object that is not laid out as expected is flagged, not guessed at.
+    if (env.assigned_rubric && typeof env.assigned_rubric === 'object') {
+      const rubric = rubricFrom(env.assigned_rubric);
+      if (rubric) body.rubric = rubric;
+      else body.rubric_unreadable = true;
+    }
+    return body;
+  }
+
+  // ENV.assigned_rubric in the API's rubric shape (criteria with their ratings). Canvas's Rubric model keeps the criteria
+  // in `data`; `criteria` is read too. Anything not laid out as expected gives null (the whole rubric, never part of it).
+  function rubricFrom(r) {
+    const list = Array.isArray(r.criteria) ? r.criteria : Array.isArray(r.data) ? r.data : null;
+    if (!list || !list.length) return null;
+    const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v.trim()) ? Number(v) : null);
+    const long = (o) => (typeof o.long_description === 'string' && o.long_description ? { long_description: o.long_description } : {});
+    const text = (v) => (typeof v === 'string' ? v : v === null || v === undefined ? '' : String(v));
+    const out = [];
+    for (const c of list) {
+      if (!c || typeof c !== 'object' || !Array.isArray(c.ratings) || num(c.points) === null) return null;
+      const ratings = [];
+      for (const x of c.ratings) {
+        if (!x || typeof x !== 'object' || num(x.points) === null) return null;
+        ratings.push({ id: text(x.id), description: text(x.description), ...long(x), points: num(x.points) });
+      }
+      out.push({ id: text(c.id), description: text(c.description), ...long(c), points: num(c.points), ratings });
+    }
+    return out;
   }
 
   // The Modules page draws its modules into the HTML (no API call carries them). Per module: id, name and its items,

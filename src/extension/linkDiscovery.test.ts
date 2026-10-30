@@ -11,6 +11,13 @@ const snap = (bodies: unknown[]): Snapshot => ({
 });
 
 describe('discoverLinks', () => {
+  it('finds no links in a response that failed its shape check (kept aside, not used)', () => {
+    const s = snap([[{ name: 'Essay 1', html_url: 'https://h.test/courses/1/assignments/5' }]]);
+    expect(discoverLinks(s, 'h.test', null)).toHaveLength(1);
+    s.records[0].rejectedAs = 'assignments';
+    expect(discoverLinks(s, 'h.test', null)).toEqual([]);
+  });
+
   it('finds assignment, page, discussion, quiz, file and module-item links wherever they are, once each', () => {
     const links = discoverLinks(
       snap([
@@ -92,5 +99,42 @@ describe('discoverLinks: subfolders named in folder listings', () => {
     const folders = discoverLinks(s, 'h.test', new Set([1])).filter((l) => l.kind === 'folder');
     expect(folders.map((l) => l.url)).toEqual(['https://h.test/courses/1/files/folder/Block%201', 'https://h.test/courses/1/files/folder/Labs/Lab%20%232']);
     expect(folders[1].title).toBe('Labs / Lab #2');
+  });
+});
+
+describe('discoverLinks: assignments named by id', () => {
+  it('opens each assignment the Grades page data or planner items name, even with no link (a course whose Assignments tab is hidden)', () => {
+    const r = (kind: string, courseId: number | null, body: unknown): CapturedRecord => ({ kind, courseId, host: 'h.test', url: `https://h.test/x/${kind}`, capturedAt: 1, body });
+    const s: Snapshot = {
+      records: [
+        r('gradesPage', 4, {
+          assignment_groups: [{ id: '40', assignments: [{ id: '41' }, { id: '42' }, { id: 'x' }] }],
+          submissions: [],
+          // 41's row links to its submission; 42's row has no link.
+          assignments: [{ id: '41', name: 'Ecuaciones', html_url: 'https://h.test/courses/4/assignments/41' }, { id: '42', name: 'Práctica' }],
+        }),
+        r('gradesPage', 9, { assignment_groups: [{ id: '90', assignments: [{ id: '91' }] }], submissions: [], assignments: [] }),
+        r('plannerItems', null, [
+          { plannable_type: 'assignment', course_id: '4', plannable_id: '43', plannable: { title: 'Repaso' } },
+          { plannable_type: 'assignment', course_id: '4', plannable_id: '42', plannable: { title: 'Planner name' } },
+          { plannable_type: 'quiz', course_id: '4', plannable_id: '44', plannable: { title: 'Quiz' } },
+          { plannable_type: 'assignment', course_id: '9', plannable_id: '92', plannable: { title: 'Other course' } },
+        ]),
+      ],
+      health: {},
+      appPinned: null,
+      canvasHost: 'h.test',
+      takenAt: 1,
+    };
+    const links = discoverLinks(s, 'h.test', new Set([4]));
+    expect(links.map((l) => [l.url, l.kind, l.title]).sort()).toEqual([
+      ['https://h.test/courses/4/assignments/41', 'assignment', 'Ecuaciones'],
+      ['https://h.test/courses/4/assignments/42', 'assignment', 'Práctica'],
+      ['https://h.test/courses/4/assignments/43', 'assignment', 'Repaso'],
+    ]);
+    // Once each: the row link and the ENV id are the same page.
+    expect(links.filter((l) => l.url.endsWith('/assignments/41'))).toHaveLength(1);
+    // With no course filter, the other course's come too.
+    expect(discoverLinks(s, 'h.test', null).map((l) => l.url)).toEqual(expect.arrayContaining(['https://h.test/courses/9/assignments/91', 'https://h.test/courses/9/assignments/92']));
   });
 });

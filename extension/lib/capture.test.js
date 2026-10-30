@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classify, classifyPage, cleanPinnedIds, expiredKeys, keepCourse, keysToClear, sameOrigin, stripSensitive } from './capture.js';
+import { classify, classifyPage, cleanPinnedIds, expiredKeys, keepCourse, keysToClear, sameOrigin, scrubCapabilityParams, stripSensitive } from './capture.js';
 
 const base = 'https://school.instructure.com/api/v1';
 
@@ -156,6 +156,31 @@ describe('capability URLs', () => {
     expect(out.html_url).toBe('https://school.test/courses/1'); // ordinary links stay
     expect(out.files[0].display_name).toBe('a.pdf');
   });
+
+  it('keeps instructions HTML with a file link, removing only the verifier', () => {
+    const description =
+      '<p>Read <a href="/courses/1/files/9/download?download_frd=1&amp;verifier=S">the sheet</a>.</p><img src="https://school.test/courses/1/files/9/preview?verifier=S" alt="x">';
+    const out = stripSensitive({ id: '5', description });
+    expect(out.description).toContain('href="/courses/1/files/9/download?download_frd=1"');
+    expect(out.description).toContain('src="https://school.test/courses/1/files/9/preview"');
+    expect(out.description).not.toMatch(/verifier|=S/);
+    expect(out.description).toContain('<p>Read <a');
+    // Any order of parameters, either separator; the other parameters stay.
+    expect(scrubCapabilityParams('<a href="/f?verifier=S&amp;wrap=1">x</a>')).toBe('<a href="/f?wrap=1">x</a>');
+    expect(scrubCapabilityParams('<a href="/f?a=1&verifier=S&b=2#p">x</a>')).toBe('<a href="/f?a=1&b=2#p">x</a>');
+    expect(scrubCapabilityParams("<a href='/f?verifier=S&access_token=T'>x</a> Why? Because.")).toBe("<a href='/f'>x</a> Why? Because.");
+  });
+
+  it('still drops a plain URL field, and HTML that still carries a calendar feed', () => {
+    const out = stripSensitive({
+      url: 'https://school.test/files/9/download?verifier=SECRET',
+      body: '<a href="https://school.test/feeds/calendars/course_1_abc.ics">Calendar</a>',
+      launch: '<a href="/courses/1/external_tools/sessionless_launch?verifier=S">Tool</a>',
+      note: 'Plain text with a verifier=word in it is fine',
+    });
+    // Dropped HTML leaves a marker saying it was there; a dropped plain URL field leaves nothing.
+    expect(out).toEqual({ note: 'Plain text with a verifier=word in it is fine', body_removed: true, launch_removed: true });
+  });
 });
 
 describe('keysToClear', () => {
@@ -179,6 +204,31 @@ describe('classifyPage (data read from the page itself)', () => {
     const page = { url: 'welcome', title: 'Welcome', body: '<p>Hi</p>' };
     expect(classifyPage('wikiPage', at('wikiPage'), { ...page, front_page: true })).toMatchObject({ kind: 'frontPage', key: 'school.test/courses/9#page:wikiPage' });
     expect(classifyPage('wikiPage', at('wikiPage'), page)).toMatchObject({ kind: 'page', key: 'school.test/courses/9#page:wikiPage:welcome' });
+  });
+
+  it('files each assignment page as its own assignmentPage record (key :a<id>)', () => {
+    const body = { id: '41', course_id: '9', name: 'Ecuaciones', html_url: 'https://school.test/courses/9/assignments/41', description: '<p>Hi</p>', points_possible: 10, rubric: [{ id: 'c1', points: 10, ratings: [{ id: 'r', points: 10 }] }] };
+    expect(classifyPage('assignmentPage', at('assignmentPage'), body)).toMatchObject({ kind: 'assignmentPage', courseId: 9, shapeOk: true, key: 'school.test/courses/9#page:assignmentPage:a41' });
+    expect(classifyPage('assignmentPage', at('assignmentPage'), { ...body, id: '42', description: '' }).key).toBe('school.test/courses/9#page:assignmentPage:a42');
+    expect(classifyPage('assignmentPage', at('assignmentPage'), { id: '43', name: 'No extras' }).shapeOk).toBe(true);
+  });
+
+  it('flags an assignment page without a name or with a non-numeric id', () => {
+    const ok = { id: '41', name: 'Ecuaciones' };
+    expect(classifyPage('assignmentPage', at('assignmentPage'), { id: '41' }).shapeOk).toBe(false);
+    expect(classifyPage('assignmentPage', at('assignmentPage'), { ...ok, name: '' }).shapeOk).toBe(false);
+    const odd = classifyPage('assignmentPage', at('assignmentPage'), { ...ok, id: 'x/../y' });
+    expect(odd.shapeOk).toBe(false);
+    expect(odd.key).toBe('school.test/courses/9#page:assignmentPage');
+    expect(classifyPage('assignmentPage', at('assignmentPage'), { ...ok, points_possible: '10' }).shapeOk).toBe(false);
+    expect(classifyPage('assignmentPage', at('assignmentPage'), { ...ok, rubric: [{ id: 'c1' }] }).shapeOk).toBe(false);
+  });
+
+  it('files listPage per section, only for announcements and discussion_topics', () => {
+    expect(classifyPage('listPage', at('listPage'), { path: 'discussion_topics' })).toMatchObject({ kind: 'listPage', courseId: 9, shapeOk: true, key: 'school.test/courses/9#page:listPage:discussion_topics' });
+    expect(classifyPage('listPage', at('listPage'), { path: 'announcements' }).key).toBe('school.test/courses/9#page:listPage:announcements');
+    expect(classifyPage('listPage', at('listPage'), { path: 'modules' }).shapeOk).toBe(false);
+    expect(classifyPage('listPage', at('listPage'), {}).shapeOk).toBe(false);
   });
 
   it('flags an unexpected shape, and refuses unknown kinds and addresses that are not a course', () => {

@@ -22,12 +22,16 @@ const COURSES = [
   { id: 1, name: 'Biology 101', course_code: 'BIO101', workflow_state: 'available', apply_assignment_group_weights: false, enrollments: [{ type: 'student', enrollment_state: 'active', user_id: 42 }] },
   { id: 2, name: 'World History', course_code: 'HIS200', workflow_state: 'available', apply_assignment_group_weights: false, enrollments: [{ type: 'student', enrollment_state: 'active', user_id: 42 }] },
   { id: 3, name: 'Chemistry (not pinned)', course_code: 'CHE1', workflow_state: 'available', enrollments: [{ type: 'student', enrollment_state: 'active', user_id: 42 }] },
+  // Like a live school's restricted course: its menu shows only Home, Announcements, Grades and People, and the hidden
+  // tabs redirect to the course home. Each assignment's own page still opens, drawn on the server (no API call).
+  { id: 4, name: 'Algebra (restricted)', course_code: 'ALG1', workflow_state: 'available', apply_assignment_group_weights: false, enrollments: [{ type: 'student', enrollment_state: 'active', user_id: 42 }] },
 ];
 
 const api = {
   '/api/v1/dashboard/dashboard_cards': () => [
     { id: '1', longName: 'Biology 101', shortName: 'BIO101', assetString: 'course_1', isFavorited: true },
     { id: '2', longName: 'World History', shortName: 'HIS200', assetString: 'course_2', isFavorited: true },
+    { id: '4', longName: 'Algebra (restricted)', shortName: 'ALG1', assetString: 'course_4', isFavorited: true },
   ],
   '/api/v1/users/self/courses': () => COURSES,
   '/api/v1/users/self/upcoming_events': () => [],
@@ -36,6 +40,7 @@ const api = {
   '/api/v1/courses/1': () => ({ ...COURSES[0], id: 1 }),
   '/api/v1/courses/2': () => ({ ...COURSES[1], id: 2 }),
   '/api/v1/courses/3': () => ({ ...COURSES[2], id: 3 }),
+  '/api/v1/courses/4': () => ({ ...COURSES[3], id: 4 }),
   '/api/v1/courses/1/assignment_groups': () => [
     { id: '10', name: 'Labs', position: 1, group_weight: 0, assignments: [assignment(5, 'Lab report', future), assignment(6, 'Essay draft', future)] },
   ],
@@ -75,6 +80,22 @@ const graphql = (op) => {
   if (op === 'GetAssignmentDetail') return { data: { assignment: { _id: '6', name: 'Essay draft', description: '<p>Instructions that only arrive through GraphQL.</p>', dueAt: future, pointsPossible: 20, submissionTypes: ['online_text_entry'] } } };
   return { data: {} };
 };
+
+// Course 4's menu: the only tabs its school shows.
+const NAV4 = `<nav><ul id="section-tabs">${[['/courses/4', 'Inicio'], ['/courses/4/announcements', 'Anuncios'], ['/courses/4/grades', 'Calificaciones'], ['/courses/4/users', 'Personas']]
+  .map(([href, label]) => `<li><a href="${href}">${label}</a></li>`)
+  .join('')}</ul></nav>`;
+// A due date with an offset, as the Grades page's ENV writes it.
+const future4 = new Date(Date.now() + 6 * 86400e3 + 3600e3).toISOString().replace(/\.\d{3}Z$/, '+01:00');
+// An assignment page as the live school draws it: the dates as localized text, then the instructions.
+const assignmentShow = (title, description) => `<div id="assignment_show" class="assignment">
+  <div class="assignment-title"><div class="title-content"><h1 class="title">${title}</h1></div></div>
+  <ul class="student-assignment-overview">
+    <li><span class="title">Fecha de entrega</span><span class="value"><span class="date_text"><span class="display_date">20 de oct</span><span class="display_time">a las 11:15</span></span></span></li>
+    <li><span class="title">Puntos</span><span class="value">10</span></li>
+  </ul>
+  <div class="description user_content enhanced">${description}</div>
+</div>`;
 
 // Pages: which API calls they make, in two waves.
 const pages = {
@@ -120,18 +141,72 @@ const pages = {
   '/courses/2/modules': { first: [], second: [] },
   '/courses/2/pages': { first: [], second: [] },
   '/courses/2/assignments/15': { first: [], second: [] },
+  '/courses/4': { first: ['/api/v1/courses/4'], second: [], nav: NAV4, env: { context_asset_string: 'course_4' } },
+  // The tabs the school hides only redirect to the course home.
+  '/courses/4/assignments': { redirect: '/courses/4' },
+  '/courses/4/modules': { redirect: '/courses/4' },
+  '/courses/4/pages': { redirect: '/courses/4' },
+  '/courses/4/files': { redirect: '/courses/4' },
+  '/courses/4/assignments/syllabus': { redirect: '/courses/4' },
+  '/courses/4/quizzes': { redirect: '/courses/4' },
+  // A file link in the instructions (Canvas sends a student without access back to the course).
+  '/courses/4/files/77': { redirect: '/courses/4' },
+  '/courses/4/files/77/download': { redirect: '/courses/4' },
+  // Not in the menu, yet it opens (live finding): an empty course loads no topics.
+  '/courses/4/discussion_topics': { first: [], second: [], nav: NAV4 },
+  '/courses/4/announcements': { first: [], second: [], nav: NAV4 },
+  '/courses/4/users': { first: [], second: [], nav: NAV4 },
+  '/courses/4/grades': {
+    first: [],
+    second: [],
+    nav: NAV4,
+    env: {
+      context_asset_string: 'course_4',
+      group_weighting_scheme: 'equal',
+      assignment_groups: [{ id: '40', group_weight: 0, rules: {}, assignments: [
+        { id: '41', points_possible: 10, due_at: future4, submission_types: ['online_upload'] },
+        { id: '42', points_possible: 5, due_at: null, submission_types: ['none'] },
+      ] }],
+      submissions: [{ assignment_id: '41', score: 7, workflow_state: 'graded' }],
+    },
+    // The table links 41's row to its submission; 42's row has no link (only ENV names it).
+    body: `<table id="grades_summary"><tbody>
+      <tr class="student_assignment" id="submission_41"><th class="title"><a href="/courses/4/assignments/41/submissions/42">Ecuaciones</a></th><td><span class="assignment_group_id">40</span></td></tr>
+      <tr class="student_assignment" id="submission_42"><th class="title">Práctica</th><td><span class="assignment_group_id">40</span></td></tr>
+      <tr class="student_assignment hard_coded final_grade" id="submission_final-grade"><th class="title">Total</th><td class="assignment_score"><span class="grade"></span></td></tr>
+    </tbody></table>`,
+    // Like Canvas: the server sends the Total cell empty and the page's own grade calculator fills it in from a ready
+    // handler (registered after the extension's). 72%, not the 70% Courseline would work out from 7/10, so the app's
+    // figure tells Canvas's total from an estimate.
+    ready: `document.querySelector('#submission_final-grade .grade').textContent = '72%';`,
+  },
+  '/courses/4/assignments/41': {
+    first: ['/api/v1/courses/4'],
+    second: [],
+    nav: NAV4,
+    env: { context_asset_string: 'course_4', ASSIGNMENT_ID: '41', COURSE_ID: '4', ASSIGNMENT_POINTS_POSSIBLE: 10, assigned_rubric: { id: 'r1', data: [{ id: 'c1', description: 'Procedimiento', points: 10, ratings: [{ id: 'r1a', description: 'Completo', points: 10 }] }] } },
+    body: assignmentShow('Ecuaciones', '<p>Resuelve los ejercicios.</p><a href="/courses/4/files/77/download?verifier=SECRETV">hoja.pdf</a>'),
+  },
+  '/courses/4/assignments/42': {
+    first: [],
+    second: [],
+    nav: NAV4,
+    env: { context_asset_string: 'course_4', ASSIGNMENT_ID: '42', COURSE_ID: '4', ASSIGNMENT_POINTS_POSSIBLE: 5, assigned_rubric: null },
+    body: assignmentShow('Práctica', ''),
+  },
 };
 
 const html = (p, spec) => `<!doctype html><html><head><meta charset="utf-8"><title>Canvas ${p}</title></head>
-<body class="ic-app"><div id="application"><h1>Fake Canvas: ${p}</h1></div>
+<body class="ic-app">${spec.nav ?? ''}<div id="application"><h1>Fake Canvas: ${p}</h1>${spec.body ?? ''}</div>
 <script>
-window.ENV = { current_user_id: '42', ASSET_HOST: 'x' };
+window.ENV = Object.assign({ current_user_id: '42', ASSET_HOST: 'x' }, ${JSON.stringify(spec.env ?? {})});
 const get = (u) => fetch(u, { headers: { Accept: 'application/json+canvas-string-ids' } }).then((r) => r.text());
 const post = (op) => fetch('/api/graphql', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operationName: op, query: 'query ' + op + ' { x }', variables: { courseId: '1' } }) }).then((r) => r.text());
+${spec.ready ? `document.addEventListener('DOMContentLoaded', () => { ${spec.ready} });` : ''}
 document.addEventListener('DOMContentLoaded', async () => {
-  await Promise.all(${JSON.stringify(spec.first)}.map(get));
+  await Promise.all(${JSON.stringify(spec.first ?? [])}.map(get));
   await new Promise((r) => setTimeout(r, 150));
-  await Promise.all(${JSON.stringify(spec.second)}.map(get));
+  await Promise.all(${JSON.stringify(spec.second ?? [])}.map(get));
   ${spec.graphql ? `await post('${spec.graphql}');` : ''}
   ${spec.extra ?? ''}
   // A write the page makes: must never be captured.
@@ -174,6 +249,11 @@ const server = https.createServer({ key: fs.readFileSync(path.join(dir, 'key.pem
   if (!spec) {
     res.writeHead(404, { 'content-type': 'text/html' });
     return res.end('<h1>Not found</h1>');
+  }
+  // A tab the school hides: Canvas sends the student back to the course home.
+  if (spec.redirect) {
+    res.writeHead(302, { location: spec.redirect });
+    return res.end();
   }
   res.writeHead(200, { 'content-type': 'text/html' });
   res.end(html(url.pathname, spec));

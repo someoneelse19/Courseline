@@ -1,5 +1,7 @@
 // Finds the internal Canvas links inside everything that has been captured (assignment and page bodies, module
-// items, discussion lists, "html_url" fields...), so each linked page can be opened and its own data captured.
+// items, discussion lists, "html_url" fields...), so each linked page can be opened and its own data captured. Also
+// each assignment the Grades page's data (ENV) or planner items name by id, link or not: where a school hides the
+// Assignments tab, an assignment's own page is the only place its instructions and rubric show.
 // Pure: it only reads the snapshot.
 import type { PullStep, Snapshot } from './bridge';
 import { t } from '../i18n';
@@ -57,7 +59,9 @@ const MAX_DEPTH = 14;
 const MAX_STRINGS = 400_000; // a ceiling, so one enormous response cannot stall the page
 
 /** Every internal link on `host` found in the captured bodies, once each, for the given courses (null = any). */
-export function discoverLinks(snapshot: Snapshot, host: string, courseIds: ReadonlySet<number> | null): DiscoveredLink[] {
+export function discoverLinks(fullSnapshot: Snapshot, host: string, courseIds: ReadonlySet<number> | null): DiscoveredLink[] {
+  // A response that failed its shape check is kept aside and not used (the popup says so): no links from it either.
+  const snapshot = { ...fullSnapshot, records: fullSnapshot.records.filter((r) => !r.rejectedAs) };
   const found = new Map<string, DiscoveredLink>();
   const titles = new Map<string, string>();
   let seen = 0;
@@ -117,6 +121,31 @@ export function discoverLinks(snapshot: Snapshot, host: string, courseIds: Reado
       if (!path.length) continue;
       const url = `https://${host}/courses/${courseId}/files/folder/${path.map(encodeURIComponent).join('/')}`;
       if (!found.has(url)) found.set(url, { url, courseId, kind: 'folder', id: String(folder.id ?? path.join('/')), title: path.join(' / ').slice(0, 80) });
+    }
+  }
+  // Assignments named by id with no link next to them: the Grades page's ENV lists every assignment (its table links
+  // only some), and planner items name assignments with their course. Their own pages open whatever the menu shows.
+  const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
+  const addAssignment = (courseId: number, id: unknown, title: unknown) => {
+    if (!Number.isInteger(courseId) || courseId <= 0 || !/^\d+$/.test(String(id ?? ''))) return;
+    if (courseIds && !courseIds.has(courseId)) return;
+    const url = `https://${host}/courses/${courseId}/assignments/${id}`;
+    const name = typeof title === 'string' && title.trim() ? title.trim().slice(0, 80) : null;
+    if (!found.has(url)) found.set(url, { url, courseId, kind: 'assignment', id: String(id), title: titles.get(url) ?? name });
+    else if (!titles.has(url) && name) titles.set(url, name);
+  };
+  for (const r of snapshot.records) {
+    if (r.kind === 'gradesPage' && r.courseId !== null && isObj(r.body)) {
+      const rows = new Map((Array.isArray(r.body.assignments) ? r.body.assignments : []).filter(isObj).map((a) => [String(a.id), a] as const));
+      for (const g of Array.isArray(r.body.assignment_groups) ? r.body.assignment_groups : []) {
+        if (!isObj(g) || !Array.isArray(g.assignments)) continue;
+        for (const a of g.assignments) if (isObj(a)) addAssignment(r.courseId, a.id, rows.get(String(a.id))?.name);
+      }
+    } else if (r.kind === 'plannerItems' && Array.isArray(r.body)) {
+      for (const item of r.body) {
+        if (!isObj(item) || item.plannable_type !== 'assignment' || !/^\d+$/.test(String(item.course_id ?? ''))) continue;
+        addAssignment(Number(item.course_id), item.plannable_id, isObj(item.plannable) ? item.plannable.title : undefined);
+      }
     }
   }
   // Titles can be learned after a link was first seen.

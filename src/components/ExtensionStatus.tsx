@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useMatch } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { usePull } from '../context/PullContext';
-import { coverage, courseUpdatedAt, failingKinds, freshnessByType, lastUpdatedAt, snapshotHost, workingCourses, type FreshnessKey } from '../extension/extensionApi';
+import { coverage, courseUpdatedAt, failingKinds, freshnessByType, lastUpdatedAt, snapshotHost, valueIssues, workingCourses, type FreshnessKey } from '../extension/extensionApi';
 import { discoverLinks, pendingLinks } from '../extension/linkDiscovery';
+import { issueSummary } from '../extension/valueChecks';
 import { formatAgo, formatAgoShort } from '../lib/format';
 import { t, tn } from '../i18n';
 
@@ -88,12 +89,15 @@ export function ExtensionStatus() {
       stale: last !== null && Date.now() - last > STALE_MS,
       types: freshnessByType(snapshot, courseId),
       course: courseId !== null ? (working.find((c) => c.id === courseId) ?? { id: courseId, name: null }) : null,
+      // Values Canvas sent that could not be right (a date with no time zone, statistics misread by a factor...).
+      issues: valueIssues(snapshot),
+      names: new Map(working.map((c) => [c.id, c.name] as const)),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `tick` is only here to recompute as time passes
   }, [snapshot, courseId, tick]);
 
   if (source !== 'extension' || !snapshot || !view) return null;
-  const { cov, last, failing, courseAt, stale, types, course } = view;
+  const { cov, last, failing, courseAt, stale, types, course, issues, names } = view;
   const muted = 'text-neutral-600 dark:text-neutral-300';
   const small = 'rounded-md border border-neutral-300 px-2 py-1 text-xs font-medium hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800';
 
@@ -103,9 +107,11 @@ export function ExtensionStatus() {
     ? { tone: 'bg-accent-500 animate-pulse', label: t('Syncing…') }
     : failing.length > 0
       ? { tone: 'bg-red-500', label: t('Needs attention') }
-      : stale || notSynced || last === null
-        ? { tone: 'bg-amber-500', label: last === null ? t('Not synced yet') : stale ? t('Out of date') : t('Partly synced') }
-        : { tone: 'bg-green-500', label: t('Up to date') };
+      : issues.length > 0
+        ? { tone: 'bg-amber-500', label: t('Needs attention') }
+        : stale || notSynced || last === null
+          ? { tone: 'bg-amber-500', label: last === null ? t('Not synced yet') : stale ? t('Out of date') : t('Partly synced') }
+          : { tone: 'bg-green-500', label: t('Up to date') };
 
   return (
     <section aria-label={t('Data from the Courseline extension')} className="mt-3 border-t border-neutral-200 pt-3 dark:border-neutral-800">
@@ -221,12 +227,33 @@ export function ExtensionStatus() {
             </div>
           )}
 
-          <p className="text-neutral-500 dark:text-neutral-400">{t('Grades are calculated by Courseline from the scores it has seen.')}</p>
+          {issues.length > 0 && <ValueIssues issues={issues} names={names} />}
+
+          <p className="text-neutral-500 dark:text-neutral-400">{t('Grades are Canvas’s own total when its Grades page shows one; otherwise Courseline works them out from the scores it has seen.')}</p>
           <Link to="/settings?tab=connection" className="inline-block text-accent-700 underline dark:text-accent-300">
             {t('Connection settings')}
           </Link>
         </div>
       )}
     </section>
+  );
+}
+
+/** Values Courseline left out because they did not add up, by course and kind, with what to do about them. */
+function ValueIssues({ issues, names }: { issues: ReturnType<typeof valueIssues>; names: ReadonlyMap<number, string | null> }) {
+  const { lines, more } = issueSummary(issues, names);
+  return (
+    <div role="status" className="text-amber-700 dark:text-amber-400">
+      <p>{t('Some values from Canvas did not add up, so Courseline left them out:')}</p>
+      <ul className="mt-0.5 list-disc pl-4">
+        {lines.map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+        {more > 0 && <li>{tn(more, 'and {n} more', 'and {n} more')}</li>}
+      </ul>
+      <p className="mt-0.5">
+        {t('What to do: check these in Canvas. If Canvas shows them correctly, press Sync now; if they are still listed, tell whoever maintains Courseline what this list says.')}
+      </p>
+    </div>
   );
 }

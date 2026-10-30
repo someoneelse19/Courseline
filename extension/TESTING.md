@@ -75,7 +75,38 @@ edition on `main` never talks to the extension (see the last safety check).
    to confirm.
 10. In a course whose Canvas menu hides a tab (for example only Home, Announcements, Grades and People), open that
     course in the app: the **Extension** item lists that kind as "not in Canvas menu", its screen says it is not in this
-    course's Canvas menu, and Sync now does not open that page.
+    course's Canvas menu, and Sync now does not open that page. Discussions is the exception: a Sync now with
+    **Everything** opens it once anyway. If Canvas showed it (some schools do), the Discussions list says "No
+    discussions." (or lists them); if it went back to the course home, it keeps the "not in this course's Canvas menu"
+    note. After a Sync now with **Everything**, an assignment in that course shows its instructions and rubric (from
+    the assignment's own page), with the due date the Grades page shows.
+11. Then in Settings → Connection → **Everything captured**, open the `assignmentPage` records: they hold the title,
+    instructions, points and rubric, and no date text (nothing like "20 de oct" or "a las 11:15", no `due_at`). A file
+    link in the instructions is there without its `verifier=`.
+
+## Grades and values that do not add up
+1. In a course **without grading periods** (the Grades page has no grading period menu), open its Grades page in
+   Canvas, then the same course's **Grades** in the app. The current grade matches the total Canvas shows on its Grades
+   page (the "Total" row), with no "Worked out by Courseline" line under it. In a course with grading periods Canvas
+   opens the Grades page on the current period, whose total is not the course's, so the app shows its own estimate
+   with that line under it: expected, not a failure. Choosing "All grading periods" shows the course's whole total,
+   which the app does use (when Canvas shows a total for all periods at all). The app also falls back to its estimate
+   when a score was captured after the Grades page (open the Grades page again to bring Canvas's total back).
+2. In a course whose instructor hides the total (no "Total" row, or no percentage in it), the app still shows a grade,
+   with "Worked out by Courseline from the scores it has seen" under it.
+3. On a live Grades page, open the browser console and compare `ENV.assignment_groups[0].assignments[0].due_at` with
+   `ENV.effective_due_dates` for the same assignment (for a student with an extended due date, if you have one). Write
+   down whether they differ; the app uses the first.
+4. Check what the extension **captured**, not the live page: Canvas fills the Total cell in with its own JavaScript
+   after the page is parsed, so the cell you see in the console after loading is not what a too-early read would get.
+   Open a course's Grades page, wait until it has loaded, then in the extension's service worker console run
+   `chrome.storage.local.get(null).then((s) => Object.entries(s).filter(([k]) => k.includes('#page:gradesPage')).map(([k, r]) => [k, r.body.canvas_total]))`.
+   The course's record should carry `canvas_total` equal to the Total Canvas shows (for example 70 for "70%"). If it is
+   missing, check `document.querySelector('#submission_final-grade .grade')` on the page and note what it holds (no
+   percentage, two numbers, or no such element): the app then falls back to its own estimate.
+5. The **Extension** item in the sidebar shows the amber list "Some values from Canvas did not add up…" only when
+   something was left out. With a normal school's data it should not appear; if it does, open the course and item it
+   names in Canvas and compare.
 
 ## Messages
 1. In the app, click **Messages** in the sidebar. "Updating messages from Canvas…" shows while your Canvas Settings

@@ -58,7 +58,7 @@ async function render() {
   warn.replaceChildren();
   if (s.failing.length) {
     const box = el('div', 'warn');
-    box.append(el('div', null, `Canvas sent an unexpected format for: ${s.failing.join(', ')}. That data is not being saved, so what you see may be out of date.`));
+    box.append(el('div', null, `Canvas sent an unexpected format for: ${s.failing.join(', ')}. It was kept aside, not used, so what you see may be out of date.`));
     box.append(el('div', null, 'What to do: open that page in Canvas once more, or press Sync now. If this keeps showing, Canvas has probably changed and Courseline needs an update: use "Copy response shapes" below and send what it copies to whoever maintains Courseline.'));
     warn.append(box);
   }

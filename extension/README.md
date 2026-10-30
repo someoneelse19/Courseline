@@ -34,16 +34,21 @@ loads on `localhost`/`127.0.0.1` and answers only the app (ports 5173-5180 and 4
   latest messages**): the newest 50 conversations of the inbox and of the sent folder and their threads (up to 100), from
   the same kind of background tab, with read-only requests that mark nothing as read (at most every two minutes, never as
   part of Sync now). Canvas's own Inbox page, when you visit it, is captured like any other page.
-- Also reads what Canvas builds into the page instead of fetching it: the Grades page's assignments, scores and the class
-  statistics it shows (mean, median, high, low), the course home page and other course pages, the syllabus, the
-  Modules page, your display name, and which course tabs are in the menu. A tab that is not in the menu is never loaded by Canvas, so it cannot be captured; Sync now skips it and Courseline says so.
+- Also reads what Canvas builds into the page instead of fetching it: the Grades page's assignments, scores, the class
+  statistics it shows (mean, median, high, low), its total (when shown as a percentage) and how the course weights its
+  groups, the course home page and other course pages, the syllabus, the
+  Modules page, each assignment's own page (title, instructions, points and rubric; never its dates, which the page
+  writes in your language), whether a Discussions or Announcements page really opened, your display name, and which
+  course tabs are in the menu. A tab that is not in the menu is never loaded by Canvas, so it cannot be captured; Sync
+  now skips it, except Discussions, which some schools still serve, and Courseline says so.
 - When you confirm a sync inside Courseline, it opens Canvas pages a few at a time (4 tabs at once) in background tabs of your current
   window, waits until each has finished loading, and closes them. Unless **Essentials only** is ticked (it is not by
   default), the same Sync now also opens the pages those link to (assignment instructions, page bodies, discussions,
   quizzes, files), round after round until nothing new turns up. **Stop** closes the open tabs at once. Nothing opens
   without a click in Courseline, and nothing is scheduled.
 - Credential responses (tokens) are never saved. Email addresses, login ids, avatar links and capability links (calendar
-  feeds, file links with a `verifier`) are removed. Anything older than 90 days is deleted.
+  feeds, file links with a `verifier`) are removed; file links inside instructions keep the link without its `verifier`.
+  Anything older than 90 days is deleted.
 
 **Files:** `manifest.json`, `inject.js` + `relay.js` (capture; in a tab the extension opened, also sending and reading
 messages), `background.js` (storage, background tabs for Sync now and Messages), `bridge.js` (talks to the Courseline app

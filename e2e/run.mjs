@@ -56,13 +56,15 @@ try {
   await sleep(1000);
   const afterSync = await text(app);
   check('it signed in by itself', /Welcome, Student/.test(afterSync), afterSync.slice(0, 120));
-  check('both pinned courses are listed', /Biology 101/.test(afterSync) && /World History/.test(afterSync));
+  // The dashboard and sidebar name courses by their code; the full names show only in the sync panel's sample lines,
+  // which depend on timing, so match the codes (and that the unpinned course is not there).
+  check('the three pinned courses are listed', /\bBIO101\b/.test(afterSync) && /\bHIS200\b/.test(afterSync) && /\bALG1\b/.test(afterSync) && !/\bCHE1\b/.test(afterSync));
   check('a grade is calculated from the captured scores', /80\.0%/.test(afterSync));
   // The extension's status is a collapsed item in the sidebar: a dot and a word, opened to the details (remembered).
-  check('the sidebar shows the extension status, collapsed', /Extension/.test(afterSync) && !/2 of 2 courses synced/.test(afterSync));
+  check('the sidebar shows the extension status, collapsed', /Extension/.test(afterSync) && !/3 of 3 courses synced/.test(afterSync));
   await click(app, /^Extension/, 'button[aria-expanded="false"]');
   await sleep(300);
-  check('opened, it shows coverage', /2 of 2 courses synced/.test(await text(app)));
+  check('opened, it shows coverage', /3 of 3 courses synced/.test(await text(app)));
   await shot(app, '02-dashboard');
 
   let st = await h.storage();
@@ -83,12 +85,68 @@ try {
   await click(app, /^Start$/);
   await waitDone(h, app);
   st = await h.storage();
+  let t;
   check('assignment detail pages were opened', Object.keys(st.visited).some((u) => u.endsWith('/courses/1/assignments/5')) && Object.keys(st.visited).some((u) => u.endsWith('/courses/1/assignments/6')));
+
+  section('a course whose school hides most tabs');
+  await click(app, /^Close$/).catch(() => {});
+  check('its assignment pages were opened from the Grades page, including one with no link', ['/courses/4/assignments/41', '/courses/4/assignments/42'].every((p) => Object.keys(st.visited).some((u) => u.endsWith(p))), Object.keys(st.visited).filter((u) => u.includes('/courses/4')).join(', '));
+  {
+    const page41 = Object.values(st).find((r) => r?.kind === 'assignmentPage' && String(r.body?.id) === '41');
+    const body = JSON.stringify(page41?.body ?? null);
+    check('each assignment page was read into its own record, without its date text', !!page41 && body.includes('Resuelve') && body.includes('/courses/4/files/77/download') && !body.includes('SECRETV') && !JSON.stringify(st).includes('20 de oct'), body.slice(0, 200));
+  }
+  check('the extension asked Canvas for no assignment itself', !apiLog.some((c) => /^\/api\/v1\/courses\/4\/assignments/.test(c.path)));
+  await go(app, '/courses/4/assignments');
+  await sleep(1500);
+  t = await text(app);
+  check('the list shows both assignments, with no hidden note', /Ecuaciones/.test(t) && /Práctica/.test(t) && !/not in this course/.test(t), t.slice(0, 300));
+  await go(app, '/courses/4/assignments/41');
+  await sleep(1500);
+  t = await text(app);
+  check('instructions and rubric from the server-rendered page', /Resuelve los ejercicios/.test(t) && /Procedimiento/.test(t) && !/No instructions provided/.test(t) && !/have not been synced/.test(t), t.slice(0, 300));
+  await go(app, '/courses/4/assignments/42');
+  await sleep(1500);
+  t = await text(app);
+  check('an empty description reads as none', /No instructions provided/.test(t), t.slice(0, 300));
+  await go(app, '/courses/4/files');
+  await sleep(1500);
+  t = await text(app);
+  check('a tab that really redirects keeps the "not in Canvas menu" wording', /is not in this course’s Canvas menu/.test(t), t.slice(0, 300));
+  // The course synced on Everything, now that its menu is known: Discussions is opened although the menu leaves it out
+  // (ALWAYS_TRIED in pullPlan.ts), while Quizzes, also left out, is skipped. (The course's own sync, which plans its
+  // pages exactly as Sync now does: a full Sync now here would also open course 1's Discussions, which a later check
+  // needs unsynced.)
+  await go(app, '/courses/4');
+  await sleep(1200);
+  const syncStart = Date.now();
+  await click(app, /Refresh this course/);
+  await h.waitFor(async () => /This will open/.test(await panel(app)), 10000, 'the course sync plan');
+  await app.eval(`(() => { const box = [...document.querySelectorAll('[role=dialog] input[type=checkbox]')].find((i) => /Essentials only/.test(i.closest('label')?.textContent ?? '')); if (box?.checked) box.click(); })()`, { userGesture: true });
+  await sleep(300);
+  await click(app, /^Start$/);
+  await waitDone(h, app);
+  await click(app, /^Close$/).catch(() => {});
+  st = await h.storage();
+  {
+    const at = (p) => Object.entries(st.visited ?? {}).find(([u]) => u.endsWith(p))?.[1] ?? 0;
+    check('a sync on Everything opens Discussions although the menu hides it, and skips Quizzes', at('/courses/4/discussion_topics') >= syncStart && at('/courses/4/quizzes') < syncStart, JSON.stringify({ syncStart, discussions: at('/courses/4/discussion_topics'), quizzes: at('/courses/4/quizzes') }));
+  }
+  await go(app, '/courses/4/announcements');
+  await sleep(1500);
+  t = await text(app);
+  check('Discussions opened although not in the menu: empty, not hidden', /No discussions\./.test(t) && !/Discussions is not in this course/.test(t), t.slice(0, 300));
+  await go(app, '/courses/4/grades');
+  await sleep(1500);
+  t = await text(app);
+  // 72% is what the Grades page's own JavaScript wrote into the Total cell after the page was parsed; Courseline's own
+  // figure from 7/10 would be 70%.
+  check('Canvas\'s own total from the Grades page, read after Canvas filled it in', /72\.0%/.test(t) && !/Worked out by Courseline/.test(t), t.slice(0, 300));
 
   section('item screens fill in');
   await go(app, '/courses/1/assignments/5');
   await sleep(1500);
-  let t = await text(app);
+  t = await text(app);
   check('assignment instructions (REST detail)', /Write up the lab/.test(t) && !/No instructions provided/.test(t));
   check('assignment rubric', /Clarity/.test(t));
   await go(app, '/courses/1/assignments/6');
@@ -190,7 +248,7 @@ try {
   const popup = await h.openTab(`chrome-extension://${h.extId}/popup.html`);
   await sleep(1500);
   const pt = await text(popup);
-  check('the popup lists the courses and coverage', /Biology 101/.test(pt) && /2 of 2 current courses synced/.test(pt), pt.slice(0, 150));
+  check('the popup lists the courses and coverage', /Biology 101/.test(pt) && /3 of 3 current courses synced/.test(pt), pt.slice(0, 150));
   await shot(popup, '04-popup');
   const pathBefore = await app.eval('location.pathname');
   await popup.eval(`document.getElementById('sync').click()`, { userGesture: true });

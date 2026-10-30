@@ -407,6 +407,50 @@ describe('inject.js: whose Grades page, and numbers in the page language', () =>
     expect(grades.body.assignments[0].score_statistics).toEqual({ mean: 1234.5, median: 1300, max: 2000, upper_q: 1500.25, min: 10, lower_q: 900 });
     expect(grades.body.grading_period_id).toBe('12');
   });
+
+  it('reads Canvas\'s own total and weighting scheme from the Grades page; nothing for points-only or hidden totals', async () => {
+    const total = async (text, env = {}) => {
+      posted = [];
+      at('/courses/9/grades');
+      // The Total row is the last row of the summary table.
+      const row = text === null ? '' : `<tr class="student_assignment final_grade" id="submission_final-grade"><th class="title">Total</th><td class="assignment_score"><span class="grade">${text}</span></td></tr>`;
+      document.body.innerHTML = table.replace(/<\/tbody><\/table>$/, `${row}</tbody></table>`);
+      window.ENV = { context_asset_string: 'course_9', assignment_groups: [], submissions: [], current_user_id: '42', ...env };
+      install(apiFetch());
+      window.dispatchEvent(new Event('load'));
+      await tick();
+      return posted.find((p) => p.page === 'gradesPage').body;
+    };
+    expect((await total('70%')).canvas_total).toBe(70);
+    expect((await total('85,5 %')).canvas_total).toBe(85.5);
+    expect((await total('17.5 / 20')).canvas_total).toBeUndefined();
+    expect((await total(null)).canvas_total).toBeUndefined();
+    expect((await total('70% / 80%')).canvas_total).toBeUndefined(); // two numbers: not sure which
+    expect((await total('70%', { group_weighting_scheme: 'percent' })).group_weighting_scheme).toBe('percent');
+    expect((await total('70%', { group_weighting_scheme: 5 })).group_weighting_scheme).toBeUndefined();
+  });
+
+  it('reads the total again once Canvas\'s own JavaScript has filled it in, and sends the Grades page again only then', async () => {
+    at('/courses/9/grades');
+    // As the server sends it: the Total cell is empty until the page's grade calculator runs.
+    document.body.innerHTML = table.replace(/<\/tbody><\/table>$/, '<tr class="student_assignment final_grade" id="submission_final-grade"><th class="title">Total</th><td><span class="grade"></span></td></tr></tbody></table>');
+    window.ENV = { context_asset_string: 'course_9', assignment_groups: [], submissions: [], current_user_id: '42' };
+    install(apiFetch());
+    document.body.className = 'ic-app';
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+    await tick();
+    const sends = () => posted.filter((p) => p.page === 'gradesPage');
+    expect(sends()).toHaveLength(1);
+    expect(sends()[0].body.canvas_total).toBeUndefined();
+    document.querySelector('#submission_final-grade .grade').textContent = '72%';
+    window.dispatchEvent(new Event('load'));
+    await tick();
+    expect(sends()).toHaveLength(2);
+    expect(sends()[1]).toMatchObject({ url: `${location.origin}/courses/9#page:gradesPage`, body: { canvas_total: 72 } });
+    window.dispatchEvent(new Event('load'));
+    await tick();
+    expect(sends()).toHaveLength(2); // unchanged: not sent again
+  });
 });
 
 describe('inject.js: module items Canvas draws after loading', () => {
@@ -543,5 +587,131 @@ describe('inject.js: reading messages for Courseline', () => {
     const urls = fetchImpl.mock.calls.map(([u]) => u);
     expect(urls.filter((u) => /conversations\/\d+/.test(u)).every((u) => u.includes('auto_mark_as_read=false'))).toBe(true);
     expect(fetchImpl.mock.calls.every(([, init]) => !init?.method || init.method === 'GET')).toBe(true);
+  });
+});
+
+describe('inject.js: an assignment page Canvas renders on the server', () => {
+  const at = (path) => window.history.replaceState({}, '', path);
+  afterEach(() => {
+    at('/');
+    document.body.innerHTML = '';
+  });
+  // The page as a school's Canvas draws it (live, Oct 2026): title, a localized date list, then the instructions.
+  const skeleton = (title, description) => `
+    <div id="assignment_show" class="assignment">
+      <div class="assignment-title"><div class="title-content"><h1 class="title">
+        ${title}
+      </h1></div></div>
+      <ul class="student-assignment-overview">
+        <li><span class="title">Fecha de entrega</span><span class="value"><span class="date_text"><span class="display_date">20 de oct</span><span class="display_time">a las 11:15</span></span></span></li>
+        <li><span class="title">Puntos</span><span class="value">10</span></li>
+        <li><span class="title">Entregando</span><span class="value">un archivo</span></li>
+      </ul>
+      ${description === null ? '' : `<div class="description user_content enhanced">${description}</div>`}
+    </div>`;
+  const read = async (path, env, html) => {
+    at(path);
+    document.body.innerHTML = html;
+    window.ENV = { current_user_id: '42', context_asset_string: 'course_4', ...env };
+    install(apiFetch());
+    window.dispatchEvent(new Event('load'));
+    await tick();
+    return posted.find((p) => p.page === 'assignmentPage');
+  };
+  const criteria = [{ id: 'c1', description: 'Procedimiento', long_description: 'Cada paso', points: 10, ratings: [{ id: 'r1a', description: 'Completo', points: 10 }, { id: 'r1b', description: 'Nada', long_description: '', points: '0' }] }];
+
+  it('reads the title, instructions, points and rubric, with the ids and link, from the page and ENV', async () => {
+    const sent = await read(
+      '/courses/4/assignments/41',
+      { ASSIGNMENT_ID: '41', COURSE_ID: '4', ASSIGNMENT_POINTS_POSSIBLE: 10, CONTEXT_TIMEZONE: 'Europe/Madrid', assigned_rubric: { id: 'r1', data: criteria } },
+      skeleton('Ecuaciones', '<p>Resuelve los ejercicios.</p>'),
+    );
+    expect(sent.url).toBe(`${location.origin}/courses/4#page:assignmentPage`);
+    expect(sent.body).toEqual({
+      id: '41',
+      course_id: '4',
+      name: 'Ecuaciones',
+      html_url: `${location.origin}/courses/4/assignments/41`,
+      description: '<p>Resuelve los ejercicios.</p>',
+      points_possible: 10,
+      rubric: [
+        {
+          id: 'c1',
+          description: 'Procedimiento',
+          long_description: 'Cada paso',
+          points: 10,
+          ratings: [{ id: 'r1a', description: 'Completo', points: 10 }, { id: 'r1b', description: 'Nada', points: 0 }],
+        },
+      ],
+    });
+    // Never the localized date text, and no date of its own: the due date comes from the Grades page.
+    expect(JSON.stringify(sent.body)).not.toContain('20 de oct');
+    expect(JSON.stringify(sent.body)).not.toContain('11:15');
+    expect(JSON.stringify(sent.body)).not.toContain('due_at');
+  });
+
+  it('reads criteria from assigned_rubric.criteria too, and marks a rubric it cannot read', async () => {
+    let sent = await read('/courses/4/assignments/41', { ASSIGNMENT_ID: '41', ASSIGNMENT_POINTS_POSSIBLE: '7.5', assigned_rubric: { criteria } }, skeleton('A', '<p>x</p>'));
+    expect(sent.body.rubric.map((c) => c.id)).toEqual(['c1']);
+    expect(sent.body.points_possible).toBe(7.5);
+    posted = [];
+    sent = await read('/courses/4/assignments/41', { ASSIGNMENT_ID: '41', assigned_rubric: { data: [{ id: 'c1', points: 'diez', ratings: [] }] } }, skeleton('A', '<p>x</p>'));
+    expect(sent.body).not.toHaveProperty('rubric');
+    expect(sent.body.rubric_unreadable).toBe(true);
+    posted = [];
+    sent = await read('/courses/4/assignments/41', { ASSIGNMENT_ID: '41', ASSIGNMENT_POINTS_POSSIBLE: 'diez', assigned_rubric: { data: [{ id: 'c1', points: 1 }] } }, skeleton('A', '<p>x</p>'));
+    expect(sent.body.rubric_unreadable).toBe(true);
+    expect(sent.body).not.toHaveProperty('points_possible');
+  });
+
+  it('sends nothing when the address and ENV.ASSIGNMENT_ID disagree, or there is no #assignment_show', async () => {
+    expect(await read('/courses/4/assignments/41', { ASSIGNMENT_ID: '42' }, skeleton('A', ''))).toBeUndefined();
+    posted = [];
+    expect(await read('/courses/4/assignments/41', { ASSIGNMENT_ID: '41', COURSE_ID: '5' }, skeleton('A', ''))).toBeUndefined();
+    posted = [];
+    expect(await read('/courses/4/assignments/41', { ASSIGNMENT_ID: '41' }, '<div id="content"><h1 class="title">A</h1></div>')).toBeUndefined();
+    posted = [];
+    expect(await read('/courses/4/assignments/41', { ASSIGNMENT_ID: '41' }, skeleton('   ', ''))).toBeUndefined(); // no title
+    posted = [];
+    expect(await read('/courses/4/assignments/41/submissions/42', { ASSIGNMENT_ID: '41' }, skeleton('A', ''))).toBeUndefined();
+    posted = [];
+    // Another course's assignment on a page ENV files under course 4.
+    expect(await read('/courses/5/assignments/41', { ASSIGNMENT_ID: '41' }, skeleton('A', ''))).toBeUndefined();
+  });
+
+  it('leaves out the rubric when ENV has none, and keeps an empty description as empty', async () => {
+    let sent = await read('/courses/4/assignments/42', { ASSIGNMENT_ID: 42, assigned_rubric: null }, skeleton('Práctica', '  '));
+    expect(sent.body).toEqual({ id: '42', course_id: '4', name: 'Práctica', html_url: `${location.origin}/courses/4/assignments/42`, description: '' });
+    posted = [];
+    // No instructions element at all: the key is left out (unknown), not ''.
+    sent = await read('/courses/4/assignments/42', { ASSIGNMENT_ID: '42' }, skeleton('Práctica', null));
+    expect(sent.body).not.toHaveProperty('description');
+    expect(sent.body).not.toHaveProperty('rubric_unreadable');
+  });
+
+  it('drops the screen-reader text Canvas adds inside the instructions', async () => {
+    const sent = await read(
+      '/courses/4/assignments/41',
+      { ASSIGNMENT_ID: '41' },
+      skeleton('A', '<p><a class="external" href="https://example.org">Guía<span class="external_link_icon"><svg></svg><span class="screenreader-only">Enlaces a un sitio externo.</span></span></a><span class="ui-helper-hidden-accessible">oculto</span></p>'),
+    );
+    expect(sent.body.description).toBe('<p><a class="external" href="https://example.org">Guía</a></p>');
+  });
+
+  it('says a Discussions or Announcements page opened only when the page really is that page (not the course home it redirected to)', async () => {
+    const open = async (path) => {
+      posted = [];
+      at(path);
+      window.ENV = { current_user_id: '42', context_asset_string: 'course_4' };
+      install(apiFetch());
+      window.dispatchEvent(new Event('load'));
+      await tick();
+      return posted.filter((p) => p.page === 'listPage');
+    };
+    expect((await open('/courses/4/discussion_topics')).map((p) => [p.url, p.body])).toEqual([[`${location.origin}/courses/4#page:listPage`, { path: 'discussion_topics' }]]);
+    expect((await open('/courses/4/announcements/')).map((p) => p.body)).toEqual([{ path: 'announcements' }]);
+    expect(await open('/courses/4')).toEqual([]); // where a hidden tab lands
+    expect(await open('/courses/4/discussion_topics/900')).toEqual([]);
+    expect(await open('/courses/4/modules')).toEqual([]);
   });
 });
