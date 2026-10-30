@@ -8,7 +8,8 @@ React · TypeScript · Vite · Tailwind CSS 4
 **Two editions, one codebase.** The `main` branch is the **API-token edition**: sign-in by access token only, and
 the app never looks for or talks to the browser extension. The `dev` branch is the full app, with the extension as a
 second way in. Both have every other feature. They differ only in [`edition.json`](edition.json) (`"apiOnly": true`
-on `main`, `false` on `dev`) and in the `extension/` folder, which `main` does not have. Merging `dev` into `main` keeps
+on `main`, `false` on `dev`) and in the extension (`extension/`) and its real-Chrome test (`e2e/`), which `main` does
+not have. Merging `dev` into `main` keeps
 `main` API-only as long as `edition.json` is never changed on `dev` (see
 [Branches and editions](DEVELOPER_GUIDE.md#branches-and-editions) for the merge). Any build can be made API-only with
 `COURSELINE_EDITION=api`.
@@ -121,7 +122,7 @@ because Tailwind 4 uses modern CSS.
 | `npm run build` | Typecheck, then a production bundle in `dist/` |
 | `npm run preview` | Serves the built `dist/` locally |
 | `npm run test:watch` | Tests, re-run on every save |
-| `npm run e2e` | (`dev` only) A real Chrome with the extension, a mock Canvas and the running app: start `npm run dev` first; set `CHROME_PATH` if Chrome is not in `/Applications` |
+| `npm run e2e` | (`dev` only; not on `main`) A real Chrome with the extension, a mock Canvas and the running app: start `npm run dev` first; set `CHROME_PATH` if Chrome is not in `/Applications` |
 
 ### Environment (`.env`)
 
