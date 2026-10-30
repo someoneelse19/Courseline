@@ -65,6 +65,8 @@ Developer documentation (architecture, every file, how to change anything, known
 
 > **`dev` branch only.** The API-token edition on `main` has no extension support; check out `dev` to use this.
 
+![The sidebar's Extension item opened: up to date, 2 of 2 courses synced, Sync now, and how current each kind of data is](docs/screenshots/extension-status.png)
+
 Canvas is making access tokens harder to get, so Courseline can also work from the browser extension in `extension/`.
 It works in Chrome, Arc, Edge, Brave and other Chromium browsers.
 
