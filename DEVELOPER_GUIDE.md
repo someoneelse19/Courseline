@@ -1371,8 +1371,8 @@ is shown in the preview as it loads, Stop works between pages, there is a pause 
 4 background tabs since Oct 27, 2026; one tab at a time before), scope is the student's chosen courses, and nothing
 is scheduled or repeats. What is **not** kept: the student does not see the tabs themselves, nor the ones that send
 and read messages, which are not in the preview either. If that matters for a school's terms, it is the first thing to
-revisit. The doc itself still describes the earlier design and should be updated to match, including sending and
-reading messages.
+revisit. The doc records these departures, the build's status and the two editions in its own sections (updated Oct 30,
+2026: [Courseline Canvas Sync — Design Doc](https://claude.ai/artifact/PN7CvmEZhstZXz6VuUTbRS)).
 
 ### Risk register
 
