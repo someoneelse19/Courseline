@@ -13,7 +13,8 @@ cd "$(dirname "$0")" || exit 1
 
 PORT="${PORT:-5173}"
 URL="http://localhost:${PORT}"
-APP_MARKER='courseline-app'
+# The page title: both editions have it (the API-token edition drops the extension's courseline-app tag).
+APP_MARKER='<title>Courseline</title>'
 
 say() { printf '\n%s\n' "$*"; }
 fail() { say "✗ $*"; printf '\nPress Return to close this window.'; read -r _; exit 1; }
@@ -46,10 +47,10 @@ find_node() {
 }
 
 # --- Already running? Then just open it. ---
-# Both checks: the page carries the app marker AND Vite's dev client is served (a plain file server would also show
+# Both checks: the page has Courseline's title AND Vite's dev client is served (a plain file server would also show
 # index.html, but only the dev server answers /@vite/client).
 # (10 s each: a busy machine can make even the dev server slow to answer, and being slow is not being someone else's.)
-if curl -s -m 10 "$URL/" 2>/dev/null | grep -q "$APP_MARKER" && [ "$(curl -s -o /dev/null -m 10 -w '%{http_code}' "$URL/@vite/client" 2>/dev/null)" = "200" ]; then
+if curl -s -m 10 "$URL/" 2>/dev/null | grep -qF "$APP_MARKER" && [ "$(curl -s -o /dev/null -m 10 -w '%{http_code}' "$URL/@vite/client" 2>/dev/null)" = "200" ]; then
   say "✓ Courseline is already running at $URL"
   [ -n "${OPEN:-}" ] && open "$URL"
   exit 0
