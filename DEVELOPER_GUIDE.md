@@ -165,14 +165,15 @@ Release flow: work on `dev`, then merge `dev` into `main`.
 ```bash
 git checkout dev        # commit here; git push origin dev (CI does not run for this push)
 git checkout main
-git merge --no-commit dev; git rm -r -q --ignore-unmatch extension; git commit --no-edit
+git merge --no-commit dev; git rm -r -q -f --ignore-unmatch extension && git commit --no-edit
 git push origin main    # starts CI: typecheck, tests, and a build of the API-token edition
 git checkout dev
 ```
 
-The middle line merges and then takes `extension/` back out, so new or changed extension files never land on `main`. When
-`dev` changed a file in `extension/`, the merge stops with a "deleted in HEAD and modified in dev" conflict; the `git rm`
-resolves it. Any other conflict makes the commit fail: fix it, `git add` it, and run `git commit --no-edit` again.
+The middle line merges and then takes `extension/` back out (`-f`, because the merge has just staged `dev`'s changes
+there), so new or changed extension files never land on `main`. When `dev` changed a file in `extension/`, the merge
+stops with a "deleted in HEAD and modified in dev" conflict; the `git rm` resolves it. Any other conflict makes the
+commit fail: fix it, `git add` it, and run `git commit --no-edit` again.
 
 **Never edit `edition.json` on `dev`.** Then only `main` has changed it, and every merge keeps `main`'s version. If it
 ever does change on `dev`, check after the merge that `git show main:edition.json` still says `"apiOnly": true`.
@@ -1239,7 +1240,7 @@ and the `extension/` folder (not on `main`).
    carries `dev`'s `"apiOnly": false` into `main`.
 2. On `dev`: `npm run typecheck && npm test && npm run build`, and `COURSELINE_EDITION=api npm run build` to check that
    the API-only bundle builds.
-3. `git checkout main`, then `git merge --no-commit dev; git rm -r -q --ignore-unmatch extension; git commit --no-edit`
+3. `git checkout main`, then `git merge --no-commit dev; git rm -r -q -f --ignore-unmatch extension && git commit --no-edit`
    (this keeps `extension/` off `main`; see [Branches and editions](#branches-and-editions) for conflicts). Then
    `cat edition.json` must still print `{ "apiOnly": true }` and `ls extension` must fail.
 4. Push `main`. CI (`.github/workflows/ci.yml`: typecheck, test, build) runs on pushes to `main` and on pull requests,
