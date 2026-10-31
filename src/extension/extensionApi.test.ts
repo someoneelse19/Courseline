@@ -3,6 +3,7 @@ import { CanvasApiError } from '../api/client';
 import type { CapturedRecord, Snapshot } from './bridge';
 import { coverage, courseUpdatedAt, createExtensionApi, failingKinds, freshnessByType, gradesPageGroups, hiddenSections, mailFrom, modulesFromPage, peopleFrom, sensibleStatistics, knownCourses, lastUpdatedAt, normalizeIds, pinnedIds, valueIssues } from './extensionApi';
 import { computeGrade, toModel } from '../lib/grades';
+import { setLanguage } from '../i18n';
 
 const T0 = Date.parse('2026-10-11T10:00:00Z');
 const rec = (kind: string, courseId: number | null, body: unknown, at = T0, url = `https://school.test/api/v1/${kind}`): CapturedRecord => ({
@@ -518,6 +519,20 @@ describe('fixes from review', () => {
     const groups = await createExtensionApi(snap([rec('dashboardCards', null, [card9]), before, after])).getAssignmentGroups(9);
     expect(groups.map((g) => [g.name, g.assignments?.map((a) => a.id)])).toEqual([['A', []], ['B', [700]]]);
     expect(groups[1].assignments?.[0].html_url).toBe('https://school.test/courses/1/assignments/700'); // carried over
+  });
+
+  it('works a course out once per snapshot, and again when the language changes', async () => {
+    const grades = page('gradesPage', { assignment_groups: [{ id: '70', assignments: [] }], submissions: [], assignments: [] });
+    const api = createExtensionApi(snap([rec('dashboardCards', null, [card9]), grades]));
+    const first = await api.getAssignmentGroups(9);
+    expect(await api.getAssignmentGroups(9)).toBe(first); // the same answer, not worked out again
+    expect(first[0].name).toBe('Assignment group');
+    setLanguage('es');
+    try {
+      expect((await api.getAssignmentGroups(9))[0].name).toBe('Grupo de tareas');
+    } finally {
+      setLanguage('en');
+    }
   });
 
   it('dates units and files from the Modules page and the folder listings', () => {

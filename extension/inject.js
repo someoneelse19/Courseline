@@ -530,10 +530,11 @@
   });
   window.fetch = function (input, init) {
     const method = String(init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase();
-    // The operation name (and whether it is a mutation) comes from the request body: from `init`, or, when the page
-    // passed a Request object, from a copy of its body taken before fetch uses it up.
-    let requestInfo = Promise.resolve(graphqlRequest(init));
-    if (input instanceof Request && init?.body === undefined && method !== 'GET' && method !== 'HEAD') {
+    // The operation name (and whether it is a mutation) comes from the request body: from `init` (read only once the
+    // response turns out to be one that is kept), or, when the page passed a Request object, from a copy of its body
+    // taken before fetch uses it up. Only for this site's own /api/: other requests on other sites are not looked at.
+    let requestInfo = null;
+    if (input instanceof Request && init?.body === undefined && method !== 'GET' && method !== 'HEAD' && state !== 'other' && isApiUrl(input.url)) {
       try {
         requestInfo = input.clone().text().then((body) => graphqlRequest({ body }), () => ({}));
       } catch {
@@ -555,7 +556,7 @@
           return ended();
         }
         // The body can still be arriving when the response does, so "finished" waits for it too.
-        Promise.all([reading, requestInfo]).then(
+        Promise.all([reading, requestInfo ?? graphqlRequest(init)]).then(
           ([text, info]) => {
             report(url, res.status, fromText(text), { ...info, method });
             ended();
@@ -585,8 +586,9 @@
       this.__courselineListening = true;
       this.addEventListener('load', () => {
         try {
-          const request = { ...graphqlRequest({ body: this.__courselineBody }), method: this.__courselineMethod };
           const where = this.responseURL || this.__courselineUrl;
+          if (state === 'other' || !isApiUrl(where)) return; // report() would drop it: skip reading the request body
+          const request = { ...graphqlRequest({ body: this.__courselineBody }), method: this.__courselineMethod };
           if (this.responseType === '' || this.responseType === 'text') report(where, this.status, fromText(this.responseText), request);
           else if (this.responseType === 'json' && this.response !== null) report(where, this.status, () => this.response, request);
         } catch {

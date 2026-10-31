@@ -145,6 +145,21 @@ describe('inject.js', () => {
     expect(clone).not.toHaveBeenCalled();
   });
 
+  it('never copies or parses the body of a request that is not to this site’s /api/ (uploads, analytics, other sites)', async () => {
+    document.body.className = 'ic-app';
+    const parse = vi.spyOn(JSON, 'parse');
+    const cloneRequest = vi.spyOn(Request.prototype, 'clone');
+    install(vi.fn(async () => new Response('ok', { status: 200 })));
+    await window.fetch(new Request('https://analytics.example.com/collect', { method: 'POST', body: '{"event":"view"}' }));
+    await window.fetch('/files/upload', { method: 'POST', body: '{"name":"essay.pdf"}' });
+    await tick();
+    await tick();
+    expect(cloneRequest).not.toHaveBeenCalled();
+    expect(parse).not.toHaveBeenCalled();
+    parse.mockRestore();
+    cloneRequest.mockRestore();
+  });
+
   it('does read a same-origin /api/ response (and only that)', async () => {
     document.body.className = 'ic-app';
     const clone = vi.fn(() => ({ text: async () => '{"ok":1}' }));

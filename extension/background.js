@@ -185,8 +185,9 @@ async function pruneOld(now) {
   lastPruneAt = now;
   const all = await chrome.storage.local.get(null);
   const old = expiredKeys(all, now);
+  const expired = new Set(old);
   // Keep the newest MAX_RECORDS: everything is saved now, so there is a ceiling.
-  const live = Object.entries(all).filter(([k]) => k.startsWith('cap:') && !old.includes(k));
+  const live = Object.entries(all).filter(([k]) => k.startsWith('cap:') && !expired.has(k));
   if (live.length > MAX_RECORDS) {
     live.sort(([, a], [, b]) => (a.capturedAt ?? 0) - (b.capturedAt ?? 0));
     old.push(...live.slice(0, live.length - MAX_RECORDS).map(([k]) => k));
