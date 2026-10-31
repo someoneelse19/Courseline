@@ -67,14 +67,15 @@ export class QueryStore {
    * screens keep their state and their old data stays visible until the new data arrives.
    */
   refreshAll(): void {
-    for (const key of [...this.entries.keys()]) {
+    const keys = [...this.entries.keys()];
+    // Everything is stale before anything reloads, so a reload that reads other keys (through ensure) never gets
+    // their old copies back.
+    for (const key of keys) this.entries.set(key, { ...this.entries.get(key)!, fetchedAt: 0 });
+    for (const key of keys) {
       const fetcher = this.fetchers.get(key);
-      if (this.listeners.has(key) && fetcher) {
-        if (this.inflight.has(key)) this.dirty.add(key); // the running request may hold old data: go again after it
-        else this.load(key, fetcher, true);
-      } else {
-        this.entries.set(key, { ...this.entries.get(key)!, fetchedAt: 0 });
-      }
+      if (!this.listeners.has(key) || !fetcher) continue;
+      if (this.inflight.has(key)) this.dirty.add(key); // the running request may hold old data: go again after it
+      else this.load(key, fetcher, true);
     }
   }
 

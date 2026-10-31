@@ -8,7 +8,7 @@ import { CanvasApiError } from '../api/client';
 import type { CanvasApi } from '../api/canvas';
 import type { Assignment, AssignmentGroup, Conversation, ConversationMessage, Course, CourseFile, DiscussionTopic, Enrollment, MailScope, Module, ModuleItem, Page, Recipient, Submission, UpcomingEvent, UserProfile } from '../api/types';
 import { computeGrade, toModel } from '../lib/grades';
-import { t } from '../i18n';
+import { getLanguage, t } from '../i18n';
 import { filesForExtension, sendMessage, type CapturedRecord, type Snapshot } from './bridge';
 import { checkedInstant, checkedNumber, checkedStatistics, dedupeIssues, ignoreIssues, looksLikeAssignmentOf, normalizeInstant, type IssueContext, type IssueSink, type ValueIssue } from './valueChecks';
 
@@ -64,7 +64,7 @@ export const SECTION_PATHS: Record<CourseSection, string[]> = {
  * Empty when the menu was never captured: nothing is assumed hidden.
  */
 export function hiddenSections(snapshot: Snapshot, courseId: number): Set<CourseSection> {
-  const nav = newestRecord(snapshot.records.filter((r) => r.kind === 'courseNav' && r.courseId === courseId));
+  const nav = newestRecord(datasetOf(snapshot).of('courseNav', courseId));
   const tabs = isObj(nav?.body) ? asArray(nav.body.tabs) : [];
   if (!tabs.length) return new Set();
   const shown = new Set(
@@ -467,7 +467,7 @@ export function snapshotHost(snapshot: Snapshot): string | null {
   return snapshot.canvasHost ?? newestRecord(snapshot.records)?.host ?? null;
 }
 
-/** One place that knows how to find things in a snapshot. */
+/** One place that knows how to find things in a snapshot. Built once per snapshot: use datasetOf(). */
 class Dataset {
   // Per kind, oldest first: sorted once here instead of on every lookup.
   private byKind = new Map<string, CapturedRecord[]>();
@@ -509,9 +509,18 @@ class Dataset {
   }
 }
 
+// Snapshots are never changed once loaded, so each is indexed (grouped by kind and sorted) once, however many helpers
+// and screens read it.
+const datasets = new WeakMap<Snapshot, Dataset>();
+function datasetOf(snapshot: Snapshot): Dataset {
+  let ds = datasets.get(snapshot);
+  if (!ds) datasets.set(snapshot, (ds = new Dataset(snapshot)));
+  return ds;
+}
+
 /** Courses the student has, merged from every source the extension may have seen. Concluded ones are flagged. */
 export function knownCourses(snapshot: Snapshot): CourseSummary[] {
-  const ds = new Dataset(snapshot);
+  const ds = datasetOf(snapshot);
   const byId = new Map<number, CourseSummary>();
   const set = (id: unknown, name: unknown, concluded: boolean) => {
     const n = Number(id);
@@ -552,7 +561,7 @@ export function knownCourses(snapshot: Snapshot): CourseSummary[] {
  */
 export function pinnedIds(snapshot: Snapshot): Set<number> | null {
   if (snapshot.appPinned && snapshot.appPinned.length) return new Set(snapshot.appPinned);
-  const cards = new Dataset(snapshot).newest('dashboardCards');
+  const cards = datasetOf(snapshot).newest('dashboardCards');
   if (!cards) return null;
   const ids = asArray(cards.body)
     .map((c) => Number(c.id ?? /^course_(\d+)$/.exec(String(c.assetString ?? ''))?.[1]))
@@ -576,7 +585,9 @@ export function coverage(snapshot: Snapshot) {
 
 /** When a course's data was last captured (ms), or null if never. */
 export function courseUpdatedAt(snapshot: Snapshot, courseId: number): number | null {
-  return newestRecord(snapshot.records.filter((r) => r.courseId === courseId))?.capturedAt ?? null;
+  let at: number | null = null;
+  for (const r of snapshot.records) if (r.courseId === courseId && (at === null || r.capturedAt > at)) at = r.capturedAt;
+  return at;
 }
 
 /** Newest capture of anything, or null. */
@@ -622,10 +633,11 @@ export function freshnessByType(snapshot: Snapshot, courseId: number | null, now
   const working = new Set(workingCourses(snapshot).map((c) => c.id));
   const inScope = (r: CapturedRecord) => (courseId !== null ? r.courseId === courseId : r.courseId === null || working.has(r.courseId));
   const hiddenHere = courseId !== null ? hiddenSections(snapshot, courseId) : new Set<CourseSection>();
+  const ds = datasetOf(snapshot);
   const out: Freshness[] = [];
   for (const type of FRESHNESS_TYPES) {
     if (courseId !== null && type.account) continue;
-    let updatedAt = newestRecord(snapshot.records.filter((r) => type.kinds.includes(r.kind) && inScope(r)))?.capturedAt ?? null;
+    let updatedAt = newestRecord(type.kinds.flatMap((kind) => ds.of(kind).filter(inScope)))?.capturedAt ?? null;
     // Folder listings carry no course in their address; they count for the courses their files belong to.
     if (type.key === 'files') {
       const listed = folderListings(snapshot.records).filter((r) =>
@@ -652,7 +664,7 @@ export function failingKinds(snapshot: Snapshot): string[] {
 }
 
 export function baseUrlOf(snapshot: Snapshot): string | null {
-  const host = new Dataset(snapshot).host;
+  const host = datasetOf(snapshot).host;
   return host ? `https://${host}` : null;
 }
 
@@ -678,7 +690,7 @@ export function valueIssues(snapshot: Snapshot): ValueIssue[] {
     x.courseWithGrade(c);
   }
   // A rubric the assignment's own page had but could not be read (the newest page of each assignment).
-  const ds = new Dataset(snapshot);
+  const ds = datasetOf(snapshot);
   for (const c of working) {
     const newest = new Map<number, Obj>();
     for (const r of ds.of('assignmentPage', c.id)) if (isObj(r.body)) newest.set(Number(r.body.id), r.body);
@@ -708,12 +720,24 @@ export function usableSnapshot(snapshot: Snapshot): Snapshot {
 
 function extensionInternals(fullSnapshot: Snapshot, onIssue: IssueSink) {
   const snapshot = usableSnapshot(fullSnapshot);
-  const ds = new Dataset(snapshot);
+  const ds = datasetOf(snapshot);
   let byId: Map<string, Obj[]> | null = null;
   const objectsWithId = (id: number | string) => (byId ??= indexById(snapshot.records)).get(String(id)) ?? [];
 
+  // The snapshot never changes, so what is worked out from it (a course's assignments, pages, units...) is worked out
+  // once, not on every screen and query that asks; per language, as some of it carries translated names. Results are
+  // shared between callers and must not be changed.
+  const memo = <A, R>(fn: (arg: A) => R, keyOf: (arg: A) => unknown = (arg) => arg) => {
+    const cache = new Map<string, R>();
+    return (arg: A): R => {
+      const key = `${getLanguage()}:${keyOf(arg)}`;
+      if (!cache.has(key)) cache.set(key, fn(arg));
+      return cache.get(key)!;
+    };
+  };
+
   // Each assignment's own page (kind assignmentPage), by assignment id: the newest capture of each.
-  function pageDetailsOf(courseId: number): Map<number, { at: number; body: Obj }> {
+  const pageDetailsOf = memo(function pageDetailsOf(courseId: number): Map<number, { at: number; body: Obj }> {
     const out = new Map<number, { at: number; body: Obj }>();
     for (const r of ds.of('assignmentPage', courseId)) {
       if (!isObj(r.body)) continue;
@@ -722,7 +746,7 @@ function extensionInternals(fullSnapshot: Snapshot, onIssue: IssueSink) {
       if (Number.isInteger(id) && id > 0) out.set(id, { at: r.capturedAt, body }); // oldest first, so the newest wins
     }
     return out;
-  }
+  });
 
   // When a score for this course was last captured: the submissions list, a submission, gradebook groups, an
   // assignment list or an assignment that carry submissions, or a Grades page.
@@ -742,7 +766,7 @@ function extensionInternals(fullSnapshot: Snapshot, onIssue: IssueSink) {
 
   // Assignments for a course: from the gradebook groups and the plain assignment list, with the student's own
   // submission attached from the submissions list.
-  function groupsOf(courseId: number): AssignmentGroup[] {
+  const groupsOf = memo(function groupsOf(courseId: number): AssignmentGroup[] {
     // The student's own submissions, from the submissions list; when each was captured is kept, so it can be compared
     // with a submission embedded in an assignment_groups capture of a different time.
     const submissions = new Map<number, Submission>();
@@ -872,9 +896,9 @@ function extensionInternals(fullSnapshot: Snapshot, onIssue: IssueSink) {
       if (!g.name) g.name = t('Assignment group');
     }
     return [...groups.values()].sort((a, b) => a.position - b.position);
-  }
+  });
 
-  function assignmentsOf(courseId: number): Assignment[] {
+  const assignmentsOf = memo(function assignmentsOf(courseId: number): Assignment[] {
     const merged = new Map<number, Assignment>();
     for (const g of groupsOf(courseId)) for (const a of g.assignments ?? []) merged.set(a.id, a);
     // Assignments the plain list has but no group did (e.g. the Assignments page was visited, the Grades page was not).
@@ -911,9 +935,10 @@ function extensionInternals(fullSnapshot: Snapshot, onIssue: IssueSink) {
       }
     }
     return [...merged.values()].sort((a, b) => (a.due_at ?? '9999').localeCompare(b.due_at ?? '9999'));
-  }
+  });
 
-  function courseWithGrade(summary: CourseSummary): Course {
+  // By course id: every summary of one snapshot says the same about a course.
+  const courseWithGrade = memo(function courseWithGrade(summary: CourseSummary): Course {
     const full =
       (ds.newest('course', summary.id)?.body as Obj | undefined) ??
       ds.items('userCourses').find((c) => Number(c.id) === summary.id) ??
@@ -967,9 +992,9 @@ function extensionInternals(fullSnapshot: Snapshot, onIssue: IssueSink) {
       name: summary.name ?? course.name ?? `Course ${summary.id}`,
       enrollments: [...(course.enrollments?.filter((e) => e.type !== 'student') ?? []), enrollment],
     };
-  }
+  }, (summary) => summary.id);
 
-  function modulesOf(courseId: number): Module[] {
+  const modulesOf = memo(function modulesOf(courseId: number): Module[] {
     const itemsByModule = new Map<number, ModuleItem[]>();
     for (const r of ds.of('moduleItems', courseId)) {
       const mid = Number(/\/modules\/(\d+)\/items/.exec(r.url)?.[1]);
@@ -989,12 +1014,12 @@ function extensionInternals(fullSnapshot: Snapshot, onIssue: IssueSink) {
       byId.set(m.id, { ...byId.get(m.id), ...m, items: m.items ?? itemsByModule.get(m.id) ?? byId.get(m.id)?.items });
     }
     return [...byId.values()].sort((a, b) => a.position - b.position);
-  }
+  });
 
   // Announcements and discussions for a course. Canvas serves them as one topic list asked two ways: with
   // only_announcements=true (the announcements page) and without (the discussions page). Which lists were captured
   // matters: a list that was never captured is "not synced", not "empty".
-  function topicsOf(courseId: number) {
+  const topicsOf = memo(function topicsOf(courseId: number) {
     const announcements = new Map<number, DiscussionTopic>();
     const discussions = new Map<number, DiscussionTopic>();
     let haveAnnouncements = false;
@@ -1052,7 +1077,7 @@ function extensionInternals(fullSnapshot: Snapshot, onIssue: IssueSink) {
     if (!haveAnnouncements && opened('announcements')) haveAnnouncements = true;
     const newest = (m: Map<number, DiscussionTopic>) => [...m.values()].sort((a, b) => (b.posted_at ?? '').localeCompare(a.posted_at ?? ''));
     return { announcements: newest(announcements), discussions: newest(discussions), haveAnnouncements, haveDiscussions };
-  }
+  });
 
   /** Wiki page id -> slug, from every captured page of the course (module items on the Modules page carry only the id). */
   function pageSlugs(courseId: number): Map<number, string> {
@@ -1061,7 +1086,7 @@ function extensionInternals(fullSnapshot: Snapshot, onIssue: IssueSink) {
     return out;
   }
 
-  function pagesOf(courseId: number): Page[] {
+  const pagesOf = memo(function pagesOf(courseId: number): Page[] {
     const out = new Map<string, Page>();
     const add = (p: Obj) => {
       const page = normalizeIds(p) as unknown as Page;
@@ -1081,9 +1106,10 @@ function extensionInternals(fullSnapshot: Snapshot, onIssue: IssueSink) {
       return i < 0 ? Number.MAX_SAFE_INTEGER : i;
     };
     return pages.map((p, i) => ({ p, i, at: at(p) })).sort((a, b) => a.at - b.at || a.i - b.i).map((x) => x.p);
-  }
+  });
+  const mail = memo((_all: 'all') => mailFrom(snapshot.records));
 
-  const profile = (): UserProfile => {
+  const profile = memo((_self: 'self'): UserProfile => {
     const body = ds.newest('profile')?.body;
     if (isObj(body)) return normalizeIds(body) as unknown as UserProfile;
     // Who is signed in, read from Canvas's own page (ENV.current_user): id and display name.
@@ -1093,10 +1119,11 @@ function extensionInternals(fullSnapshot: Snapshot, onIssue: IssueSink) {
     const course = ds.newest('course')?.body;
     const userId = isObj(course) ? asArray(course.enrollments)[0]?.user_id : undefined;
     return { id: Number(userId) || 0, name: 'Student' };
-  };
+  });
 
   // The school hides this section of the course in Canvas: say so, rather than "not synced yet".
-  const hidden = (courseId: number, section: CourseSection) => hiddenSections(snapshot, courseId).has(section);
+  const hiddenIn = memo((courseId: number) => hiddenSections(snapshot, courseId));
+  const hidden = (courseId: number, section: CourseSection) => hiddenIn(courseId).has(section);
   const courseNavKnown = (courseId: number) => ds.of('courseNav', courseId).length > 0;
   const sectionName: Record<CourseSection, string> = {
     assignments: t('Assignments'),
@@ -1111,7 +1138,7 @@ function extensionInternals(fullSnapshot: Snapshot, onIssue: IssueSink) {
   };
 
   const api: CanvasApi = {
-    getProfile: async () => profile(),
+    getProfile: async () => profile('self'),
 
     // Every current course, so Settings can list all of them to choose from; screens narrow it with the app's filter.
     // Sorted by name, as the API's /courses answers.
@@ -1246,16 +1273,17 @@ function extensionInternals(fullSnapshot: Snapshot, onIssue: IssueSink) {
     },
 
     getConversations: async (scope: MailScope) => {
-      const mail = mailFrom(snapshot.records);
-      if (!mail.size) throw notSynced(t('Your inbox'));
-      return [...mail.values()]
-        .filter((e) => e.scopes.has(scope) || (scope === 'sent' && [...e.messages.values()].some((m) => m.author_id === profile().id)))
+      const all = mail('all');
+      if (!all.size) throw notSynced(t('Your inbox'));
+      const me = profile('self').id;
+      return [...all.values()]
+        .filter((e) => e.scopes.has(scope) || (scope === 'sent' && [...e.messages.values()].some((m) => m.author_id === me)))
         .map((e) => e.conversation)
         .sort((a, b) => String(b.last_message_at ?? '').localeCompare(String(a.last_message_at ?? '')));
     },
 
     getConversation: async (id: number) => {
-      const e = mailFrom(snapshot.records).get(id);
+      const e = mail('all').get(id);
       if (!e) throw notSynced(t('This conversation'));
       return { ...e.conversation, messages: [...e.messages.values()].sort((a, b) => b.created_at.localeCompare(a.created_at)) };
     },
@@ -1263,7 +1291,7 @@ function extensionInternals(fullSnapshot: Snapshot, onIssue: IssueSink) {
     // The extension version leaves read state to Canvas (its threads are read without marking anything read).
     markConversationRead: async (id: number) => ({ id }) as unknown as Conversation,
 
-    getUnreadCount: async () => [...mailFrom(snapshot.records).values()].filter((e) => e.scopes.has('inbox') && e.conversation.workflow_state === 'unread').length,
+    getUnreadCount: async () => [...mail('all').values()].filter((e) => e.scopes.has('inbox') && e.conversation.workflow_state === 'unread').length,
 
     // Sent through the extension, from a Canvas tab it opens in the background (the click on Send is required).
     replyToConversation: async (id: number, body: string, files: File[] = []) => {

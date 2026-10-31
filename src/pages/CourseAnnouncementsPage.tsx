@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import type { DiscussionTopic } from '../api/types';
 import { HtmlContent } from '../components/HtmlContent';
@@ -11,7 +12,7 @@ import { t, tn } from '../i18n';
 // instructor-written HTML, so they go through HtmlContent. Replies are not loaded here: "Open in Canvas" goes to them.
 
 function Topic({ topic }: { topic: DiscussionTopic }) {
-  const preview = htmlText(topic.message ?? '').slice(0, 140);
+  const preview = useMemo(() => htmlText(topic.message ?? '').slice(0, 140), [topic.message]);
   return (
     <li className="py-3">
       <details>

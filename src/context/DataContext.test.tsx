@@ -176,6 +176,20 @@ describe('QueryStore.refreshAll', () => {
     expect(fetcher).toHaveBeenCalledTimes(2); // fetched when asked for again
   });
 
+  it('a reload that reads another key through ensure() gets that key fresh, not its old copy', async () => {
+    const store = new QueryStore();
+    let n = 0;
+    const part = vi.fn(async () => `part${++n}`);
+    const whole = () => store.ensure('part', part).then((p) => `whole(${p})`);
+    await store.ensure('whole', whole); // 'whole' is stored before 'part', so refreshAll meets it first
+    const unsubscribe = store.subscribe('whole', () => {});
+    store.refreshAll();
+    await tick();
+    await tick();
+    expect(store.get('whole')?.data).toBe('whole(part2)');
+    unsubscribe();
+  });
+
   it('goes again after a request that was already running, which may have held old data', async () => {
     const store = new QueryStore();
     let resolveFirst!: (v: string) => void;

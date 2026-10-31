@@ -1,6 +1,6 @@
 // One-liner hooks per resource. Adding a feature = adding a function here
 // (plus the endpoint in api/canvas.ts). Keys must include every fetcher input.
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useApi, useAuth } from '../context/AuthContext';
 import { pinnedIds } from '../extension/extensionApi';
 import { useCourseFilter } from '../context/CourseFilterContext';
@@ -39,13 +39,13 @@ export function useCourseColors(): (courseId: number) => string {
   const { data } = useCourses();
   const { styles } = useCourseStyles();
   const colors = useMemo(() => buildCourseColors((data ?? []).map((c) => c.id)), [data]);
-  return (courseId) => styles[courseId]?.color ?? colors.get(courseId) ?? NEUTRAL_COURSE_COLOR;
+  return useCallback((courseId) => styles[courseId]?.color ?? colors.get(courseId) ?? NEUTRAL_COURSE_COLOR, [styles, colors]);
 }
 
 /** `iconOf(courseId)`: the icon the user picked for that course (a book by default). */
 export function useCourseIcons(): (courseId: number) => CourseIconKey {
   const { styles } = useCourseStyles();
-  return (courseId) => styles[courseId]?.icon ?? DEFAULT_COURSE_ICON;
+  return useCallback((courseId) => styles[courseId]?.icon ?? DEFAULT_COURSE_ICON, [styles]);
 }
 
 export function useCourse(courseId: number) {
@@ -58,11 +58,15 @@ export function useAssignments(courseId: number) {
   return useQuery(`assignments:${courseId}`, () => api.getAssignments(courseId));
 }
 
-/** Assignments across several courses at once (one request per course, in parallel). */
+/**
+ * Assignments across several courses at once (one request per course, in parallel). Each course goes through its own
+ * entry, the one useAssignments reads, so the course screens and the cross-course ones share one copy.
+ */
 export function useAllAssignments(courseIds: number[]) {
   const api = useApi();
+  const store = useQueryStore();
   return useQuery(`assignments:all:${courseIds.join(',')}`, async () =>
-    (await Promise.all(courseIds.map((id) => api.getAssignments(id)))).flat(),
+    (await Promise.all(courseIds.map((id) => store.ensure(`assignments:${id}`, () => api.getAssignments(id))))).flat(),
   );
 }
 

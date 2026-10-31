@@ -21,10 +21,16 @@ const item = (active: boolean) =>
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { data: courses, error } = useVisibleCourses();
   const { data: unread, refetch: refetchUnread } = useUnreadCount();
-  // The unread count stays current while the app is open (and reloads at once after reading, see MessagesPage).
+  // The unread count stays current while the app is open (and reloads at once after reading, see MessagesPage). Not
+  // while the tab is in the background: it catches up when the student comes back to it.
   useEffect(() => {
-    const timer = setInterval(refetchUnread, 60_000);
-    return () => clearInterval(timer);
+    const timer = setInterval(() => document.hidden || refetchUnread(), 60_000);
+    const onVisible = () => document.hidden || refetchUnread();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [refetchUnread]);
   const { pathname } = useLocation();
   const currentCourseId = pathname.match(/^\/courses\/(\d+)/)?.[1];
