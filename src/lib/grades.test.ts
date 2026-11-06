@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AssignmentGroup } from '../api/types';
-import { computeGrade, gradeTrend, medianComparison, neededAverage, toModel, type GradeGroup, type GradeItem } from './grades';
+import { classPercentile, computeGrade, gradeTrend, medianComparison, neededAverage, toModel, type GradeGroup, type GradeItem } from './grades';
 
 let nextId = 1;
 const group = (id: number, weight: number, o: Partial<GradeGroup> = {}): GradeGroup => ({ id, name: `G${id}`, weight, position: id, dropLowest: 0, dropHighest: 0, neverDrop: [], ...o });
@@ -192,5 +192,45 @@ describe('toModel: never-drop ids sent as strings', () => {
     expect(model.groups[0].neverDrop).toEqual([700]);
     // Drop lowest 1, but 700 (the lowest) is protected, so 701 is dropped: 1/10. Before, 700 was dropped (9/10).
     expect(computeGrade(model.groups, model.items, { weighted: false }).current).toBeCloseTo(10);
+  });
+});
+
+describe('classPercentile', () => {
+  const stats = (min: number, lower_q: number | undefined, median: number, upper_q: number | undefined, max: number) => ({ min, lower_q, median, upper_q, max });
+
+  it('places your grade between the class grades at each quartile', () => {
+    const groups = [group(1, 0)];
+    const a = item(1, 10, 8);
+    const b = item(1, 10, 8);
+    // Class grades: min 20%, lower quartile 40%, median 60%, upper quartile 80%, max 100%. You: 80% -> 75th.
+    const s = new Map([[a.id, stats(2, 4, 6, 8, 10)], [b.id, stats(2, 4, 6, 8, 10)]]);
+    expect(classPercentile(groups, [a, b], false, s).percentile).toBeCloseTo(75);
+    const c = item(1, 10, 7);
+    expect(classPercentile(groups, [c], false, new Map([[c.id, stats(2, 4, 6, 8, 10)]])).percentile).toBeCloseTo(62.5);
+  });
+
+  it('uses only lowest, median and highest when an assignment has no quartiles', () => {
+    const a = item(1, 10, 8);
+    const r = classPercentile([group(1, 0)], [a], false, new Map([[a.id, stats(0, undefined, 6, undefined, 10)]]));
+    expect(r.percentile).toBeCloseTo(75); // halfway from the median (6) to the highest (10)
+  });
+
+  it('is 0 or 100 at the ends, and the middle of a stretch where many have the same grade', () => {
+    const groups = [group(1, 0)];
+    const top = item(1, 10, 10);
+    const bottom = item(1, 10, 1);
+    const mid = item(1, 10, 6);
+    expect(classPercentile(groups, [top], false, new Map([[top.id, stats(2, 4, 6, 8, 10)]])).percentile).toBe(100);
+    expect(classPercentile(groups, [bottom], false, new Map([[bottom.id, stats(2, 4, 6, 8, 10)]])).percentile).toBe(0);
+    expect(classPercentile(groups, [mid], false, new Map([[mid.id, stats(2, 6, 6, 6, 10)]])).percentile).toBeCloseTo(50);
+  });
+
+  it('counts only the graded assignments that have statistics, and says how many', () => {
+    const a = item(1, 10, 8);
+    const b = item(1, 10, 3); // no statistics: left out
+    const r = classPercentile([group(1, 0)], [a, b], false, new Map([[a.id, stats(2, 4, 6, 8, 10)]]));
+    expect(r).toMatchObject({ covered: 1, graded: 2 });
+    expect(r.percentile).toBeCloseTo(75);
+    expect(classPercentile([group(1, 0)], [b], false, new Map()).percentile).toBeNull();
   });
 });

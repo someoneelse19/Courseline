@@ -129,7 +129,7 @@ describe('screens', () => {
     ['/courses/1/assignments/5/submission', ['Your submission', '8 / 10', 'My lab']],
     ['/calendar', ['Calendar', 'Today']],
     ['/settings', ['Appearance', 'Accent color']],
-    ['/settings?tab=courses', ['Choose your courses', '1 of 1 selected', 'Course colors and icons']],
+    ['/settings?tab=courses', ['Choose your courses', '1 of 1 selected', 'Course order, colors and icons']],
     ['/nowhere', ['Page not found']],
   ])('%s', async (at, texts) => {
     await show(at);

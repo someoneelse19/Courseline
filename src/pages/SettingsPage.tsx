@@ -5,7 +5,6 @@ import { TokenForm } from '../components/TokenForm';
 import { useAuth } from '../context/AuthContext';
 import { usePull } from '../context/PullContext';
 import { API_ONLY } from '../edition';
-import { extensionInstalled } from '../extension/bridge';
 import { useExtensionSetup } from '../extension/useExtensionSetup';
 import { useSearchParams } from 'react-router-dom';
 import { Card, EmptyState, ErrorMessage, PageTitle, Spinner } from '../components/ui';
@@ -24,17 +23,16 @@ import { useLanguage } from '../context/LanguageContext';
 // card in the right tab below, or add a tab to TABS.
 type Tab = 'connection' | 'appearance' | 'courses';
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'connection', label: 'Connection' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'courses', label: 'Courses' },
+  { id: 'connection', label: 'Connection' },
 ];
 
 export function SettingsPage() {
   const [params, setParams] = useSearchParams();
-  // With the extension installed, the first thing to look at is the connection; otherwise Appearance, as before.
-  const fallback: Tab = extensionInstalled() ? 'connection' : 'appearance';
+  // The first tab (Appearance) unless the address asks for another.
   const asked = params.get('tab');
-  const tab: Tab = TABS.some((x) => x.id === asked) ? (asked as Tab) : fallback;
+  const tab: Tab = TABS.some((x) => x.id === asked) ? (asked as Tab) : TABS[0].id;
 
   return (
     <>
@@ -46,7 +44,7 @@ export function SettingsPage() {
             type="button"
             role="tab"
             aria-selected={tab === x.id}
-            onClick={() => setParams(x.id === fallback ? {} : { tab: x.id }, { replace: true })}
+            onClick={() => setParams(x.id === TABS[0].id ? {} : { tab: x.id }, { replace: true })}
             className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
               tab === x.id
                 ? 'border-accent-600 text-accent-700 dark:border-accent-400 dark:text-accent-300'
@@ -140,10 +138,9 @@ function ConnectionTab() {
             : t('Right now: an access token for {host}.', { host: baseUrl ?? '—' })}
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
-          {!usingExtension && !API_ONLY && (
+          {!usingExtension && setup.installed && (
             <button
               type="button"
-              disabled={!setup.installed || setup.recordCount === 0}
               onClick={enableExtension}
               className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
             >
@@ -158,22 +155,19 @@ function ConnectionTab() {
             {t('Log out')}
           </button>
         </div>
-        {!usingExtension && !API_ONLY && (!setup.installed || setup.recordCount === 0) && (
-          <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
-            {t('Set up the extension below first; this switches as soon as it has your data.')}
-          </p>
-        )}
       </Card>
 
-      {!API_ONLY && (
+      {/* The extension's own setup and tools: only while the data comes from it. With a token they do nothing; "Use
+          the extension instead" above leads to its sign-in, which sets it up. */}
+      {!API_ONLY && usingExtension && (
         <Card title={t('Browser extension')}>
           <CanvasConnection variant="settings" />
         </Card>
       )}
 
-      {setup.installed && <PullAPage />}
+      {usingExtension && <PullAPage />}
 
-      {setup.installed && setup.snapshot && (
+      {usingExtension && setup.snapshot && (
         <Card title={t('Everything captured')}>
           <p className="-mt-1 mb-3 text-sm text-neutral-500 dark:text-neutral-400">
             {t('Every response Canvas’s own pages loaded, saved on this computer. Courseline shows some of it; the rest is kept so nothing is lost.')}
@@ -358,28 +352,81 @@ function CoursePicker() {
 }
 
 function CourseStylePicker() {
-  const { data, error, refetch } = useVisibleCourses(); // only the courses chosen above
+  const { data, error, refetch } = useVisibleCourses(); // only the courses chosen above, in the user's order
   const { styles, setStyle, reset } = useCourseStyles();
+  const { order, setOrder } = useCourseFilter();
   const colorOf = useCourseColors();
   const iconOf = useCourseIcons();
   const [open, setOpen] = useState<number | null>(null);
+  const [dragging, setDragging] = useState<number | null>(null);
 
   if (error) return <ErrorMessage error={error} onRetry={refetch} />;
   if (!data) return <Spinner />;
 
+  // Puts one course at position `to` among the ones listed here; courses not selected keep their saved places after them.
+  const place = (id: number, to: number) => {
+    const ids = data.map((c) => c.id).filter((x) => x !== id);
+    ids.splice(Math.max(0, Math.min(to, ids.length)), 0, id);
+    setOrder([...ids, ...(order ?? []).filter((x) => !ids.includes(x))]);
+  };
+  const dropOn = (target: number) => {
+    if (dragging === null || dragging === target) return;
+    const from = data.findIndex((c) => c.id === dragging);
+    const at = data.filter((c) => c.id !== dragging).findIndex((c) => c.id === target);
+    place(dragging, from < data.findIndex((c) => c.id === target) ? at + 1 : at);
+  };
+  const arrow = 'rounded-sm px-1 text-xs leading-4 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 disabled:opacity-30 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100';
+
   return (
-    <Card title={t('Course colors and icons')}>
+    <Card
+      title={t('Course order, colors and icons')}
+      action={
+        order && (
+          <button type="button" onClick={() => setOrder(null)} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">
+            {t('Reset order')}
+          </button>
+        )
+      }
+    >
       <p className="-mt-1 mb-3 text-sm text-neutral-500 dark:text-neutral-400">
-        {t('Pick how each of your selected courses looks in the sidebar, calendar and course cards. Saved in this browser.')}
+        {t('Drag a course, or use its arrows, to set the order your courses appear in everywhere. Pick how each looks in the sidebar, calendar and course cards. Saved in this browser.')}
       </p>
       {data.length === 0 && <EmptyState>{t('No courses selected. Tick some under “Choose your courses”.')}</EmptyState>}
       <ul className="divide-y divide-neutral-200 dark:divide-neutral-800">
-        {data.map((c) => {
+        {data.map((c, i) => {
           const name = c.name ?? c.course_code ?? `Course ${c.id}`;
           const customized = !!styles[c.id];
           return (
-            <li key={c.id} className="py-2.5">
+            <li
+              key={c.id}
+              draggable
+              onDragStart={(e) => {
+                setDragging(c.id);
+                e.dataTransfer.effectAllowed = 'move';
+              }}
+              onDragOver={(e) => dragging !== null && e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                dropOn(c.id);
+                setDragging(null);
+              }}
+              onDragEnd={() => setDragging(null)}
+              className={`py-2.5 ${dragging === c.id ? 'opacity-40' : ''}`}
+            >
               <div className="flex items-center gap-3">
+                <span className="flex shrink-0 items-center gap-1">
+                  <span aria-hidden title={t('Drag to reorder')} className="cursor-grab select-none px-0.5 text-neutral-400 active:cursor-grabbing">
+                    ⠿
+                  </span>
+                  <span className="flex flex-col">
+                    <button type="button" className={arrow} disabled={i === 0} onClick={() => place(c.id, i - 1)} aria-label={t('Move {name} up', { name })}>
+                      ▲
+                    </button>
+                    <button type="button" className={arrow} disabled={i === data.length - 1} onClick={() => place(c.id, i + 1)} aria-label={t('Move {name} down', { name })}>
+                      ▼
+                    </button>
+                  </span>
+                </span>
                 <button
                   type="button"
                   onClick={() => setOpen(open === c.id ? null : c.id)}

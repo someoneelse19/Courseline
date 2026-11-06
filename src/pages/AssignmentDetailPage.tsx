@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { Assignment, RubricCriterion, Submission } from '../api/types';
 import { assignmentStatus } from '../components/AssignmentList';
@@ -8,6 +8,7 @@ import { Card, EmptyState, ErrorMessage, Spinner } from '../components/ui';
 import { useApi, useAuth } from '../context/AuthContext';
 import { useFileViewer } from '../context/FileViewerContext';
 import { useAssignment, useMySubmission } from '../hooks/useCanvasData';
+import { markSeen } from '../lib/seen';
 import { formatDue } from '../lib/format';
 import { htmlText, linkedFiles } from '../lib/html';
 import { t } from '../i18n';
@@ -39,6 +40,9 @@ export function AssignmentDetailPage() {
   const readOnly = source === 'extension';
 
   const assignment = useAssignment(courseId, assignmentId);
+  useEffect(() => {
+    if (assignment.data) markSeen(courseId, 'assignments', [assignmentId]);
+  }, [courseId, assignmentId, assignment.data]);
   const submission = useMySubmission(courseId, assignmentId);
   const description = assignment.data?.description ?? '';
   const attachedFiles = useMemo(() => linkedFiles(description), [description]);

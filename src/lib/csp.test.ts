@@ -15,6 +15,10 @@ describe('contentSecurityPolicy', () => {
     expect(script).not.toMatch(/ https:( |$)/);
   });
 
+  it('lets frames load only from here and the known video players', () => {
+    expect(prod).toContain("frame-src 'self' https://player.vimeo.com https://www.youtube.com https://www.youtube-nocookie.com");
+  });
+
   it('only the dev policy talks to the dev server over a websocket', () => {
     expect(dev).toContain('ws://localhost:*');
     expect(prod).not.toContain('ws://');

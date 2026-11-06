@@ -62,6 +62,8 @@
   .canvas-html ol { @apply list-decimal pl-6; }
   .canvas-html a { @apply text-accent-600 underline dark:text-accent-400; }
   .canvas-html img { @apply h-auto max-w-full; }
+  /* Embedded video players (the only iframes kept): never wider than the card. */
+  .canvas-html iframe { @apply max-w-full border-0; }
   .canvas-html table { @apply border-collapse; }
   .canvas-html th, .canvas-html td { @apply border border-neutral-300 px-2 py-1 dark:border-neutral-700; }
   /* Canvas marks up file/external links with SVG icons (stripped by sanitizing) and screenreader-only labels. */

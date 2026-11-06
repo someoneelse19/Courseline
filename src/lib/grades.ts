@@ -224,3 +224,63 @@ export function medianComparison(groups: GradeGroup[], items: GradeItem[], weigh
     graded: gradedItems.length,
   };
 }
+
+/** The class statistics of one assignment that the percentile reads (Canvas's score_statistics). */
+export interface QuantileStats {
+  min: number;
+  lower_q?: number;
+  median: number;
+  upper_q?: number;
+  max: number;
+}
+
+export interface ClassPercentile {
+  percentile: number | null; // 0-100: the share of the class estimated to have a lower grade
+  covered: number; // graded assignments that have class statistics
+  graded: number; // all graded assignments
+}
+
+/**
+ * Estimates your percentile in the class. Canvas publishes each assignment's lowest, quartiles, median and highest
+ * score, not each student's total, so the class's grade at each of those points is approximated the way
+ * medianComparison does it: your graded work re-scored at that point of every assignment (as if students kept the
+ * same rank on every assignment, which spreads the class out more than it really is). Your grade over the same work is
+ * then placed between those grades. The quartiles are used only when every assignment has them.
+ */
+export function classPercentile(groups: GradeGroup[], items: GradeItem[], weighted: boolean, stats: Map<number, QuantileStats>): ClassPercentile {
+  const gradedItems = items.filter((i) => i.score != null && !i.excused && !i.omitted);
+  const covered = gradedItems.filter((i) => stats.has(i.id));
+  const out = { covered: covered.length, graded: gradedItems.length };
+  if (!covered.length) return { percentile: null, ...out };
+  const only = new Set(covered.map((i) => i.id));
+  const you = computeGrade(groups, items, { weighted, onlyGraded: only }).current;
+  if (you == null) return { percentile: null, ...out };
+
+  const quartiles = covered.every((i) => stats.get(i.id)!.lower_q != null && stats.get(i.id)!.upper_q != null);
+  const levels: Array<[number, keyof QuantileStats]> = quartiles
+    ? [[0, 'min'], [25, 'lower_q'], [50, 'median'], [75, 'upper_q'], [100, 'max']]
+    : [[0, 'min'], [50, 'median'], [100, 'max']];
+  // The class's grade at each level; kept in order (drop rules can make the maths step back a little).
+  const curve: Array<[number, number]> = [];
+  for (const [p, key] of levels) {
+    const overrides: Record<number, number | null> = {};
+    for (const i of items) overrides[i.id] = only.has(i.id) ? (stats.get(i.id)![key] as number) : null;
+    const grade = computeGrade(groups, items, { weighted, overrides }).current;
+    if (grade == null) return { percentile: null, ...out };
+    curve.push([p, Math.max(grade, curve.at(-1)?.[1] ?? -Infinity)]);
+  }
+
+  if (you < curve[0][1]) return { percentile: 0, ...out };
+  if (you > curve.at(-1)![1]) return { percentile: 100, ...out };
+  // Where your grade falls on the curve. On a flat stretch (many students with the same grade) the middle of it.
+  const crossings: number[] = [];
+  for (let k = 0; k + 1 < curve.length; k++) {
+    const [p0, g0] = curve[k];
+    const [p1, g1] = curve[k + 1];
+    if (you < g0 || you > g1) continue;
+    crossings.push(g1 === g0 ? p0 : p0 + ((you - g0) / (g1 - g0)) * (p1 - p0));
+    if (g1 === g0) crossings.push(p1);
+  }
+  const percentile = crossings.length ? (Math.min(...crossings) + Math.max(...crossings)) / 2 : null;
+  return { percentile, ...out };
+}

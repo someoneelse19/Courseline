@@ -5,6 +5,7 @@ import { ErrorMessage, Spinner } from './ui';
 import { t } from '../i18n';
 import { readWorkbookStyles, type CellStyle, type SheetLayout, type WorkbookStyles } from '../lib/xlsxStyles';
 import { applyMasterBodyStyles } from '../lib/pptxFix';
+import { pdfjsAssets } from '../lib/pdfjsAssets';
 
 const Editor = lazy(() => import('@monaco-editor/react').then(m => ({ default: m.default })));
 
@@ -183,12 +184,12 @@ function PdfViewer({ fileUrl, zoom }: { fileUrl: string; zoom: number }) {
         const openOnMainThread = async () => {
           step(t('Opening the document (compatibility mode)…'), 'opening the document in compatibility mode');
           (globalThis as { pdfjsWorker?: unknown }).pdfjsWorker = await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs');
-          return pdfjs.getDocument({ data }).promise;
+          return pdfjs.getDocument({ data, ...pdfjsAssets() }).promise;
         };
         if (pdfWorkerUnresponsive) {
           doc = await openOnMainThread();
         } else {
-          const attempt = pdfjs.getDocument({ data: data.slice() });
+          const attempt = pdfjs.getDocument({ data: data.slice(), ...pdfjsAssets() });
           try {
             doc = await withTimeout(attempt.promise, WORKER_OPEN_MS);
           } catch (err) {
@@ -346,10 +347,43 @@ const frameBase = 'overflow-auto rounded-lg border border-neutral-300 dark:borde
 const officeFrame = `${frameBase} h-full bg-neutral-200 p-3 dark:bg-neutral-800 [&>div]:[zoom:var(--z)]`;
 const zoomVar = (zoom: number) => ({ ['--z' as string]: zoom }) as React.CSSProperties;
 
+// A document names its fonts only ("Aptos", Word's default since 2023, or Calibri, Cambria...). A Mac or Linux browser
+// usually has none of them and would fall back to its default serif, so each gets stand-ins of the same kind.
+const GENERIC_FONT = /\b(serif|sans-serif|monospace|cursive|fantasy|system-ui)\b/i;
+const SERIF_FONT = /cambria|georgia|times|garamond|palatino|book antiqua|constantia|baskerville|bookman|century schoolbook/i;
+const MONO_FONT = /consolas|courier|mono|menlo|lucida console/i;
+export function withFontFallback(family: string): string {
+  if (!family.trim() || GENERIC_FONT.test(family)) return family;
+  if (MONO_FONT.test(family)) return `${family}, Menlo, Consolas, "Courier New", monospace`;
+  if (SERIF_FONT.test(family)) return `${family}, Cambria, Georgia, "Times New Roman", serif`;
+  return `${family}, Aptos, Calibri, Carlito, "Helvetica Neue", Arial, sans-serif`;
+}
+
+/** The rendered document's fonts with fallbacks: inline styles and docx-preview's own stylesheet. */
+function addFontFallbacks(host: HTMLElement) {
+  host.querySelectorAll<HTMLElement>('[style*="font-family"]').forEach((el) => {
+    el.style.fontFamily = withFontFallback(el.style.fontFamily);
+  });
+  host.querySelectorAll('style').forEach((style) => {
+    // Not inside @font-face, where font-family names the embedded font and takes no list.
+    const faces: string[] = [];
+    const css = (style.textContent ?? '').replace(/@font-face\s*{[^}]*}/g, (face) => `\u0000${faces.push(face) - 1}\u0000`);
+    style.textContent = css
+      .replace(/font-family:\s*([^;}]+)/g, (_, family: string) => `font-family: ${withFontFallback(family.trim())}`)
+      .replace(/\u0000(\d+)\u0000/g, (_, i: string) => faces[Number(i)]);
+  });
+}
+
 function DocxViewer({ fileUrl, zoom }: { fileUrl: string; zoom: number }) {
   const { ref, status } = useOfficeRender(fileUrl, async (bytes, host) => {
     const { renderAsync } = await import('docx-preview');
     await renderAsync(bytes, host, undefined, { className: 'docx', inWrapper: true, breakPages: true, ignoreLastRenderedPageBreak: true });
+    addFontFallbacks(host);
+    // docx-preview hyphenates every paragraph; Word does not (unless the document turns it on), so words would break
+    // where they do not in Word ("PRELIMI-NARY").
+    const words = document.createElement('style');
+    words.textContent = '.docx { hyphens: manual; }';
+    host.append(words);
     // Hyperlinks come straight from the document: keep only web/mail links, never javascript: and co.
     host.querySelectorAll('a').forEach((a) => {
       const href = a.getAttribute('href') ?? '';
