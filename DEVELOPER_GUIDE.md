@@ -79,7 +79,7 @@ same file on both, so anything that exists only on `dev` is marked so.
 | Browser extension (`dev` only: capture, background-tab sync, preview, link following, in-page data, sidebar status, sending messages) | Works, tested in a **real Chrome against a mock Canvas** (`npm run e2e`, 55 checks, including a restricted course; sending messages is not in it). **Tried against one real school's Canvas** (Oct 30, 2026): what differed from the mock is in the gotchas table ("Exceptions seen on one school") and now in the mock; other schools may differ again (see Pending) |
 | API-token edition (`main`) | Works: the same app with the extension paths turned off (see [Branches and editions](#branches-and-editions)). CI builds it on every push to `main`; its login page is unit-tested with the switch mocked (`LoginPage.apiOnly.test.tsx`); every other test runs the full app |
 | Announcements and discussions per course | Works in both modes (token: Canvas API; extension, on `dev`: from captured pages) |
-| Automated tests | **~580 unit tests** (Vitest, in `src/` and `extension/`): API client, endpoints, grades, HTML sanitizing, cache, accent colors, the submission form, messages, spreadsheet formatting, the system clock, the API-token edition's login page, the extension's logic, the app's extension mode, and a smoke test that renders every screen except Messages against a fake Canvas. **`npm run e2e`** (`dev` only) drives a real Chrome with the unpacked extension through sign-in, sync, preview, stop, refresh, pull-a-page, linked pages, a restricted course, the popup, logout and signing back in, switching address and clearing captured data. CI runs typecheck, the unit tests and the build on every push to `main` and on pull requests, not on pushes to `dev` (the e2e needs a local Chrome, so it is run by hand) |
+| Automated tests | **~600 unit tests** (Vitest, in `src/` and `extension/`): API client, endpoints, grades, HTML sanitizing, cache, accent colors, the submission form, messages, spreadsheet formatting, the system clock, the API-token edition's login page, the extension's logic, the app's extension mode, and a smoke test that renders every screen except Messages against a fake Canvas. **`npm run e2e`** (`dev` only) drives a real Chrome with the unpacked extension through sign-in, sync, preview, stop, refresh, pull-a-page, linked pages, a restricted course, the popup, logout and signing back in, switching address and clearing captured data. CI runs typecheck, the unit tests and the build on every push to `main` and on pull requests, not on pushes to `dev` (the e2e needs a local Chrome, so it is run by hand) |
 | Deployment | **Not supported** as-is (token lives in the browser; dev proxy is dev-only) |
 
 The author uses the app day to day, with a token, against a real school's Canvas. The automated tests (`src/**/*.test.ts(x)`, `extension/**/*.test.js`, and `npm run e2e` with `e2e/mock-canvas.mjs`) use a fake
@@ -291,7 +291,7 @@ Config files sit in the project root.
 |---|---|
 | `index.html` | HTML shell. Carries `<meta name="courseline-app">`, which tells the extension's `bridge.js` that this page is the app (the API-token build removes it). Contains an **inline script** that applies the saved dark mode and accent color *before first paint* (prevents a flash), after moving settings saved under the app's old name (`better-canvas.*` keys) to `courseline.*`. Keep it in sync with `ThemeContext.tsx`. |
 | `edition.json`, `src/edition.ts` | The edition switch. `"apiOnly": true` (the `main` branch), or `COURSELINE_EDITION=api` at build time, makes the API-token edition: `vite.config.ts` defines `__API_ONLY__`, drops `<meta name="courseline-app">` (so `extension/bridge.js` ignores the page), and `API_ONLY` turns off `extensionInstalled()`, the extension sign-in, the sidebar status, the pinned-course sync, the extension's "open the plan" request and the Settings extension cards. Tests always run the full app (`mode === 'test'`); `LoginPage.apiOnly.test.tsx` mocks the switch. Keep `edition.json` out of `dev` → `main` merges' conflicts by never editing it on `dev`. |
-| `vite.config.ts` | Vite + React + Tailwind plugins, and the Vitest config (jsdom; runs `src/**/*.test.{ts,tsx}` and `extension/**/*.test.js`). Defines the optional **dev proxy** (`/canvas-proxy` → `VITE_CANVAS_BASE_URL`, with `followRedirects`; only when `VITE_USE_DEV_PROXY=true`), the CSP meta tag (from `lib/csp.ts`), the `courseline-clock` meta tag (dev server only: the Mac's time settings, from `lib/systemClockServer.ts`), and the edition: `__API_ONLY__`, plus removing `<meta name="courseline-app">` in the API-token edition (see `edition.json`). Raises the chunk-size warning to 1,400 KB because the file viewers are separate, lazily loaded chunks. |
+| `vite.config.ts` | Vite + React + Tailwind plugins, and the Vitest config (jsdom; runs `src/**/*.test.{ts,tsx}` and `extension/**/*.test.js`). Defines the optional **dev proxy** (`/canvas-proxy` → `VITE_CANVAS_BASE_URL`, with `followRedirects`; only when `VITE_USE_DEV_PROXY=true`), the CSP meta tag (from `lib/csp.ts`), the `courseline-clock` meta tag (dev server only: the Mac's time settings, from `lib/systemClockServer.ts`), and the edition: `__API_ONLY__`, plus removing `<meta name="courseline-app">` in the API-token edition (see `edition.json`). Raises the chunk-size warning to 1,400 KB because the file viewers are separate, lazily loaded chunks. Serves PDF.js's decoders, fonts and character maps at `/pdfjs/` and copies them into the build (`pdfjsAssets`; see 6.9). |
 | *(no `tailwind.config.js`)* | Tailwind 4 is configured in CSS, in `src/index.css` (`@theme`, `@custom-variant`, `@source`), and runs as a Vite plugin. There is no PostCSS config either. |
 | `tsconfig.json` | Strict TypeScript, **`noUnusedLocals` and `noUnusedParameters` on** (an unused import fails the build). |
 | `.env`, `.env.example` | Environment (see [3](#3-run-it)). |
@@ -322,10 +322,10 @@ Config files sit in the project root.
 | `AuthContext.tsx` | Sign-in and where data comes from; builds the `api` object. With a token: credentials in localStorage (`courseline.credentials`, else the `.env` values), the profile check, `createCanvasApi`, and logout on any 401. With the extension installed, no token saved and the extension not skipped (`dev` only): the extension's snapshot through `src/extension/bridge.ts`, loaded again 1.5 s after the extension reports a change, and `createExtensionApi` (see "Extension mode (app side)" below). Exposes `source` (`'token'` or `'extension'`), `snapshot`, `dataVersion` (changes with each new snapshot), `extensionAvailable` and `enableExtension()`. `useAuth()`, `useApi()`. In the API-token edition `extensionInstalled()` is always false, so only the token path runs. |
 | `DataContext.tsx` | The keyed response cache behind `useQuery` (`QueryStore`; freshness, `ensure` and `prime` in [6.4](#64-cache-and-hooks)). `refreshAll()` marks everything stale, then reloads what is on screen in place, for when the extension captured something new. `useQueryStore()`. |
 | `ThemeContext.tsx` | Dark/light mode **and** custom accent color. `useTheme()`. |
-| `CourseStyleContext.tsx` | The user's own color and icon per course (Settings → Course colors and icons, which lists only the courses selected under Choose your courses), saved in localStorage. `useCourseStyles()`; read through `useCourseColors()` / `useCourseIcons()`. |
+| `CourseStyleContext.tsx` | The user's own color and icon per course (Settings → Course order, colors and icons, which lists only the courses selected under Choose your courses), saved in localStorage. `useCourseStyles()`; read through `useCourseColors()` / `useCourseIcons()`. |
 | `LanguageContext.tsx` | The app language (English, Spanish or Brazilian Portuguese): saved choice, else the browser's. `useLanguage()`. Changing it remounts the tree so every `t()` call re-renders. |
 | `src/i18n/index.ts`, `src/i18n/es.ts`, `src/i18n/pt.ts` (not in `context/`) | `t('English text', { vars })` and the Spanish and Brazilian Portuguese dictionaries; `getLocale()` gives the date/number locale (`pt-BR` for Portuguese). English text is the key; a missing key falls back to English. |
-| `CourseFilterContext.tsx` | Which courses to show (Settings → Choose your courses), saved as `courseline.selected-courses`. `useCourseFilter()`; `useOptionalCourseFilter()` returns null outside the provider (the login page). In extension mode `components/ExtensionPinnedSync.tsx` sends the same choice to the extension, and Sync now plans only those courses (not in the API-token edition). |
+| `CourseFilterContext.tsx` | Which courses to show (Settings → Choose your courses), saved as `courseline.selected-courses`, and the order they go in (Settings → Course order, colors and icons: drag, or the ▲ ▼ buttons; **Reset order**), saved as `courseline.course-order` and applied by `useVisibleCourses` (`orderCourses`: the ordered ones first, any others after as they came). `useCourseFilter()`; `useOptionalCourseFilter()` returns null outside the provider (the login page). In extension mode `components/ExtensionPinnedSync.tsx` sends the same choice to the extension, and Sync now plans only those courses (not in the API-token edition). |
 | `FileViewerContext.tsx` | The shared viewer modal. `useFileViewer().openFile(...)`. In extension mode (no token, so no download) it opens the file in Canvas in a new tab instead. |
 | `PullContext.tsx` | Sync now, for the extension (`dev` only). Every request that makes the extension open Canvas pages goes through it: `requestSync` (the chosen courses; with "everything" it then opens the pages they link to, round after round, until nothing new turns up), `requestDeepSync` (Pull linked pages), `refreshCourse`, `refreshKind` (one kind of data) and `pullAddress` (one address typed in Settings). Shows the plan, Start, the live preview and Stop in `components/PullPanel.tsx`; plans come from `extension/pullPlan.ts` and `extension/linkDiscovery.ts`. `usePull()`. Mounted in `main.tsx` outside the auth gate. In the API-token edition the buttons that open it are hidden and it ignores the extension's "open the plan" request, but Settings → Connection with `?sync=1` still calls `requestSync`. |
 
@@ -340,7 +340,7 @@ Config files sit in the project root.
 
 | File | Purpose |
 |---|---|
-| `grades.ts` | The grade maths (group weights, drop rules, what-if, trend, goal solver, and `medianComparison`, the class median estimate) and `toModel` (Canvas assignment groups → the model). See [6.10](#610-grades). Fully unit-testable. |
+| `grades.ts` | The grade maths (group weights, drop rules, what-if, trend, goal solver, `medianComparison`, the class median estimate, and `classPercentile`, your estimated percentile) and `toModel` (Canvas assignment groups → the model). See [6.10](#610-grades). Fully unit-testable. |
 | `accent.ts` | Accent presets and the function that turns one hex color into a full 11-step palette. |
 | `pptxFix.ts` | `applyMasterBodyStyles()`: before a PowerPoint file is previewed, copies the master's body text style (bullets, sizes) into empty body placeholders and top-anchors them, because pptx-preview never reads `<p:bodyStyle>` (it only does titles). Returns the original bytes if there is nothing to do or the file can't be read. |
 | `htmlToMarkdown.ts` | Canvas HTML → Markdown (headings, lists, tables, links, equations as LaTeX, image descriptions). |
@@ -348,13 +348,14 @@ Config files sit in the project root.
 | `courseExport.ts` | Pure: turns the gathered course data into the export's documents (README, ALL_TEXT, syllabus, units, pages, assignments, file text, manifest) and rewrites Canvas links to the local copies. |
 | `courseExportRunner.ts` | `scanCourse()` reads the course from Canvas; `packExport()`/`buildExportZip()` download files, extract text and zip. Cancellable, 3 downloads at a time. |
 | `format.ts` | Dates (in the app language, with the computer's 12/24-hour clock through `withClock`), relative times (`formatAgo`, and `formatAgoShort` for narrow columns), grades, byte sizes, `courseIdFromContext`. |
+| `seen.ts` | What the student has already seen in each course (announcements, assignments), kept in this browser (`courseline.seen`), for the dots on the course tabs: `markSeen`, `useSeen`, `isNew`. Canvas has no "seen" for assignments, and reading an announcement here does not mark it read in Canvas, so: new = not seen here, not read in Canvas (`read_state`), and not dated before the course's record started (an old item that only turns up later, say from a page the extension had not captured, was already there); Canvas's own "unread" always counts. The first time a course's lists load (`useNewInCourse` in `hooks/useCanvasData.ts`) what is there becomes the starting point. Opening the Assignments tab marks its assignments seen, opening one assignment marks it, and opening Announcements marks its announcements (which keep a **New** label for that visit). |
 | `systemClock.ts`, `systemClockServer.ts` | The computer's 12/24-hour clock and first weekday. Browsers don't expose them (Chrome on a Mac ignores the 24-hour switch), so the dev server reads them with `defaults read -g` (macOS only) into `<meta name="courseline-clock">` on every page load; elsewhere, or in a production build, the browser's region decides. `withClock(options)` adds the `hourCycle` to any format that shows the hour; `weekStartDay()` sets the calendar's first column. |
 | `courseIcons.ts` | The icon keys/names a course can use (drawings are in `components/icons.tsx`). |
 | `courseColor.ts` | Unique per-course colors: handed out by a course's position among all the user's courses (12 curated, then generated), so no two courses share one. Read through the `useCourseColors()` hook; used by course cards, the sidebar, the calendar and multi-course assignment lists. |
 | `html.ts` | Reading Canvas HTML without rendering it: `linkedFiles` (file links in a description or page), `fileLinkName`, `htmlText`. |
 | `assignmentState.ts` | The one color scheme for assignments: `assignmentTone` and `TONE_CLASSES` (red missing, blue to do, green handed in), `isDone`, `isFaded` (finished work that is past due or undated), `assignmentDate` (due date, else when it was handed in, else when it was posted), and `sortAssignments` (upcoming soonest first, then past most recent first, fully undated last). Used by the calendar, the grades page and assignment lists. |
 | `calendar.ts` | `monthGrid(year, month, weekStart)`: the whole weeks a month view shows, starting on the given weekday (the calendar passes `weekStartDay()`). `dateKey()`: a local-time `YYYY-MM-DD` key, never UTC. |
-| `csp.ts` | `contentSecurityPolicy(dev)`: the Content-Security-Policy that `vite.config.ts` puts first in `<head>`, plus the reasons for what it cannot block (`'unsafe-inline'` scripts, `connect-src https:`). Loosen it here if a viewer breaks. |
+| `csp.ts` | `contentSecurityPolicy(dev)`: the Content-Security-Policy that `vite.config.ts` puts first in `<head>`, plus the reasons for what it cannot block (`'unsafe-inline'` scripts, `connect-src https:`), and `VIDEO_EMBEDS` (the video players a page may embed: `frame-src` and the sanitizer both use it). Loosen it here if a viewer breaks; add a video host to `VIDEO_EMBEDS`. |
 | `messages.ts` | Pure helpers for Messages: `mergeFolders` (inbox and sent in one list, each conversation once, newest first, unread if the inbox says so), `threadDays` (bubbles grouped by day, runs by one person split after 10 minutes), `chatName` / `peopleLabel` / `otherPeople` (a conversation is named by its subject, else by who it is with), `attachmentKind` (icon and preview type), `linkify` (plain text and http(s) links; bodies are never HTML), `listTime` / `dayHeading` / `timeOf`, and `composeTarget` (reads Canvas's `/conversations?context_id=…&user_id=…` compose link). |
 | `xlsxStyles.ts` | `readWorkbookStyles`: the spreadsheet formatting SheetJS's free edition does not read, from an .xlsx/.xlsm file's `xl/styles.xml`, theme and sheet XML (what it covers: [6.9](#69-the-file-viewer)). Returns null when the file is not such a zip, so .xls, .ods and .csv show values only. Drawn by `SheetTable` in `components/FileViewer.tsx`. |
 
@@ -368,7 +369,7 @@ Config files sit in the project root.
 | `AssignmentsPage.tsx` | `/assignments` — pending/done tabs across all visible courses. |
 | `CourseExportPage.tsx` | `/courses/:id/export` — the **AI export** tab: scan the course, choose options (file text, original files, size limit), build and download a zip. All in the browser; nothing is uploaded. |
 | `CalendarPage.tsx` | `/calendar` — month grid of assignments due across the visible courses (via `useAllAssignments`); click a day to list it. Weeks start on the computer's first weekday (`weekStartDay()` in `lib/systemClock.ts`), else the region's; if neither is known, Monday in Spanish and Sunday otherwise. Pure date maths in `lib/calendar.ts`; item colors come from `lib/assignmentState.ts` (red = missing, pastel blue = to do, pastel green = submitted/graded/excused; submitted work past its due date is faded). Lists are ordered by `sortAssignments()` (upcoming soonest first, then past most recent first; an undated assignment is placed by its post date, one handed in with no due date by when it was handed in and shown grayed out, fully undated ones last). The same scheme colors the status badges in every assignment list and the per-course grades table. |
-| `SettingsPage.tsx` | `/settings` — tabs (open one kept in `?tab=`): **Connection** (how data arrives, **Use the extension instead** and **Log out**; the **Browser extension** card, `components/CanvasConnection.tsx`: without the extension the install steps, with it the checklist, Canvas address, Sync now and the courses to sync; with the extension installed, **Pull a page** (one pasted Canvas address, `PullContext.pullAddress`) and **Everything captured** (`components/CapturedDataBrowser.tsx`); in extension mode, **Use an access token instead**; the default tab when the extension is installed; in the API-token edition only the first card, with the token's Canvas host and Log out), **Appearance** (Language, Theme, Accent color) and **Courses** (course colors and icons, then course selection). Add a section to a tab, or a tab to `TABS`. |
+| `SettingsPage.tsx` | `/settings` — tabs (open one kept in `?tab=`), in the order Appearance, Courses, Connection, opening on Appearance unless `?tab=` names another: **Connection** (how data arrives and **Log out**, plus **Use the extension instead** when signed in with a token and the extension is installed: it leads to the extension's sign-in, which sets it up. Only in extension mode: the **Browser extension** card, `components/CanvasConnection.tsx` (the checklist, Canvas address, Sync now and the courses to sync), **Pull a page** (one pasted Canvas address, `PullContext.pullAddress`), **Everything captured** (`components/CapturedDataBrowser.tsx`) and **Use an access token instead**. With a token, and always in the API-token edition, only the first card. Opened by `?tab=connection`, as the extension's popup does), **Appearance** (Language, Theme, Accent color) and **Courses** (course colors and icons, then course selection). Add a section to a tab, or a tab to `TABS`. |
 | `LoginPage.tsx` | Shown whenever there are no valid credentials. With the extension installed it leads with **Your Canvas address → Connect** (saves the address, switches to the extension, loads the essentials in background tabs with a preview in the page when nothing is captured, and signs in by itself when data arrives); the token form is one click below. Without the extension it leads with the token form, with **No access token? Use the browser extension** (the install steps) folded below. In the API-token edition (`API_ONLY`) it shows the token form only, even when the extension is installed. Both use `components/CanvasConnection.tsx` and `components/TokenForm.tsx`. |
 | `CoursePagesPage.tsx` | `/courses/:id` (default tab, "Pages") — pages and modules merged. |
 | `CourseDetailPage.tsx` | `/courses/:id/assignments` — the "Assignments" tab. |
@@ -385,12 +386,12 @@ Config files sit in the project root.
 | `Layout.tsx` | App shell (header, sidebar, routed page). **The only place page padding lives.** Messages (`/messages…`) gets none: it is shown full-bleed and its panes scroll on their own. |
 | `icons.tsx` | Shared inline-SVG icons: `navIcons` for the sidebar, the course icon set, `<CourseIcon courseId>` (the chosen icon in the chosen color). Add a course icon: key in `lib/courseIcons.ts`, drawing here. |
 | `Header.tsx`, `Sidebar.tsx` | Top bar (menu, user, log out); left navigation: Dashboard, All assignments, Calendar and Messages (with an unread badge, up to "99+", refetched every 60 s while the tab is visible and when it becomes visible again: Canvas's unread count with a token, the captured unread inbox conversations in extension mode), the chosen courses, `ExtensionStatus` under them (left out of the API-token edition), and Settings at the bottom. Sidebar icons are inline SVGs in `navIcons` in `components/icons.tsx` (no icon library); add one there for a new item. The dark/light toggle lives only on the Settings page. |
-| `CourseLayout.tsx`, `CourseTabs.tsx` | Per-course title/grade header and the tab strip. **Add course tabs in `CourseTabs.tsx`.** |
+| `CourseLayout.tsx`, `CourseTabs.tsx` | Per-course title/grade header and the tab strip. **Add course tabs in `CourseTabs.tsx`.** A dot on **Assignments** and **Announcements** when the course has something new there (`useNewInCourse`, see `lib/seen.ts`). |
 | `CourseCard.tsx`, `GradeSummary.tsx`, `AssignmentList.tsx` | Reusable list/card pieces. `AssignmentList` also exports `assignmentStatus()`. |
 | `HtmlContent.tsx` | Sanitized rendering of Canvas HTML; intercepts file links. |
 | `FileViewer.tsx` | The viewer: all file-type renderers, zoom, page tracking (~1,000 lines; only `src/extension/extensionApi.ts` is longer). Also exports `SheetTable`, the spreadsheet grid (see [6.9](#69-the-file-viewer)). |
 | `FileViewerModal.tsx` | The overlay around the viewer (Esc, click-outside, body scroll lock). Loads `FileViewer` the first time a file is opened. |
-| `GradeTrendChart.tsx` | The SVG line chart on the grades page. |
+| `GradeTrendChart.tsx` | The SVG grade-over-time chart on the grades page (time axis, 0-100%). |
 | `SubmissionForm.tsx` | Text / file submission UI. Uploads every file, then submits all their ids together. The text tab uses `RichTextEditor`. |
 | `RichTextEditor.tsx` | Dependency-free rich text box (contentEditable + `execCommand`): bold/italic/underline, lists, quote, link. Pastes as plain text. Exports `cleanEditorHtml()` (DOMPurify allow-list; always run output through it) and `isEditorEmpty()`. |
 | `ErrorBoundary.tsx` | Catches render crashes. |
@@ -540,10 +541,11 @@ Paths are relative to `src/`, except rows marked *(root)*, which are relative to
 |---|---|
 | `api/client.test.ts` | Auth header, pagination (incl. the 50-page guard), proxy re-rooting, every error kind, `downloadTarget`, `getBlob`, and all variants of the three-step upload. |
 | `api/canvas.test.ts` | Endpoint quirks: restricted-course filtering, `score_statistics` retry, hidden Files tab → `null`, >50-item modules, the Pages discovery chain and de-duplication, announcements from the course's own topic list, write payloads, the sent folder's newest message (`last_authored_message`), message attachments uploaded to "conversation attachments" before the reply, and marking a conversation read. |
-| `lib/grades.test.ts` | Weights, current vs final, every drop rule, excused/omitted/extra credit, what-if, trend replay, goal solver, Canvas→model mapping (including never-drop ids sent as strings), and the class-median comparison (`medianComparison`). |
+| `lib/seen.test.ts` | What counts as new for the tab dots (seen here, read in Canvas, dated before the record, Canvas's unread) and how it is kept. |
+| `lib/grades.test.ts` | Weights, current vs final, every drop rule, excused/omitted/extra credit, what-if, trend replay, goal solver, Canvas→model mapping (including never-drop ids sent as strings), the class-median comparison (`medianComparison`) and the class percentile (`classPercentile`). |
 | `lib/accent.test.ts`, `lib/format.test.ts` | Palette generation and contrast rule, CSS variable application, grade/byte formatting. |
 | `lib/html.test.ts` | File links found in Canvas HTML: names, `data-id`, duplicates, unnamed links. |
-| `components/HtmlContent.test.ts` | Sanitizer: scripts/handlers/iframes removed, links made absolute, Canvas file links made inert. |
+| `components/HtmlContent.test.ts` | Sanitizer: scripts/handlers/iframes removed (except known video players, sandboxed), links made absolute, Canvas file links made inert; `isVideoEmbed`. |
 | `components/SubmissionForm.test.tsx` | Upload-then-submit order, failure submits nothing, retry skips already-uploaded files, allowed extensions, rich-text tab (HTML body, sanitizing, empty check, reset). |
 | `context/DataContext.test.tsx` | Cache: single request per key, error capture, 5-minute freshness, refetch keeps old data visible, only the changed key re-renders, `ensure` and `prime`, and `refreshAll` (reloads what is on screen in place, marks the rest stale, and a reload that reads another key through `ensure` gets it fresh). |
 | `context/CourseStyleContext.test.tsx` | Per-course color/icon: save, merge, reset, ignore invalid saved values. |
@@ -558,7 +560,8 @@ Paths are relative to `src/`, except rows marked *(root)*, which are relative to
 | `lib/messages.test.ts` | The Messages helpers: day groups and runs by one person, who a conversation is with (the student left out), links in plain text, Canvas's compose link (`composeTarget`), the chat name, inbox and sent merged once each and newest first, attachment kinds. |
 | `lib/systemClock.test.ts` | The computer's 12/24-hour clock wins over the language; the region's clock and first weekday as the fallback; options without an hour left alone; malformed settings dropped; macOS locales turned into region tags. |
 | `lib/xlsxStyles.test.ts` | Fills (theme colors with tint, plain colors), fonts, borders and alignment; each sheet's cell styles, widths, row heights, hidden rows and columns, and gridlines; null for a file that is not `.xlsx`; Excel's tint and column letters. |
-| `lib/csp.test.ts` | The Content-Security-Policy: no plugins, base-URL changes or eval, scripts only from the app and the Monaco CDN; only the dev policy allows the dev server's websocket. |
+| `components/FileViewer.test.ts` | Font stand-ins for Word documents (`withFontFallback`). |
+| `lib/csp.test.ts` | The Content-Security-Policy: no plugins, base-URL changes or eval, scripts only from the app and the Monaco CDN, frames only from the app and the known video players; only the dev policy allows the dev server's websocket. |
 | `components/SheetTable.test.tsx` | The spreadsheet grid: each cell's own fill, font and alignment, numbers right-aligned, merged cells drawn once, hidden columns left out, no gridlines when the sheet hides them. |
 | `components/CanvasConnection.test.tsx` | Install steps without the extension. Login: Connect saves the address, switches to the extension and loads the essentials when nothing is captured, signs straight in when data exists, shows the extension's error, never replaces the saved address from an untouched field, refuses an empty one. Settings: each step with its state, Save address and Sync now. |
 | `components/ExtensionStatus.test.tsx` | Collapsed to one row with a status in words, opening remembered; per-kind freshness, stale and "not synced yet" marks; account-wide kinds off a course page; nothing outside extension mode; values left out listed by course with what to do, amber not red. |
@@ -766,7 +769,9 @@ Everything the app itself remembers lives in `localStorage` (what the extension 
 | `courseline.accent` | custom accent `#rrggbb` (absent = default) | `ThemeContext` |
 | `courseline.accent-vars` | the computed palette, so `index.html` can apply it before first paint | `ThemeContext` |
 | `courseline.pages.<courseId>` | `{order: string[], collapsed: string[]}` for the Pages tab | `CoursePagesPage` |
-| `courseline.course-styles` | `{ [courseId]: { color?: "#rrggbb", icon?: <key> } }` (Settings → Course colors and icons; absent = automatic) | `CourseStyleContext` |
+| `courseline.course-styles` | `{ [courseId]: { color?: "#rrggbb", icon?: <key> } }` (Settings → Course order, colors and icons; absent = automatic) | `CourseStyleContext` |
+| `courseline.course-order` | course ids in the order the student put them (absent = Canvas's order) | `CourseFilterContext` |
+| `courseline.seen` | `{ "<courseId>:announcements" \| "<courseId>:assignments": { ids, since } }`: what was seen per course, for the tab dots | `lib/seen.ts` |
 | `courseline.language` | `"en"`, `"es"` or `"pt"` (absent = the browser's language) | `LanguageContext` (`saveLanguage` in `i18n/index.ts`) |
 | `courseline.skip-extension` | `"1"` after logging out of extension mode, so the token form shows; removed by `enableExtension()`. Never written in the API-token edition | `AuthContext` |
 | `courseline.extension-status-open` | `"1"` / `"0"`: whether the sidebar's extension status is opened (full edition only) | `ExtensionStatus` |
@@ -836,8 +841,8 @@ so the viewer is always used.
 
 | Type | How | Notes |
 |---|---|---|
-| PDF | **PDF.js** (`pdfjs-dist`, the *legacy* build) draws each page to a `<canvas>` | Only pages within 1,200 px of the view are drawn; pages further away are released (each drawn page is ~13 MB at 100% on a 2x screen) and redrawn on return. Canvas capped at ~16 megapixels. If the background worker does not answer within 10 s it **falls back to main-thread parsing** (and remembers that for the session). 60 s overall limit. Verifies the bytes start with `%PDF-`. |
-| DOCX | `docx-preview` | Hyperlinks restricted to http/https/mailto. |
+| PDF | **PDF.js** (`pdfjs-dist`, the *legacy* build) draws each page to a `<canvas>` | Only pages within 1,200 px of the view are drawn; pages further away are released (each drawn page is ~13 MB at 100% on a 2x screen) and redrawn on return. Canvas capped at ~16 megapixels. If the background worker does not answer within 10 s it **falls back to main-thread parsing** (and remembers that for the session). 60 s overall limit. Verifies the bytes start with `%PDF-`. Every `getDocument` (here and in the AI export's text extraction, `lib/extractText.ts`) gets `pdfjsAssets()` (`lib/pdfjsAssets.ts`): the addresses of PDF.js's WebAssembly image decoders, standard fonts, character maps and color profile, which `vite.config.ts` (`pdfjsAssets`) serves at `/pdfjs/` in dev and copies into a build (its PDF-scripting engine, quickjs, is left out). Without them a scanned PDF's JBIG2 images are dropped ("Jbig2Error: JBig2 failed to initialize"; seen Nov 6, 2026 on a student's scanned exam), as are JPEG 2000 images, and non-embedded fonts and CJK text fall back. |
+| DOCX | `docx-preview` | Hyperlinks restricted to http/https/mailto. Fonts get stand-ins of the same kind (`withFontFallback`: a document names only "Aptos" or "Calibri", which a Mac usually lacks, and the browser would use its default serif); embedded fonts load from `blob:` (allowed in the CSP's `font-src`). Hyphenation off (`hyphens: manual`): docx-preview hyphenates every paragraph, Word does not. |
 | XLSX / XLSM / XLS / XLSB / CSV / TSV / ODS | SheetJS (`xlsx` 0.20.3) for the values (`cell.w`, the text as Excel shows it) + `lib/xlsxStyles.ts` for the formatting SheetJS's free edition does not read (fills with theme colors and tint, fonts, borders, alignment, column widths, row heights, hidden rows and columns, gridlines, from `xl/styles.xml`, the theme and each sheet's XML) → `SheetTable`, drawn as elements (never injected HTML) on a white page in light and dark mode, with column letters and row numbers | Sheet tabs; hidden sheets skipped; merged cells; **max 2,000 rows and 200 columns per sheet** (`MAX_SHEET_ROWS`, `MAX_SHEET_COLS`; a longer sheet says "Showing the first 2,000 of N rows"). 30 s limit (`OFFICE_TIMEOUT_MS`) to read the values, and again for the formatting. Formatting is .xlsx/.xlsm only; .xls, .xlsb, .ods, .csv and .tsv show their values, and so does a file whose formatting cannot be read (`[file viewer] spreadsheet formatting skipped` in the console). Conditional formatting is not drawn. Cell hyperlinks (http/https only) open in a new tab. |
 | PPTX | `pptx-preview` | Slides stacked in one scroll area; slide shape read from `ppt/presentation.xml`. A chart with no title in its file shows no title (the library would draw a Chinese placeholder; the viewer blanks it). |
 | Images | `<img>` at natural size | 100% = fit to width, never upscaled. |
@@ -872,13 +877,15 @@ visible one as current. It re-measures on scroll, resize, zoom and DOM changes.
   adds to earned only.
 - Functions: `toModel` (Canvas JSON → model), `computeGrade` (current, final, per-group stats, supports what-if
   `overrides` and `onlyGraded`), `gradeTrend` (replays the grade assignment by assignment in grading order),
-  `neededAverage` (binary search for the average score needed on remaining work to reach a target),
-  `medianComparison` (your graded work re-scored at each assignment's class median; see below).
+  `neededAverage` (binary search for the average score needed on remaining work to reach a target; not on the page
+  since Oct 31, 2026, kept tested), `medianComparison` (your graded work re-scored at each assignment's class median)
+  and `classPercentile` (your estimated percentile; see below).
 
-**Page — `CourseGradesPage.tsx`:** headline tiles (current / "if the rest were zero" / points / work status), grade
-over time (`GradeTrendChart`), group breakdown bars, goal calculator, assignment table with filters and per-row what-if
-inputs. **The headline numbers are Canvas's own** (`computed_current_score`, `computed_final_score`); our engine is used
-for everything else. If our current grade differs from Canvas's by more than 0.6 points, the page shows a
+**Page — `CourseGradesPage.tsx`:** on top, grade over time (`GradeTrendChart`, two thirds wide) with three tiles stacked
+beside it: current grade, work status, and the class percentile (estimate); below, the assignment table with filters and
+per-row what-if inputs (the what-if bar also shows "if the rest were zero"). The "if the rest were zero", points,
+group breakdown and goal cards were dropped on Oct 31, 2026 (the owner's layout). **The current grade is Canvas's own**
+(`computed_current_score`); our engine is used for everything else. If our current grade differs from Canvas's by more than 0.6 points, the page shows a
 "Rebuilt here from your scores: X%" note rather than hiding the discrepancy. In extension mode the totals are Canvas's
 own when the captured course data carried them or the Grades page showed its total (`dev` only); otherwise
 `extensionApi.ts` works them out with this same engine from the captured scores and sets `estimated: true` on the
@@ -887,9 +894,13 @@ and says "Worked out by Courseline from the scores it has seen" under the curren
 `estimated`. What-if scores live only in component
 state — they are never sent to Canvas.
 
-**Class median grade (estimate).** When any graded assignment has `score_statistics`, a tile after "If the rest were
-zero" shows the grade you would have if every graded assignment had scored exactly its class median, and how many
-points you are above or below it. The assignment table then also gets a **Class median** column (wide screens) with
+**Class percentile (estimate).** When any graded assignment has `score_statistics`, the third tile shows your
+estimated percentile in the class (`classPercentile`: the class's grade at the lowest, lower quartile, median, upper
+quartile and highest score of every assignment, each worked out like the median below, with your grade placed between
+them; the quartiles only when every assignment has them; as if students kept the same rank on every assignment, so it
+spreads the class out more than it really is). Its note gives the class median grade (`medianComparison`: the grade
+you would have if every graded assignment had scored exactly its class median) and how many points you are above or
+below it. The assignment table then also gets a **Class median** column (wide screens) with
 each median and your difference. With a token the statistics come from `include[]=score_statistics` (absent when the
 instructor hides distributions or the school's Canvas rejects the include). With the extension they are read from the
 Grades page's statistics table and kept only when `sensibleStatistics(stats, points)` accepts them (every number in
@@ -900,7 +911,12 @@ because the Grades page shows statistics rounded to two decimals; that rounding 
 says "Based on N of M" when some do not), so the comparison is like for like.
 
 **Chart — `GradeTrendChart.tsx`:** hand-written SVG (no chart library). One series, 2 px line, 10% area wash, end
-label, crosshair that snaps to the nearest point, keyboard (arrow keys / Home / End), and a "Table view" twin.
+label, crosshair that snaps to the nearest point, keyboard (arrow keys / Home / End), and a screen-reader-only table of the same data (no visible table button). The x axis
+is time: each grade sits at its date (`gradedAt`, else `dueAt`), the axis runs from the first one to today (`now`), and
+its date ticks are evenly spaced in time; undated grades sit at the first dated one, and with no dates at all the points
+are spaced by order. The line is a step line (the grade holds flat until the next one is graded, then on to today). The
+y axis is always 0-100% (higher only when extra credit passes 100). It is drawn to the size of its card (`useSize`;
+the card stretches to the tiles beside it), never under 240 px tall. Tested in `GradeTrendChart.test.tsx`.
 
 ### 6.11 Assignments and submissions
 
@@ -924,7 +940,13 @@ label, crosshair that snaps to the nearest point, keyboard (arrow keys / Home / 
 ### 6.12 HTML sanitization and file links (`HtmlContent.tsx`)
 
 `sanitize(html, baseUrl)` runs DOMPurify with the HTML profile (this removes scripts, event handlers, iframes,
-`javascript:` URLs). A post-sanitize hook then:
+`javascript:` URLs). One kind of iframe is kept: an embedded **video player** (`isVideoEmbed`: https, and a player
+address on one of `VIDEO_EMBEDS` in `lib/csp.ts`: Vimeo's `player.vimeo.com/video/<id>`, YouTube's `/embed/<id>` on
+`www.youtube.com` or `www.youtube-nocookie.com`), so a page that is only a video (seen Oct 31, 2026: a course's "Unit 1
+introduction video", a Vimeo embed) shows it. Any other iframe is removed whole (`uponSanitizeElement`); a kept one gets
+`sandbox` (scripts, same-origin, presentation, popups), a fixed `allow` (autoplay, fullscreen, picture-in-picture,
+encrypted-media), `referrerpolicy` and `loading="lazy"`, and keeps its `style` (Canvas's 16:9 wrapper). The CSP's
+`frame-src` allows only those hosts. A post-sanitize hook then:
 
 - makes relative URLs absolute (Canvas uses root-relative links that would otherwise resolve against *our* origin);
 - removes `download` attributes;
@@ -1141,7 +1163,7 @@ are special: they read CSS variables so users can change them at run time (see [
 ### Change the grade calculation
 
 Edit `lib/grades.ts` only; the page just displays results. Rules live in `computeGrade` (weights/final/current),
-`applyDrops` (drop rules), `medianComparison` (the class median tile). With a token, the headline numbers come from
+`applyDrops` (drop rules), `medianComparison` and `classPercentile` (the class percentile tile). With a token, the headline numbers come from
 Canvas when it sends them, and the mismatch note on the grades page will tell you how far your maths diverges. In
 extension mode the headline *is* `computeGrade`'s result (`extensionApi.ts` fills `computed_current_score` /
 `computed_final_score` with it when Canvas's own totals were not captured), so nothing on screen flags a mistake: rely
@@ -1228,7 +1250,7 @@ through `applyCanvasAddress` in `extension/lib/canvasAddress.js`); changing it c
 
 ### Change how Canvas HTML is cleaned
 
-`sanitize()` in `components/HtmlContent.tsx`. Loosening it (allowing iframes, scripts, styles) has direct security
+`sanitize()` in `components/HtmlContent.tsx`. Loosening it (allowing more iframes, scripts, styles) has direct security
 consequences — see [9](#9-security-model). Some content never goes through it: message bodies are plain text with
 links (`linkify` in `lib/messages.ts`), spreadsheets are drawn as elements (`SheetTable`), and what the rich text box
 produces is cleaned by `cleanEditorHtml()` in `RichTextEditor.tsx`.
@@ -1237,7 +1259,7 @@ produces is cleaned by `cleanEditorHtml()` in `RichTextEditor.tsx`.
 
 Automatic colors: `BASE` (12 curated colors) and `colorAt` (generated ones after those) in `lib/courseColor.ts`, handed
 out by a course's position among all the student's courses (`buildCourseColors`), so no two share one. A color or icon
-the student picks in Settings → Courses → Course colors and icons is saved in `courseline.course-styles`
+the student picks in Settings → Courses → Course order, colors and icons is saved in `courseline.course-styles`
 (`context/CourseStyleContext.tsx`) and wins. Cards, the sidebar, the calendar and lists all read it through
 `useCourseColors()` in `hooks/useCanvasData.ts`. Canvas's own per-course colors (`/users/self/colors`) are not used
 (the extension captures them as kind `colors`, but no screen reads them).
@@ -1365,7 +1387,8 @@ The token risk applies to both editions whenever someone signs in with a token. 
 What the code does to reduce the risk:
 
 - **All instructor HTML is sanitized** (DOMPurify) before display; scripts, event handlers, iframes and `javascript:`
-  URLs are stripped.
+  URLs are stripped. The only iframes kept are video players from Vimeo and YouTube (`VIDEO_EMBEDS`), sandboxed, and
+  the CSP's `frame-src` allows no other host. Such a frame is another origin, so it cannot read the page or the token.
 - **Spreadsheet cells** are untrusted: the sheet is drawn as React elements (text, never HTML), and only http(s) cell links become links.
 - **Message bodies** are plain text: shown as text (never HTML), and only http(s) addresses in them become links
   (`linkify` in `lib/messages.ts`), which open in a new tab with `noopener`.

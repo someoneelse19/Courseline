@@ -76,7 +76,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             <Spinner label="" />
           ) : courses.length === 0 ? (
             <p className="px-3 text-xs text-neutral-500 dark:text-neutral-400">
-              {t('None selected.')} <Link to="/settings" className="underline">{t('Choose courses')}</Link>
+              {t('None selected.')} <Link to="/settings?tab=courses" className="underline">{t('Choose courses')}</Link>
             </p>
           ) : (
             courses.map((c) => (

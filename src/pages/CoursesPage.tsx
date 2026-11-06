@@ -17,7 +17,7 @@ export function CoursesPage() {
         <Spinner />
       ) : data.length === 0 ? (
         <EmptyState>
-          {t('No courses to show.')} <Link to="/settings" className="underline">{t('Choose courses')}</Link>
+          {t('No courses to show.')} <Link to="/settings?tab=courses" className="underline">{t('Choose courses')}</Link>
         </EmptyState>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

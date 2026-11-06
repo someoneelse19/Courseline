@@ -24,9 +24,9 @@ not have. Merging `dev` into `main` keeps
   and an explicit Download button. Nothing downloads unless you press that button. Excel files (.xlsx) keep their
   cell colours, fonts, borders, column widths and merged cells, on a white page even in dark mode; .xls, .ods and .csv
   show their values only.
-- **In-depth grades page.** Grade over time, assignment-group breakdown with weights and drop rules, what-if scores,
-  a "what do I need to reach X%" calculator, and an estimate of the class median grade (from each assignment's class
-  median, when Canvas shares it).
+- **In-depth grades page.** Grade over time beside your current grade, work status and an estimate of your percentile
+  in the class (from each assignment's class statistics, when Canvas shares them), then every assignment with what-if
+  scores (group weights and drop rules included).
 - **Messages that feel like texting.** Your Canvas Inbox and sent messages as conversations, each a thread of
   bubbles with its subject on top as the chat name; reply with Enter, attach files (images and files preview inline),
   or start a new message to a course's teachers and classmates. The sidebar shows how many conversations are unread;

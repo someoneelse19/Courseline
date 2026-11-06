@@ -4,12 +4,37 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 // Persisted in localStorage. Applied by useVisibleCourses() and the dashboard's
 // upcoming list; the Settings page edits it against the full course list.
 // Note: courses added to Canvas later stay hidden once a selection exists.
+// Also the order the user put their courses in (Settings → Courses), applied by useVisibleCourses().
 const STORAGE_KEY = 'courseline.selected-courses';
+const ORDER_KEY = 'courseline.course-order';
 
 interface CourseFilterValue {
   selected: ReadonlySet<number> | null;
   setSelected: (ids: Iterable<number> | null) => void;
   isVisible: (courseId: number | null) => boolean;
+  /** Course ids in the order the user chose; null = Canvas's own order. */
+  order: readonly number[] | null;
+  setOrder: (ids: number[] | null) => void;
+}
+
+/** `list` in the user's order: the courses they placed first, in that order, then any others as they came. */
+export function orderCourses<T extends { id: number }>(list: T[], order: readonly number[] | null): T[] {
+  if (!order?.length) return list;
+  const rank = new Map(order.map((id, i) => [id, i] as const));
+  return list
+    .map((c, i) => ({ c, i }))
+    .sort((a, b) => (rank.get(a.c.id) ?? order.length + a.i) - (rank.get(b.c.id) ?? order.length + b.i))
+    .map((x) => x.c);
+}
+
+function loadOrder(): number[] | null {
+  try {
+    const raw = localStorage.getItem(ORDER_KEY);
+    const ids = raw ? (JSON.parse(raw) as unknown) : null;
+    return Array.isArray(ids) && ids.every((x) => Number.isInteger(x)) ? (ids as number[]) : null;
+  } catch {
+    return null;
+  }
 }
 
 function load(): Set<number> | null {
@@ -26,6 +51,7 @@ const CourseFilterContext = createContext<CourseFilterValue | null>(null);
 
 export function CourseFilterProvider({ children }: { children: ReactNode }) {
   const [selected, setState] = useState<Set<number> | null>(load);
+  const [order, setOrderState] = useState<number[] | null>(loadOrder);
 
   const setSelected = useCallback((ids: Iterable<number> | null) => {
     const next = ids === null ? null : new Set(ids);
@@ -38,14 +64,26 @@ export function CourseFilterProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const setOrder = useCallback((ids: number[] | null) => {
+    setOrderState(ids);
+    try {
+      if (ids === null) localStorage.removeItem(ORDER_KEY);
+      else localStorage.setItem(ORDER_KEY, JSON.stringify(ids));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const value = useMemo<CourseFilterValue>(
     () => ({
       selected,
       setSelected,
       // null ids (non-course calendar items) are never filtered out.
       isVisible: (id) => selected === null || id === null || selected.has(id),
+      order,
+      setOrder,
     }),
-    [selected, setSelected],
+    [selected, setSelected, order, setOrder],
   );
 
   return <CourseFilterContext.Provider value={value}>{children}</CourseFilterContext.Provider>;

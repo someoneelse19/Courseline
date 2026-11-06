@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isCanvasFileLink, sanitize } from './HtmlContent';
+import { isCanvasFileLink, isVideoEmbed, sanitize } from './HtmlContent';
 
 const BASE = 'https://school.test';
 const dom = (html: string) => {
@@ -19,6 +19,26 @@ describe('sanitize: untrusted instructor HTML', () => {
 
   it('removes iframes and objects', () => {
     expect(sanitize('<iframe src="https://evil.test"></iframe><object data="x"></object><embed src="x">', BASE).trim()).toBe('');
+  });
+
+  it('keeps an embedded video player from a known host, sandboxed, and nothing else that looks like one', () => {
+    // As Canvas's editor saves a Vimeo embed (Oct 31, 2026: a course's "Unit 1 introduction video" page).
+    const vimeo =
+      '<div style="padding: 56.25% 0 0 0; position: relative;"><iframe style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;" title="Intro" src="https://player.vimeo.com/video/123456789?badge=0&amp;autopause=0&amp;player_id=0&amp;app_id=58479" allow="autoplay; fullscreen; camera; microphone" frameborder="0" onload="steal()"></iframe></div>';
+    const frame = dom(sanitize(vimeo, BASE)).querySelector('iframe')!;
+    expect(frame.getAttribute('src')).toBe('https://player.vimeo.com/video/123456789?badge=0&autopause=0&player_id=0&app_id=58479');
+    expect(frame.getAttribute('sandbox')).toContain('allow-scripts');
+    expect(frame.getAttribute('allow')).not.toMatch(/camera|microphone/); // only what a player needs
+    expect(frame.hasAttribute('onload')).toBe(false);
+    expect(frame.getAttribute('style')).toContain('position: absolute'); // the 16:9 layout survives
+    const dropped = [
+      '<iframe src="http://player.vimeo.com/video/1"></iframe>', // not https
+      '<iframe src="https://player.vimeo.com.evil.test/video/1"></iframe>',
+      '<iframe src="https://www.youtube.com/watch?v=abc"></iframe>', // a page, not the player
+      '<iframe src="javascript:alert(1)"></iframe>',
+      '<iframe srcdoc="<script>alert(1)</script>"></iframe>',
+    ];
+    for (const html of dropped) expect(dom(sanitize(html, BASE)).querySelector('iframe')).toBeNull();
   });
 
   it('keeps ordinary formatting', () => {
@@ -51,6 +71,17 @@ describe('sanitize: links', () => {
 
   it('strips download attributes from every link', () => {
     expect(dom(sanitize('<a href="https://example.com/f.zip" download>z</a>', BASE)).querySelector('a')?.hasAttribute('download')).toBe(false);
+  });
+});
+
+describe('isVideoEmbed', () => {
+  it('accepts Vimeo and YouTube players only', () => {
+    expect(isVideoEmbed('https://player.vimeo.com/video/42?h=abc')).toBe(true);
+    expect(isVideoEmbed('https://www.youtube.com/embed/dQw4w9WgXcQ')).toBe(true);
+    expect(isVideoEmbed('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?start=10')).toBe(true);
+    expect(isVideoEmbed('https://vimeo.com/42')).toBe(false);
+    expect(isVideoEmbed('https://user:pw@player.vimeo.com/video/42')).toBe(false);
+    expect(isVideoEmbed(null)).toBe(false);
   });
 });
 

@@ -1,10 +1,40 @@
-import { loadEnv } from 'vite';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { extname, join } from 'node:path';
+import { loadEnv, type Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { contentSecurityPolicy } from './src/lib/csp';
 import { readSystemClock } from './src/lib/systemClockServer';
 import edition from './edition.json';
+
+// What PDF.js loads by itself to draw some PDFs fully: the WebAssembly image decoders (JBIG2, the compression scanners
+// use, and JPEG 2000; without them those images are left out), the 14 standard fonts (for PDFs that do not embed them),
+// the character maps (Chinese, Japanese, Korean text) and its color profile. Served at /pdfjs/<dir>/ by the dev server
+// and copied there in a build; components/FileViewer.tsx points PDF.js at them (PDFJS_ASSETS).
+const PDFJS_DIRS = ['wasm', 'standard_fonts', 'cmaps', 'iccs'];
+const PDFJS_ROOT = join(process.cwd(), 'node_modules', 'pdfjs-dist');
+const PDFJS_TYPES: Record<string, string> = { '.wasm': 'application/wasm', '.js': 'text/javascript', '.mjs': 'text/javascript' };
+function pdfjsAssets(): Plugin {
+  // Not the licenses, nor quickjs (PDF.js's engine for scripts inside PDFs, which Courseline never turns on).
+  const files = () =>
+    PDFJS_DIRS.flatMap((dir) => readdirSync(join(PDFJS_ROOT, dir)).filter((f) => statSync(join(PDFJS_ROOT, dir, f)).isFile() && !f.startsWith('LICENSE') && !f.startsWith('quickjs')).map((f) => `${dir}/${f}`));
+  return {
+    name: 'courseline-pdfjs-assets',
+    configureServer(server) {
+      const known = new Set(files());
+      server.middlewares.use('/pdfjs', (req, res, next) => {
+        const path = decodeURIComponent((req.url ?? '').split('?')[0]).replace(/^\//, '');
+        if (!known.has(path)) return next();
+        res.setHeader('Content-Type', PDFJS_TYPES[extname(path)] ?? 'application/octet-stream');
+        res.end(readFileSync(join(PDFJS_ROOT, path)));
+      });
+    },
+    generateBundle() {
+      for (const path of files()) this.emitFile({ type: 'asset', fileName: `pdfjs/${path}`, source: readFileSync(join(PDFJS_ROOT, path)) });
+    },
+  };
+}
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
@@ -40,6 +70,7 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       tailwindcss(),
+      pdfjsAssets(),
       {
         // The policy goes in as the first thing in <head> so it covers everything after it.
         name: 'courseline-csp',

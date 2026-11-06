@@ -209,6 +209,7 @@ export interface DiscussionTopic {
   discussion_subentry_count?: number; // replies
   author?: { display_name?: string };
   context_code?: string; // "course_123"; on /announcements results
+  read_state?: 'read' | 'unread'; // the student's own read state in Canvas
 }
 
 // Page content (HTML) with embedded files and links.

@@ -9,17 +9,22 @@ export interface TrendDatum {
   date: string | null;
 }
 
-const H = 240;
+const MIN_H = 240; // the chart's height when its card does not stretch it (phones), and never less
+const DAY = 86_400_000;
 const M = { top: 16, right: 60, bottom: 28, left: 44 };
 const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(getLocale(), { month: 'short', day: 'numeric' }) : '');
 const pct = (n: number) => `${n.toFixed(1)}%`;
 
-function useWidth(ref: React.RefObject<HTMLElement>) {
-  const [w, setW] = useState(640);
+/** The element's size, kept current as it changes (the chart is drawn to fill the space its card gives it). */
+function useSize(ref: React.RefObject<HTMLElement>) {
+  const [size, setSize] = useState({ w: 640, h: MIN_H });
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const update = () => setW(Math.max(280, Math.round(el.clientWidth)));
+    const update = () => {
+      const next = { w: Math.max(280, Math.round(el.clientWidth)), h: Math.max(MIN_H, Math.round(el.clientHeight)) };
+      setSize((s) => (s.w === next.w && s.h === next.h ? s : next));
+    };
     update();
     if (typeof ResizeObserver === 'undefined') {
       window.addEventListener('resize', update);
@@ -29,41 +34,68 @@ function useWidth(ref: React.RefObject<HTMLElement>) {
     ro.observe(el);
     return () => ro.disconnect();
   }, [ref]);
-  return w;
+  return size;
 }
 
-/** Running grade, one point per graded assignment (in grading order). One series: the card title names it. */
-export function GradeTrendChart({ data }: { data: TrendDatum[] }) {
+/**
+ * Running grade over time: each graded assignment at the date it was graded (else its due date), on a real time axis
+ * that runs to today, and a 0-100% scale. The grade only changes when something is graded, so the line holds flat
+ * between them (steps), not a slope that would suggest grades in between. One series: the card title names it.
+ */
+export function GradeTrendChart({ data, now = Date.now() }: { data: TrendDatum[]; now?: number }) {
   const wrap = useRef<HTMLDivElement>(null);
-  const width = useWidth(wrap);
+  const { w: width, h: H } = useSize(wrap);
   const [active, setActive] = useState<number | null>(null);
-  const [table, setTable] = useState(false);
 
   const n = data.length;
-  const runs = data.map((d) => d.running);
-  let hi = Math.max(Math.min(100, Math.ceil((Math.max(...runs) + 5) / 10) * 10), Math.ceil(Math.max(...runs) / 10) * 10);
-  let lo = Math.max(0, Math.floor((Math.min(...runs) - 5) / 10) * 10);
-  if (hi - lo < 20) lo = Math.max(0, hi - 20);
-  if (hi - lo < 20) hi = lo + 20;
-  const step = hi - lo <= 30 ? 10 : hi - lo <= 60 ? 20 : 25;
+  // 0-100%, higher only when extra credit takes the grade past 100.
+  const lo = 0;
+  const hi = Math.max(100, Math.ceil(Math.max(...data.map((d) => d.running)) / 25) * 25);
   const ticks: number[] = [];
-  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) ticks.push(v);
+  for (let v = lo; v <= hi; v += 25) ticks.push(v);
+
+  // When each point happened. The grading order puts undated work first: it sits at the first dated point. With no
+  // dates at all, the points are spaced evenly (by order) instead.
+  const parsed = data.map((d) => (d.date ? Date.parse(d.date) : NaN));
+  const timed = parsed.some(Number.isFinite);
+  const times = timed ? parsed.map((v, i) => (Number.isFinite(v) ? v : parsed.slice(i + 1).find(Number.isFinite)!)) : data.map((_, i) => i);
+  const end = timed ? Math.max(times[n - 1], now) : Math.max(1, n - 1);
+  const start = timed ? Math.min(times[0], end - DAY) : 0;
 
   const plotW = width - M.left - M.right;
   const plotH = H - M.top - M.bottom;
-  const x = (i: number) => M.left + (n === 1 ? plotW / 2 : (i * plotW) / (n - 1));
+  const xAt = (time: number) => M.left + ((time - start) / (end - start)) * plotW;
+  const x = (i: number) => xAt(times[i]);
   const y = (v: number) => M.top + plotH - ((v - lo) / (hi - lo)) * plotH;
-  const line = data.map((d, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(d.running).toFixed(1)}`).join(' ');
-  const area = `${line} L${x(n - 1).toFixed(1)} ${y(lo).toFixed(1)} L${x(0).toFixed(1)} ${y(lo).toFixed(1)} Z`;
+  const xEnd = M.left + plotW;
+  const line = `M${x(0).toFixed(1)} ${y(data[0].running).toFixed(1)}${data
+    .slice(1)
+    .map((d, k) => ` H${x(k + 1).toFixed(1)} V${y(d.running).toFixed(1)}`)
+    .join('')} H${xEnd.toFixed(1)}`;
+  const area = `${line} V${y(lo).toFixed(1)} H${x(0).toFixed(1)} Z`;
 
-  const labelEvery = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(plotW / 90))));
+  // Dates evenly spaced in time (about one per 90 px), each label once.
+  const xTicks: Array<{ at: number; label: string }> = [];
+  if (timed) {
+    const count = Math.max(2, Math.floor(plotW / 90));
+    for (let k = 0; k < count; k++) {
+      const at = start + (k * (end - start)) / (count - 1);
+      const label = fmtDate(new Date(at).toISOString());
+      if (label !== xTicks.at(-1)?.label) xTicks.push({ at, label });
+    }
+  } else {
+    data.forEach((_, i) => xTicks.push({ at: i, label: `#${i + 1}` }));
+  }
   const last = data[n - 1];
   const a = active != null ? data[active] : null;
 
+  // The point closest to the pointer along the time axis.
   const nearest = (e: PointerEvent<SVGRectElement>) => {
     const box = e.currentTarget.getBoundingClientRect();
-    const px = e.clientX - box.left;
-    return n === 1 ? 0 : Math.min(n - 1, Math.max(0, Math.round((px / box.width) * (n - 1))));
+    const px = M.left + ((e.clientX - box.left) / box.width) * plotW;
+    let best = 0;
+    for (let i = 1; i < n; i++) if (Math.abs(x(i) - px) < Math.abs(x(best) - px)) best = i;
+    return best;
   };
   const onKey = (e: KeyboardEvent<SVGSVGElement>) => {
     const move = (to: number) => (e.preventDefault(), setActive(Math.min(n - 1, Math.max(0, to))));
@@ -78,56 +110,20 @@ export function GradeTrendChart({ data }: { data: TrendDatum[] }) {
   const tipRight = a && x(active!) + 12 > width - 190;
 
   return (
-    <div>
-      <div className="mb-2 flex justify-end">
-        <button
-          type="button"
-          onClick={() => setTable((v) => !v)}
-          className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
-        >
-          {table ? t('Chart view') : t('Table view')}
-        </button>
-      </div>
-
-      {table ? (
-        <div className="max-h-72 overflow-auto rounded-lg border border-neutral-200 dark:border-neutral-800">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-neutral-50 text-left text-xs text-neutral-500 dark:bg-neutral-900 dark:text-neutral-400">
-              <tr>
-                <th className="px-3 py-2 font-medium">#</th>
-                <th className="px-3 py-2 font-medium">{t('Assignment')}</th>
-                <th className="px-3 py-2 font-medium">{t('Score')}</th>
-                <th className="px-3 py-2 font-medium">{t('Date')}</th>
-                <th className="px-3 py-2 text-right font-medium">{t('Grade after')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
-              {data.map((d, i) => (
-                <tr key={i}>
-                  <td className="px-3 py-1.5 tabular-nums text-neutral-500">{i + 1}</td>
-                  <td className="px-3 py-1.5">{d.name}</td>
-                  <td className="px-3 py-1.5 tabular-nums">
-                    {d.score} / {d.points}
-                  </td>
-                  <td className="px-3 py-1.5 text-neutral-500">{fmtDate(d.date)}</td>
-                  <td className="px-3 py-1.5 text-right font-medium tabular-nums">{pct(d.running)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div ref={wrap} className="relative">
+    // Fills its card (the card stretches to the tiles beside it). The drawing is absolutely placed, so its own height
+    // never feeds back into the size it is measured from.
+    <div className="flex min-h-60 flex-1 flex-col">
+        <div ref={wrap} className="relative min-h-60 flex-1">
           <svg
             width={width}
             height={H}
             role="img"
             tabIndex={0}
-            aria-label={t('Running grade over {n} graded assignments, from {from} to {to}. Use the arrow keys to step through points, or switch to table view.', { n, from: pct(data[0].running), to: pct(last.running) })}
+            aria-label={t('Running grade over {n} graded assignments, from {from} to {to}. Use the arrow keys to step through points.', { n, from: pct(data[0].running), to: pct(last.running) })}
             onKeyDown={onKey}
             onFocus={() => active == null && setActive(n - 1)}
             onBlur={() => setActive(null)}
-            className="block rounded-md outline-hidden focus-visible:ring-2 focus-visible:ring-accent-500"
+            className="absolute inset-0 block rounded-md outline-hidden focus-visible:ring-2 focus-visible:ring-accent-500"
           >
             {ticks.map((v) => (
               <g key={v}>
@@ -137,21 +133,19 @@ export function GradeTrendChart({ data }: { data: TrendDatum[] }) {
                 </text>
               </g>
             ))}
-            {data.map((d, i) =>
-              i % labelEvery === 0 || i === n - 1 ? (
-                <text key={i} x={x(i)} y={H - 8} textAnchor={i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'} className="fill-neutral-500 text-[11px] dark:fill-neutral-400">
-                  {fmtDate(d.date) || `#${i + 1}`}
-                </text>
-              ) : null,
-            )}
+            {xTicks.map((tick, k) => (
+              <text key={k} x={xAt(tick.at)} y={H - 8} textAnchor={k === 0 ? 'start' : k === xTicks.length - 1 ? 'end' : 'middle'} className="fill-neutral-500 text-[11px] dark:fill-neutral-400">
+                {tick.label}
+              </text>
+            ))}
 
-            {n > 1 && <path d={area} style={{ fill: 'rgb(var(--accent-600) / 0.1)' }} />}
-            {n > 1 && <path d={line} fill="none" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" style={{ stroke: 'rgb(var(--accent-600))' }} />}
+            <path d={area} style={{ fill: 'rgb(var(--accent-600) / 0.1)' }} />
+            <path d={line} fill="none" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" style={{ stroke: 'rgb(var(--accent-600))' }} />
 
             {a && <line x1={x(active!)} x2={x(active!)} y1={M.top} y2={M.top + plotH} strokeWidth={1} shapeRendering="crispEdges" className="stroke-neutral-400 dark:stroke-neutral-600" />}
             {a && <circle cx={x(active!)} cy={y(a.running)} r={5} strokeWidth={2} className="stroke-white dark:stroke-neutral-900" style={{ fill: 'rgb(var(--accent-600))' }} />}
             <circle cx={x(n - 1)} cy={y(last.running)} r={4.5} strokeWidth={2} className="stroke-white dark:stroke-neutral-900" style={{ fill: 'rgb(var(--accent-600))' }} />
-            <text x={x(n - 1) + 12} y={y(last.running)} dy="0.32em" className="fill-neutral-900 text-xs font-semibold tabular-nums dark:fill-neutral-100">
+            <text x={xEnd + 8} y={y(last.running)} dy="0.32em" className="fill-neutral-900 text-xs font-semibold tabular-nums dark:fill-neutral-100">
               {pct(last.running)}
             </text>
 
@@ -184,7 +178,31 @@ export function GradeTrendChart({ data }: { data: TrendDatum[] }) {
             </div>
           )}
         </div>
-      )}
+      {/* The same data for screen readers. */}
+      <table className="sr-only">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>{t('Assignment')}</th>
+            <th>{t('Score')}</th>
+            <th>{t('Date')}</th>
+            <th>{t('Grade after')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((d, i) => (
+            <tr key={i}>
+              <td>{i + 1}</td>
+              <td>{d.name}</td>
+              <td>
+                {d.score} / {d.points}
+              </td>
+              <td>{fmtDate(d.date)}</td>
+              <td>{pct(d.running)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

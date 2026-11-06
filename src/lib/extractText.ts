@@ -1,4 +1,5 @@
 import { htmlToMarkdown } from './htmlToMarkdown';
+import { pdfjsAssets } from './pdfjsAssets';
 
 // Plain text out of a downloaded course file, for the AI export. Returns null when a file has no
 // readable text (images, scans, old .doc/.ppt formats, unknown types) or cannot be read; the
@@ -94,12 +95,12 @@ async function pdfText(bytes: ArrayBuffer): Promise<string | null> {
   pdfjs.GlobalWorkerOptions.workerSrc = (await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')).default;
   const open = async () => {
     try {
-      return await withTimeout(pdfjs.getDocument({ data: new Uint8Array(bytes.slice(0)) }).promise, 10_000);
+      return await withTimeout(pdfjs.getDocument({ data: new Uint8Array(bytes.slice(0)), ...pdfjsAssets() }).promise, 10_000);
     } catch (err) {
       if (!(err instanceof Timeout)) throw err;
       // The background worker never answered: parse on the main thread instead (same fallback as the viewer).
       (globalThis as { pdfjsWorker?: unknown }).pdfjsWorker = await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs');
-      return pdfjs.getDocument({ data: new Uint8Array(bytes.slice(0)) }).promise;
+      return pdfjs.getDocument({ data: new Uint8Array(bytes.slice(0)), ...pdfjsAssets() }).promise;
     }
   };
   const doc = await open();
