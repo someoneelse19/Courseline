@@ -172,6 +172,12 @@ export function useUnreadCount() {
   return useQuery('conversations:unread', api.getUnreadCount);
 }
 
+/** Everyone in a course, for its People tab (teachers first). */
+export function useCoursePeople(courseId: number) {
+  const api = useApi();
+  return useQuery(`people:${courseId}`, () => api.getCoursePeople(courseId));
+}
+
 /** Teachers, TAs and classmates of a course: who the student can message about it. */
 export function useCourseRecipients(courseId: number | null) {
   const api = useApi();

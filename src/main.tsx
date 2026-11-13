@@ -8,8 +8,13 @@ import { LanguageProvider } from './context/LanguageContext';
 import { PullProvider } from './context/PullContext';
 import { ThemeProvider } from './context/ThemeContext';
 import './index.css';
+import { isMicrosoftAuthResponse } from './lib/microsoft';
 
-createRoot(document.getElementById('root')!).render(
+// A Microsoft sign-in popup lands back on this address (lib/microsoft.ts): hand Microsoft's answer to the window that
+// opened it (the popup then closes) instead of starting the app in the popup.
+if (isMicrosoftAuthResponse()) {
+  void import('@azure/msal-browser/redirect-bridge').then((m) => m.broadcastResponseToMainFrame());
+} else createRoot(document.getElementById('root')!).render(
   <StrictMode>
     {/* Outermost boundary: last resort if a provider or the shell itself crashes. */}
     <ErrorBoundary>

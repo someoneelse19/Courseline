@@ -36,7 +36,7 @@ not have. Merging `dev` into `main` keeps
   handed in).
 - **Dark mode and a custom accent color**, your own color and icon per course, and a setting to pick which courses to
   show.
-- **AI export tab in every course**: packs the syllabus, units, pages, assignments and file text into a zip an AI can use as a tutor (stays on your computer).
+- **AI export tab in every course**: packs the syllabus, units, pages, assignments, file text and images (and, if you choose, your grades and quiz results) into a zip an AI can use as a tutor (stays on your computer).
 - **No access token needed, optionally.** A Chrome-based browser extension (in `extension/`) saves the data your own
   Canvas pages load, and Courseline reads it, with a live preview, per-course freshness and one-click refresh of any
   page. See [Use it without a token](#use-it-without-a-token). Not in the API-token edition (`main`).

@@ -1,0 +1,55 @@
+{
+  "manifest_version": "0.2",
+  "name": "courseline-canvas",
+  "display_name": "Courseline for Canvas",
+  "version": "0.1.0",
+  "description": "Lets Claude read your own Canvas courses: assignments, grades, pages, files and quiz results. Read-only.",
+  "long_description": "Gives Claude read-only tools for your Canvas LMS account, using your own access token: your courses and grades, what is due, assignment instructions and rubrics, your scores, teacher comments and rubric scores, which quiz questions you got right and wrong (classic quizzes, as far as Canvas shows them), course pages, and the text of course files (PDF, Word, PowerPoint, Excel). It runs on your computer and talks only to your school's Canvas. Nothing in Canvas is changed.",
+  "author": { "name": "Courseline" },
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.mjs"],
+      "env": {
+        "CANVAS_BASE_URL": "${user_config.canvas_url}",
+        "CANVAS_TOKEN": "${user_config.canvas_token}"
+      }
+    }
+  },
+  "tools": [
+    { "name": "list_courses", "description": "Your current courses and grades" },
+    { "name": "get_upcoming", "description": "What is due soon across all courses" },
+    { "name": "get_course_outline", "description": "A course's syllabus and units" },
+    { "name": "list_assignments", "description": "A course's assignments with your status and score" },
+    { "name": "get_assignment", "description": "One assignment: instructions, rubric, your result and quiz answers" },
+    { "name": "get_grades", "description": "Your grades in a course" },
+    { "name": "list_pages", "description": "A course's pages" },
+    { "name": "read_page", "description": "One page as text" },
+    { "name": "list_files", "description": "A course's files" },
+    { "name": "read_file", "description": "A file's text (PDF, Word, PowerPoint, Excel) or an image" },
+    { "name": "list_announcements", "description": "A course's announcements" },
+    { "name": "search_course", "description": "Search a course's syllabus, pages and assignments" }
+  ],
+  "user_config": {
+    "canvas_url": {
+      "type": "string",
+      "title": "Canvas address",
+      "description": "Your school's Canvas address, e.g. https://campus.myschool.edu",
+      "required": true
+    },
+    "canvas_token": {
+      "type": "string",
+      "title": "Canvas access token",
+      "description": "In Canvas: Account → Settings → New access token. Kept in your system keychain.",
+      "sensitive": true,
+      "required": true
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": { "node": ">=20.0.0" }
+  },
+  "license": "SEE LICENSE IN LICENSE"
+}

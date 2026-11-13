@@ -4,6 +4,8 @@ interface ImportMetaEnv {
   readonly VITE_CANVAS_BASE_URL?: string;
   readonly VITE_CANVAS_API_TOKEN?: string;
   readonly VITE_USE_DEV_PROXY?: string;
+  readonly VITE_MS_CLIENT_ID?: string;
+  readonly VITE_MS_TENANT_ID?: string;
 }
 
 /** Set by vite.config.ts from edition.json; read it through src/edition.ts. */

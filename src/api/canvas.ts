@@ -1,6 +1,6 @@
 // Canvas endpoints. One small function per resource; add new features here.
 import { CanvasApiError, createClient, type ClientConfig } from './client';
-import type { Assignment, AssignmentGroup, Conversation, Course, CourseFile, DiscussionTopic, MailScope, Module, ModuleItem, NewMessage, Page, Recipient, Submission, UpcomingEvent, UserProfile } from './types';
+import type { Assignment, AssignmentGroup, CoursePerson, Conversation, Course, CourseFile, DiscussionTopic, MailScope, Module, ModuleItem, NewMessage, Page, Quiz, QuizQuestion, QuizSubmission, Recipient, Submission, UpcomingEvent, UserProfile } from './types';
 
 export function createCanvasApi(config: ClientConfig) {
   const client = createClient(config);
@@ -197,10 +197,34 @@ export function createCanvasApi(config: ClientConfig) {
      * only returned when explicitly included here — the `include[]=submission` on the
      * assignment endpoint doesn't carry them.
      */
-    getMySubmission: (courseId: number, assignmentId: number) =>
+    getMySubmission: (courseId: number, assignmentId: number, opts: { history?: boolean } = {}) =>
       client.get<Submission>(`/courses/${courseId}/assignments/${assignmentId}/submissions/self`, {
-        include: ['submission_comments', 'rubric_assessment'],
+        include: ['submission_comments', 'rubric_assessment', ...(opts.history ? ['submission_history'] : [])],
       }),
+
+    // --- Quizzes (classic only; New Quizzes are an external tool with no student API) ---------------------------
+
+    getQuizzes: (courseId: number) => client.getAll<Quiz>(`/courses/${courseId}/quizzes`),
+
+    /** The student's own submission to a quiz (Canvas answers with just theirs). */
+    getMyQuizSubmissions: async (courseId: number, quizId: number): Promise<QuizSubmission[]> =>
+      (await client.get<{ quiz_submissions?: QuizSubmission[] }>(`/courses/${courseId}/quizzes/${quizId}/submissions`)).quiz_submissions ?? [],
+
+    /**
+     * The questions as they were in one attempt, with the answers' weights (which ones are right) when Canvas
+     * lets the student see them. Many schools refuse this to students; getQuizSubmissionQuestions is the fallback.
+     */
+    getQuizQuestionsForAttempt: (courseId: number, quizId: number, quizSubmissionId: number, attempt: number) =>
+      client.getAll<QuizQuestion>(`/courses/${courseId}/quizzes/${quizId}/questions`, { quiz_submission_id: quizSubmissionId, quiz_submission_attempt: attempt }),
+
+    /** The questions of the student's quiz submission, each with the answer they gave (no weights). */
+    getQuizSubmissionQuestions: async (quizSubmissionId: number): Promise<QuizQuestion[]> => {
+      const res = await client.get<{ quiz_submission_questions?: (QuizQuestion & { quiz_question?: QuizQuestion })[] }>(`/quiz_submissions/${quizSubmissionId}/questions`, {
+        include: ['quiz_question'],
+      });
+      // Depending on the Canvas version the question comes merged in or nested under quiz_question.
+      return (res.quiz_submission_questions ?? []).map(({ quiz_question, ...q }) => ({ ...quiz_question, ...q, id: q.id ?? quiz_question?.id }) as QuizQuestion);
+    },
 
     /**
      * Post a comment on your own submission (what the Reply box does). Students are
@@ -258,6 +282,32 @@ export function createCanvasApi(config: ClientConfig) {
         return types.includes('TeacherEnrollment') ? 'teacher' : types.includes('TaEnrollment') ? 'ta' : 'student';
       };
       return users.map((u) => ({ id: u.id, name: u.name, role: roleOf(u) }));
+    },
+
+    /**
+     * Everyone in a course (teachers, TAs, students), for its People tab: teachers first, then by name. Email and
+     * student id (sis_user_id, else login_id) come only when this Canvas lets students see them; many do not (the
+     * school's permissions read_sis / view_user_logins), and then they are simply absent.
+     */
+    getCoursePeople: async (courseId: number): Promise<CoursePerson[]> => {
+      const users = await client.getAll<{ id: number; name: string; sortable_name?: string; avatar_url?: string; email?: string; login_id?: string; sis_user_id?: string; enrollments?: Array<{ type: string }> }>(`/courses/${courseId}/users`, {
+        enrollment_type: ['teacher', 'ta', 'student'],
+        include: ['enrollments', 'email', 'avatar_url'],
+      });
+      const roleOf = (types: string[]) => (types.includes('TeacherEnrollment') ? 'teacher' : types.includes('TaEnrollment') ? 'ta' : 'student');
+      const rank = { teacher: 0, ta: 1, student: 2 } as Record<string, number>;
+      return users
+        .map((u) => ({
+          id: u.id,
+          name: u.name,
+          role: roleOf(u.enrollments?.map((e) => e.type) ?? []),
+          sortable: u.sortable_name ?? u.name,
+          ...(u.avatar_url ? { avatar_url: u.avatar_url } : {}),
+          ...(u.email ? { email: u.email } : {}),
+          ...(u.sis_user_id || u.login_id ? { student_id: u.sis_user_id || u.login_id } : {}),
+        }))
+        .sort((a, b) => rank[a.role] - rank[b.role] || a.sortable.localeCompare(b.sortable))
+        .map(({ sortable: _sortable, ...p }) => p);
     },
 
     postSubmissionComment: (courseId: number, assignmentId: number, userId: number, text: string) =>

@@ -68,7 +68,7 @@ describe('buildCourseExport', () => {
 
   it('turns Canvas links into links to the exported copies', () => {
     expect(docs['units/01-cells.md']).toContain('[the lab](../assignments/lab-1.md)');
-    expect(docs['syllabus.md']).toContain('[slides](../files/slides.pdf)');
+    expect(docs['syllabus.md']).toContain('[slides](files/slides.pdf)'); // syllabus.md is at the top of the folder
   });
 
   it('writes the assignment with due date, points and rubric', () => {
@@ -140,5 +140,130 @@ describe('names', () => {
     assignFilePaths(g, new Set(), { original: false });
     expect(g.path).toBeUndefined();
     expect(g.textPath).toBeUndefined();
+  });
+});
+
+describe('buildCourseExport with grades', () => {
+  const graded = () => {
+    const base = input();
+    const quizAssignment = assignment(20, 'Quiz 1', { quiz_id: 5, submission_types: ['online_quiz'], points_possible: 2 });
+    return {
+      ...base,
+      modules: [{ ...base.modules[0], items: [...(base.modules[0].items ?? []), { id: 6, module_id: 1, title: 'Quiz 1', type: 'Quiz', content_id: 5, position: 6 }] }, base.modules[1]] as Module[],
+      assignments: [...base.assignments, quizAssignment],
+      grades: {
+        total: { current: 85.5, final: 60, grade: 'B' },
+        weighted: true,
+        groups: [
+          {
+            id: 1,
+            name: 'Labs',
+            position: 1,
+            group_weight: 100,
+            assignments: [
+              { ...base.assignments[0], score_statistics: { min: 2, max: 10, mean: 6, median: 7 }, submission: { workflow_state: 'graded', score: 8 } },
+              { ...base.assignments[1], submission: { workflow_state: 'unsubmitted' } },
+              { ...quizAssignment, submission: { workflow_state: 'graded', score: 1 } },
+            ],
+          },
+        ],
+        submissions: new Map([
+          [
+            7,
+            {
+              workflow_state: 'graded',
+              score: 8,
+              late: true,
+              submitted_at: '2026-10-09T13:00:00Z',
+              body: '<p>My drawing</p>',
+              rubric_assessment: { c1: { points: 4, rating_id: 'r1', comments: 'Missed the nucleus' } },
+              submission_comments: [{ id: 1, author_name: 'Prof Oak', comment: 'Good start', created_at: '2026-10-10T00:00:00Z' }],
+            },
+          ],
+          [20, { workflow_state: 'graded', score: 1 }],
+        ]),
+        quizzes: [
+          {
+            quizId: 5,
+            assignmentId: 20,
+            title: 'Quiz 1',
+            attempt: 1,
+            score: 1,
+            pointsPossible: 2,
+            questions: [
+              { number: 1, name: 'Organelles', text: 'Which makes energy?', outcome: 'correct' as const, yourAnswer: 'Mitochondria', points: 1, pointsPossible: 1 },
+              { number: 2, outcome: 'incorrect' as const, yourAnswer: 'Ribosome', correctAnswer: 'Nucleus', points: 0, pointsPossible: 1 },
+            ],
+          },
+        ],
+      },
+    };
+  };
+  const docs = byPath(buildCourseExport(graded()));
+
+  it('adds grades.md with the total, the groups and every assignment', () => {
+    const g = docs['grades.md'];
+    expect(g).toContain("- Canvas's current total: 85.5% (B)");
+    expect(g).toContain('| Labs | 100% |');
+    expect(g).toContain('| [Lab 1](assignments/lab-1.md) | Labs | 8 / 10 (80%) | graded, late | 7 |');
+    expect(g).toContain('| [Quiz 1](assignments/quiz-1.md) | Labs | 1 / 2 (50%) |');
+    expect(g).toContain('- [Quiz 1](assignments/quiz-1.md): 1 of 2 right');
+    expect(docs['ALL_TEXT.md']).toContain('# Your grades: Biology 101');
+  });
+
+  it("gives each assignment the student's result: rubric scores, comments, what they handed in", () => {
+    const a = docs['assignments/lab-1.md'];
+    expect(a).toContain('## Your result');
+    expect(a).toContain('- Score: 8 / 10 (80%)');
+    expect(a).toContain('- Class scores: low 2, median 7, high 10, mean 6');
+    expect(a).toContain('- **Labels**: 4 / 5 pts, All correct. Comment: Missed the nucleus');
+    expect(a).toContain('- **Prof Oak** (2026-10-10): Good start');
+    expect(a).toContain('My drawing');
+    expect(docs['assignments/extra-credit.md']).toContain('- Score: not graded yet');
+  });
+
+  it('puts the quiz questions, right and wrong, in the quiz assignment and in its unit', () => {
+    const q = docs['assignments/quiz-1.md'];
+    expect(q).toContain('**1 of 2 right.**');
+    expect(q).toContain('1. ✅ Right (1 / 1 pts): **Organelles**');
+    expect(q).toContain('2. ❌ Wrong (0 / 1 pts)');
+    expect(q).toContain('   - Your answer: Ribosome');
+    expect(q).toContain('   - Right answer: Nucleus');
+    expect(docs['units/01-cells.md']).toContain('2. ❌ Wrong');
+  });
+
+  it('says in the README and manifest that grades are in', () => {
+    expect(docs['README.md']).toContain('`grades.md`');
+    expect(docs['README.md']).not.toContain('Nothing about your own grades');
+    expect(JSON.parse(docs['manifest.json']).includesGrades).toBe(true);
+    expect(JSON.parse(byPath(buildCourseExport(input()))['manifest.json']).includesGrades).toBe(false);
+  });
+});
+
+describe('buildCourseExport with images', () => {
+  const withImages = (images?: Map<string, string>) => {
+    const base = input();
+    return {
+      ...base,
+      pages: [page('cell-basics', 'Cell basics', '<p><img src="/courses/1/files/60/preview" alt="A [plant] cell"> and <img src="https://elsewhere.org/x.png" alt="Diagram"> and <img src="/courses/1/files/61/preview" alt="Missing"></p>')],
+      files: [...base.files, { id: 60, name: 'cell.png', size: 5, contentType: 'image/png', path: 'files/cell.png' }],
+      images,
+    };
+  };
+
+  it('links each picture to its copy, where it appears, from every folder', () => {
+    const docs = byPath(buildCourseExport(withImages(new Map([['https://elsewhere.org/x.png', 'images/x.png']]))));
+    expect(docs['pages/cell-basics.md']).toContain('![A \\[plant\\] cell](../files/cell.png)');
+    expect(docs['pages/cell-basics.md']).toContain('![Diagram](../images/x.png)');
+    expect(docs['pages/cell-basics.md']).toContain('[Image: Missing]'); // not downloaded: its description only
+    expect(docs['ALL_TEXT.md']).toContain('![Diagram](images/x.png)');
+    expect(docs['README.md']).toContain('2 image(s) are included');
+    expect(JSON.parse(docs['manifest.json']).includesImages).toBe(true);
+  });
+
+  it('keeps only descriptions when images are off', () => {
+    const docs = byPath(buildCourseExport(withImages(undefined)));
+    expect(docs['pages/cell-basics.md']).toContain('[Image: A [plant] cell]');
+    expect(docs['README.md']).toContain('Images are not included');
   });
 });

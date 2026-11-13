@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Assignment, Course, CourseFile, Module, Page } from '../api/types';
-import { ExportCancelled, packExport, scanCourse, type ExportApi, type ExportOptions } from './courseExportRunner';
+import { decodeDataImage, ExportCancelled, packExport, scanCourse, type ExportApi, type ExportOptions } from './courseExportRunner';
 
 const file = (id: number, name: string, size = 5, url = `https://files/${id}`): CourseFile => ({ id, display_name: name, filename: name, url, size, 'content-type': name.endsWith('.txt') ? 'text/plain' : 'application/octet-stream' });
 const modules: Module[] = [{ id: 1, name: 'Unit', position: 1, items: [{ id: 1, module_id: 1, title: 'Notes', type: 'File', content_id: 2, position: 1 }] }] as Module[];
@@ -111,5 +111,127 @@ describe('packExport', () => {
     const ctl = new AbortController();
     ctl.abort();
     await expect(packExport(api, scan, all, () => {}, ctl.signal)).rejects.toBeInstanceOf(ExportCancelled);
+  });
+});
+
+describe('grades in the export', () => {
+  const gradedApi = (over: Partial<ExportApi> = {}) =>
+    fakeApi({
+      getAssignments: async () => [
+        { id: 9, course_id: 1, name: 'HW', due_at: null, points_possible: 10, html_url: '', submission: { workflow_state: 'graded', score: 7 } } as Assignment,
+        { id: 10, course_id: 1, name: 'Quiz', due_at: null, points_possible: 2, html_url: '', quiz_id: 5, submission: { workflow_state: 'graded', score: 1 } } as Assignment,
+        { id: 11, course_id: 1, name: 'Later', due_at: null, points_possible: 5, html_url: '', submission: { workflow_state: 'unsubmitted' } } as Assignment,
+      ],
+      getCourse: async () => ({ id: 1, name: 'Biology', enrollments: [{ type: 'student', enrollment_state: 'active', computed_current_score: 80 }] }) as Course,
+      getAssignmentGroups: async () => [],
+      getMySubmission: async (_c, id, opts) =>
+        id === 10 && opts?.history
+          ? { workflow_state: 'graded', score: 1, submission_history: [{ attempt: 1, submission_data: [{ question_id: 1, correct: true, answer_id: 1 }, { question_id: 2, correct: false, answer_id: 4 }] }] }
+          : { workflow_state: 'graded', score: 7, submission_comments: [{ id: 1, author_name: 'T', comment: 'Nice', created_at: '2026-01-01' }] },
+      getQuizzes: async () => [{ id: 5, title: 'Quiz', assignment_id: 10, quiz_type: 'assignment' }],
+      getMyQuizSubmissions: async () => [{ id: 77, quiz_id: 5, attempt: 1, score: 1, workflow_state: 'complete' }],
+      getQuizQuestionsForAttempt: async () => Promise.reject(new Error('unauthorized')),
+      getQuizSubmissionQuestions: async () => [
+        { id: 1, position: 1, question_text: '<p>One?</p>', answers: [{ id: 1, text: 'Yes' }] },
+        { id: 2, position: 2, question_text: '<p>Two?</p>', answers: [{ id: 4, text: 'No' }] },
+      ],
+      ...over,
+    });
+
+  it('leaves grades out unless asked', async () => {
+    const getMySubmission = vi.fn();
+    const api = gradedApi({ getMySubmission });
+    const { zip, summary } = await packExport(api, await scanCourse(api, 1), all);
+    expect(getMySubmission).not.toHaveBeenCalled();
+    expect(zip.file('biology-ai-export/grades.md')).toBeNull();
+    expect(summary.grades).toBe(false);
+  });
+
+  it('reads scores, feedback and quiz questions, skipping work with nothing to show', async () => {
+    const api = gradedApi();
+    const spy = vi.spyOn(api, 'getMySubmission');
+    const { zip, summary } = await packExport(api, await scanCourse(api, 1), { ...all, includeGrades: true, includeQuizResults: true });
+    expect(spy.mock.calls.map((c) => c[1]).sort()).toEqual([10, 9]);
+    expect(summary).toMatchObject({ grades: true, gradeWarnings: [] });
+    const grades = await zip.file('biology-ai-export/grades.md')!.async('string');
+    expect(grades).toContain("Canvas's current total: 80%");
+    expect(grades).toContain('[Quiz](assignments/quiz.md): 1 of 2 right');
+    const quiz = await zip.file('biology-ai-export/assignments/quiz.md')!.async('string');
+    expect(quiz).toContain('2. ❌ Wrong');
+    expect(quiz).toContain('Two?');
+    expect(quiz).toContain('Your answer: No');
+  });
+
+  it('turns what Canvas refuses into warnings and keeps the scores', async () => {
+    const api = gradedApi({ getQuizzes: async () => Promise.reject(new Error('needs a token')), getMySubmission: async () => Promise.reject(new Error('Forbidden')) });
+    const { zip, summary } = await packExport(api, await scanCourse(api, 1), { ...all, includeGrades: true, includeQuizResults: true });
+    expect(summary.gradeWarnings).toEqual(['Quizzes: needs a token', 'Feedback for 2 assignment(s) could not be read (Forbidden); their scores are still included.']);
+    expect(await zip.file('biology-ai-export/assignments/hw.md')!.async('string')).toContain('- Score: 7 / 10 (70%)');
+  });
+
+  it('does not touch quizzes when only grades are wanted', async () => {
+    const getQuizzes = vi.fn();
+    const api = gradedApi({ getQuizzes });
+    await packExport(api, await scanCourse(api, 1), { ...all, includeGrades: true, includeQuizResults: false });
+    expect(getQuizzes).not.toHaveBeenCalled();
+  });
+});
+
+describe('images in the export', () => {
+  const PNG = 'data:image/png;base64,iVBORw0KGgo=';
+  const imageApi = (over: Partial<ExportApi> = {}) =>
+    fakeApi({
+      getCourseFiles: async () => [file(1, 'notes.txt'), { ...file(4, 'photo.jpg'), 'content-type': 'image/jpeg' }],
+      getPages: async () => [
+        {
+          page_id: 1,
+          url: 'p',
+          title: 'P',
+          body: `<p><img src="/courses/1/files/5/preview" alt="Cell"><img src="${PNG}" alt="Pasted"><img src="https://site.org/a/chart.gif" alt="Chart"><img src="https://bad.org/x.png" alt="Bad"><img src="/equation_images/x" data-equation-content="x^2"></p>`,
+        } as Page,
+      ],
+      getFile: async (id) => ({ ...file(Number(id), Number(id) === 5 ? 'cell.png' : `file-${id}.txt`), 'content-type': Number(id) === 5 ? 'image/png' : 'text/plain' }),
+      downloadFile: async (url) => {
+        if (url.includes('bad.org')) throw new Error('CORS');
+        return new Blob([`content of ${url}`], { type: url.includes('site.org') ? 'image/gif' : '' });
+      },
+      ...over,
+    });
+
+  it('finds pictures in the text: Canvas files, pasted-in and outside ones, but not equations', async () => {
+    const scan = await scanCourse(imageApi(), 1);
+    expect(scan.imageFileIds).toEqual([5]);
+    expect(scan.otherImages).toEqual([PNG, 'https://site.org/a/chart.gif', 'https://bad.org/x.png']);
+  });
+
+  it('includes pictures without the other original files, and links them in the text', async () => {
+    const api = imageApi();
+    const { zip, summary } = await packExport(api, await scanCourse(api, 1), { ...all, includeOriginals: false, includeImages: true });
+    const root = 'biology-ai-export';
+    const files = Object.keys(zip.files).filter((n) => !zip.files[n].dir);
+    expect(files).toEqual(expect.arrayContaining([`${root}/files/cell.png`, `${root}/files/photo.jpg`, `${root}/images/image-1.png`, `${root}/images/chart.gif`]));
+    expect(files).not.toContain(`${root}/files/notes.txt`);
+    const pageMd = await zip.file(`${root}/pages/p.md`)!.async('string');
+    expect(pageMd).toContain('![Cell](../files/cell.png)');
+    expect(pageMd).toContain('![Pasted](../images/image-1.png)');
+    expect(pageMd).toContain('![Chart](../images/chart.gif)');
+    expect(pageMd).toContain('[Image: Bad]');
+    expect(pageMd).toContain('$x^2$');
+    expect(summary.images).toBe(4);
+    expect(summary.notes).toContainEqual({ name: '1 image(s) from outside Canvas', note: 'could not be downloaded; only their descriptions are included' });
+  });
+
+  it('downloads no pictures when images are off and originals are off', async () => {
+    const downloadFile = vi.fn(async (_url: string) => new Blob(['x']));
+    const api = imageApi({ downloadFile });
+    const { summary } = await packExport(api, await scanCourse(api, 1), { ...all, includeOriginals: false, includeImages: false });
+    expect(downloadFile.mock.calls.map((c) => String(c[0])).some((u) => /photo|cell|site\.org|bad\.org/.test(u))).toBe(false);
+    expect(summary.images).toBe(0);
+  });
+
+  it('decodes data: images', () => {
+    expect(decodeDataImage(PNG)).toMatchObject({ type: 'image/png' });
+    expect(decodeDataImage(PNG)!.bytes[1]).toBe(0x50); // "P" of the PNG signature
+    expect(decodeDataImage('data:text/plain,hi')).toBeNull();
   });
 });

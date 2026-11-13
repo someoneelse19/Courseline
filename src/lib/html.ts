@@ -26,6 +26,28 @@ export function linkedFiles(html: string): LinkedFile[] {
   return [...files.values()];
 }
 
+export interface EmbeddedImage {
+  src: string;
+  /** Set when the image is a Canvas file (`/files/123/...`). */
+  fileId?: string;
+}
+
+/**
+ * Pictures shown in Canvas HTML, once each, in document order. Equations are left out: Canvas draws them as images
+ * but keeps their LaTeX, which is what the export uses.
+ */
+export function embeddedImages(html: string): EmbeddedImage[] {
+  if (!html) return [];
+  const images = new Map<string, EmbeddedImage>();
+  new DOMParser().parseFromString(html, 'text/html').querySelectorAll('img[src]').forEach((img) => {
+    const src = img.getAttribute('src')?.trim() ?? '';
+    if (!src || img.hasAttribute('data-equation-content') || src.includes('/equation_images/') || images.has(src)) return;
+    const fileId = src.match(/\/files\/(\d+)/)?.[1];
+    images.set(src, fileId ? { src, fileId } : { src });
+  });
+  return [...images.values()];
+}
+
 /** The plain text of an HTML fragment. */
 export function htmlText(html: string): string {
   return new DOMParser().parseFromString(html, 'text/html').body.textContent ?? '';
