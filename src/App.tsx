@@ -30,6 +30,7 @@ const CourseExportPage = lazyPage(() => import('./pages/CourseExportPage'), 'Cou
 const CourseFilesPage = lazyPage(() => import('./pages/CourseFilesPage'), 'CourseFilesPage');
 const CourseGradesPage = lazyPage(() => import('./pages/CourseGradesPage'), 'CourseGradesPage');
 const CoursePagesPage = lazyPage(() => import('./pages/CoursePagesPage'), 'CoursePagesPage');
+const CoursePeoplePage = lazyPage(() => import('./pages/CoursePeoplePage'), 'CoursePeoplePage');
 const SettingsPage = lazyPage(() => import('./pages/SettingsPage'), 'SettingsPage');
 const SubmissionViewPage = lazyPage(() => import('./pages/SubmissionViewPage'), 'SubmissionViewPage');
 
@@ -85,6 +86,7 @@ export default function App() {
             <Route path="pages" element={<Navigate to=".." relative="path" replace />} />
             <Route path="assignments" element={<CourseDetailPage />} />
             <Route path="announcements" element={<CourseAnnouncementsPage />} />
+            <Route path="people" element={<CoursePeoplePage />} />
             <Route path="files" element={<CourseFilesPage />} />
             <Route path="export" element={<CourseExportPage />} />
             <Route path="grades" element={<CourseGradesPage />} />

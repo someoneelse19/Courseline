@@ -4,6 +4,8 @@
 export interface MarkdownOptions {
   /** Rewrite a link's href (e.g. a Canvas file link to the exported copy). Return the new href. */
   rewriteHref?: (href: string) => string;
+  /** Where an image's copy is (a path in the export), or null to keep only its description. */
+  rewriteImage?: (src: string) => string | null;
 }
 
 const SKIP = new Set(['script', 'style', 'noscript', 'head', 'template']);
@@ -108,7 +110,11 @@ function render(node: Node, o: MarkdownOptions): string {
       // Canvas renders equations as images whose LaTeX is kept in data-equation-content.
       const latex = el.getAttribute('data-equation-content');
       if (latex) return `$${latex}$`;
-      const alt = el.getAttribute('alt')?.trim();
+      const alt = oneLine(el.getAttribute('alt') ?? '');
+      const src = el.getAttribute('src')?.trim();
+      const target = src && o.rewriteImage ? o.rewriteImage(src) : null;
+      // `<…>` lets a path with spaces stay one link target.
+      if (target) return `![${alt.replace(/[[\]]/g, '\\$&') || 'image'}](${/[\s()]/.test(target) ? `<${target}>` : target})`;
       return alt ? `[Image: ${alt}]` : '';
     }
     case 'iframe':

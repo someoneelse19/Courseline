@@ -1264,6 +1264,12 @@ function extensionInternals(fullSnapshot: Snapshot, onIssue: IssueSink) {
       return merged as unknown as Assignment;
     },
 
+    // Quiz results are never on a page the extension reads; they need the API.
+    getQuizzes: needsToken,
+    getMyQuizSubmissions: needsToken,
+    getQuizQuestionsForAttempt: needsToken,
+    getQuizSubmissionQuestions: needsToken,
+
     getMySubmission: async (courseId, assignmentId) => {
       const detail = ds.newestFirst('submission', courseId).find((r) => Number(/\/assignments\/(\d+)\//.exec(r.url)?.[1]) === assignmentId);
       if (detail) return normalizeIds(detail.body) as unknown as Submission;
@@ -1305,6 +1311,14 @@ function extensionInternals(fullSnapshot: Snapshot, onIssue: IssueSink) {
       const sent = await sendMessage({ kind: 'new', recipients: m.recipients, subject: m.subject, body: m.body, contextCode: m.contextCode, ...files });
       if (!sent.ok) throw new CanvasApiError(sent.error, 0, 'unknown');
       return (Array.isArray(sent.result) ? sent.result : [sent.result]) as Conversation[];
+    },
+
+    // From the People page the extension saw (identifying fields are never kept, so no email or student id).
+    getCoursePeople: async (courseId: number) => {
+      const found = peopleFrom(snapshot.records, courseId);
+      if (!found.length && hidden(courseId, 'people')) throw hiddenByCanvas(sectionName.people);
+      const rank = { teacher: 0, ta: 1, student: 2 } as Record<string, number>;
+      return [...found].sort((a, b) => (rank[a.role ?? 'student'] ?? 2) - (rank[b.role ?? 'student'] ?? 2) || a.name.localeCompare(b.name));
     },
 
     getCourseRecipients: async (courseId: number) => {

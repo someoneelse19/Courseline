@@ -15,9 +15,11 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "node e2e/run.mjs"
+    "e2e": "node e2e/run.mjs",
+    "connector": "node connector/build.mjs"
   },
   "dependencies": {
+    "@azure/msal-browser": "^5.26.0",
     "@monaco-editor/react": "^4.7.0",
     "docx-preview": "^0.4.1",
     "dompurify": "^3.4.16",

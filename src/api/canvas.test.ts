@@ -15,6 +15,26 @@ describe('getCourses', () => {
   });
 });
 
+describe('getCoursePeople', () => {
+  it('lists teachers first, then by name, with email and student id only when Canvas gives them', async () => {
+    const { calls } = installFetch(({ url }) =>
+      url.pathname === '/api/v1/courses/9/users'
+        ? json([
+            { id: 3, name: 'Zoe Student', sortable_name: 'Student, Zoe', enrollments: [{ type: 'StudentEnrollment' }] },
+            { id: 2, name: 'Ana Student', sortable_name: 'Student, Ana', email: 'ana@school.test', login_id: '226L0001', enrollments: [{ type: 'StudentEnrollment' }] },
+            { id: 1, name: 'Prof Ruiz', sortable_name: 'Ruiz, Prof', sis_user_id: 'T-1', login_id: 'pruiz', avatar_url: 'https://school.test/a.png', enrollments: [{ type: 'TeacherEnrollment' }] },
+          ])
+        : undefined,
+    );
+    expect(await api().getCoursePeople(9)).toEqual([
+      { id: 1, name: 'Prof Ruiz', role: 'teacher', avatar_url: 'https://school.test/a.png', student_id: 'T-1' },
+      { id: 2, name: 'Ana Student', role: 'student', email: 'ana@school.test', student_id: '226L0001' },
+      { id: 3, name: 'Zoe Student', role: 'student' },
+    ]);
+    expect(calls[0].url.searchParams.getAll('include[]')).toEqual(['enrollments', 'email', 'avatar_url']);
+  });
+});
+
 describe('getAssignmentGroups', () => {
   const group = { id: 1, name: 'HW', position: 1, group_weight: 30, assignments: [] };
 

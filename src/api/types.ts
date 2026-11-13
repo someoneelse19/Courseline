@@ -13,6 +13,7 @@ export interface UserProfile {
   name: string;
   short_name?: string;
   primary_email?: string;
+  login_id?: string; // the student's own login (at some schools, their student ID)
   avatar_url?: string;
 }
 
@@ -80,6 +81,71 @@ export interface Submission {
   // Only present with include[]=submission_comments / rubric_assessment on the submission endpoint.
   submission_comments?: SubmissionComment[];
   rubric_assessment?: Record<string, { points?: number; comments?: string; rating_id?: string }>;
+  // Only with include[]=submission_history: every attempt, oldest first. A quiz attempt carries, per question,
+  // whether it was right (submission_data), when the quiz lets the student see their results.
+  submission_history?: SubmissionAttempt[];
+}
+
+export interface SubmissionAttempt {
+  attempt?: number | null;
+  score?: number | null;
+  submitted_at?: string | null;
+  submission_data?: QuizAnswerData[];
+}
+
+/**
+ * One question of a classic-quiz attempt, as the submission's history carries it. `correct` is true, false,
+ * "partial", or "undefined" (an essay or file question nobody has graded). The student's answer sits in
+ * `answer_id` (multiple choice, true/false), `text` (typed answers), or keys like `answer_for_<blank>` and
+ * `answer_<id>`, depending on the question type.
+ */
+export interface QuizAnswerData {
+  question_id: CanvasId;
+  correct?: boolean | 'partial' | 'undefined' | string;
+  points?: number | null;
+  answer_id?: CanvasId | null;
+  text?: string | null;
+  [key: string]: unknown;
+}
+
+// A classic quiz (/courses/:id/quizzes). New Quizzes are an external tool and do not appear here.
+export interface Quiz {
+  id: CanvasId;
+  title: string;
+  html_url?: string;
+  quiz_type?: 'assignment' | 'practice_quiz' | 'graded_survey' | 'survey' | string;
+  assignment_id?: CanvasId | null; // graded quizzes are also assignments
+  points_possible?: number | null;
+  question_count?: number;
+}
+
+// The student's own quiz submission: one per student, `attempt` is their latest.
+export interface QuizSubmission {
+  id: CanvasId;
+  quiz_id: CanvasId;
+  attempt?: number | null;
+  score?: number | null;
+  kept_score?: number | null;
+  quiz_points_possible?: number | null;
+  finished_at?: string | null;
+  workflow_state?: 'untaken' | 'pending_review' | 'complete' | 'settings_only' | 'preview' | string;
+}
+
+/**
+ * A quiz question. From /quizzes/:id/questions the answers can carry `weight` (100 = a right answer); from a quiz
+ * submission's questions they don't, but `answer` is what the student chose.
+ */
+export interface QuizQuestion {
+  id: CanvasId;
+  position?: number | null;
+  question_name?: string | null;
+  question_type?: string | null;
+  question_text?: string | null; // HTML
+  points_possible?: number | null;
+  answers?: { id: CanvasId; text?: string | null; html?: string | null; weight?: number | null; blank_id?: string | null; match_id?: CanvasId | null; left?: string | null; right?: string | null; exact?: number | null; margin?: number | null }[] | null;
+  matches?: { match_id: CanvasId; text: string }[] | null;
+  answer?: unknown; // a quiz submission's question: the student's answer
+  correct?: boolean | 'partial' | string; // present on some Canvas versions
 }
 
 export interface RubricRating {
@@ -124,6 +190,7 @@ export interface Assignment {
   omit_from_final_grade?: boolean;
   // include[]=score_statistics (needs include[]=submission); absent when the instructor hides distributions.
   score_statistics?: ScoreStatistics;
+  quiz_id?: CanvasId; // present when the assignment is a classic quiz
   instructions_unknown?: boolean; // extension mode only: no captured source carried the description (not "there is none")
   description_removed?: boolean; // extension mode only: the instructions held a link that works without a login, so were not kept
 }
@@ -273,6 +340,13 @@ export interface Recipient {
   id: CanvasId;
   name: string;
   role?: 'teacher' | 'ta' | 'student' | string;
+}
+
+/** Someone in a course, for its People tab. Email and student id only when Canvas shows them to the student. */
+export interface CoursePerson extends Recipient {
+  avatar_url?: string;
+  email?: string;
+  student_id?: string; // SIS id, else login id
 }
 
 export interface NewMessage {

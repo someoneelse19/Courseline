@@ -4,6 +4,7 @@ import { Card, ErrorMessage } from '../components/ui';
 import { useApi } from '../context/AuthContext';
 import { t } from '../i18n';
 import { buildExportZip, ExportCancelled, scanCourse, type ExportProgress, type ExportSummary, type ScanResult } from '../lib/courseExportRunner';
+import { isImageFile } from '../lib/courseExport';
 import { formatBytes } from '../lib/format';
 
 // The "AI export" tab: gathers the course's text, pages, assignments and files into one zip a
@@ -16,6 +17,9 @@ const SIZE_LIMITS_MB = [10, 25, 50, 100];
 
 function progressText(p: ExportProgress | null): string {
   if (!p || p.stage === 'reading') return t('Reading the course…');
+  if (p.stage === 'grades') return t('Reading your grades ({done} of {total})…', { done: p.done, total: p.total });
+  if (p.stage === 'images') return t('Downloading images ({done} of {total})…', { done: p.done, total: p.total });
+  if (p.stage === 'quizzes') return t('Reading your quiz answers ({done} of {total})…', { done: p.done, total: p.total });
   if (p.stage === 'finding-files') return t('Finding files ({done} of {total})…', { done: p.done, total: p.total });
   if (p.stage === 'files') return t('Downloading files ({done} of {total}): {name}', { done: p.done, total: p.total, name: p.name });
   return t('Packing the zip…');
@@ -32,6 +36,9 @@ export function CourseExportPage() {
   const [includeOriginals, setIncludeOriginals] = useState(true);
   const [withText, setWithText] = useState(true);
   const [limitMb, setLimitMb] = useState(25);
+  const [withImages, setWithImages] = useState(true);
+  const [withGrades, setWithGrades] = useState(false);
+  const [withQuizResults, setWithQuizResults] = useState(true);
   const abort = useRef<AbortController | null>(null);
 
   // Stop any work and free the zip when leaving the tab or building again.
@@ -79,7 +86,7 @@ export function CourseExportPage() {
     setPhase('building');
     setProgress(null);
     return run(async (signal) => {
-      const { blob, summary } = await buildExportZip(api, scan, { includeOriginals, extractText: withText, maxFileBytes: limitMb * 1024 * 1024 }, setProgress, signal);
+      const { blob, summary } = await buildExportZip(api, scan, { includeOriginals, extractText: withText, maxFileBytes: limitMb * 1024 * 1024, includeImages: withImages, includeGrades: withGrades, includeQuizResults: withGrades && withQuizResults }, setProgress, signal);
       setResult({ url: URL.createObjectURL(blob), summary });
       setPhase('done');
     }, 'ready');
@@ -87,6 +94,7 @@ export function CourseExportPage() {
 
   const cancel = () => abort.current?.abort();
   const busy = phase === 'scanning' || phase === 'building';
+  const imageCount = scan ? new Set([...scan.imageFileIds, ...scan.files.filter((f) => isImageFile({ name: f.display_name || f.filename, contentType: f['content-type'] })).map((f) => f.id)]).size + scan.otherImages.length : 0;
   const totalBytes = scan?.files.reduce((sum, f) => sum + (f.size ?? 0), 0) ?? 0;
   const button = 'rounded-md bg-accent-600 px-4 py-2 text-sm font-medium text-white hover:bg-accent-700 disabled:opacity-50';
   const secondary = 'rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800';
@@ -98,7 +106,7 @@ export function CourseExportPage() {
           {t('Collect everything in this course (syllabus, units, pages, assignments and files) into one folder an AI can use to teach you any concept in it. It is saved as a zip on your computer; nothing is uploaded anywhere.')}
         </p>
         <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
-          {t('Your own grades and submissions are not included. Images are not included, only their descriptions.')}
+          {t('Your own grades are left out unless you choose to include them below.')}
         </p>
 
         {phase === 'idle' && (
@@ -135,6 +143,7 @@ export function CourseExportPage() {
             <li>{t('{n} pages', { n: scan.pages.length })}</li>
             <li>{t('{n} assignments', { n: scan.assignments.length })}</li>
             <li>{t('{n} files ({size})', { n: scan.files.length, size: formatBytes(totalBytes) })}</li>
+            <li>{t('{n} images', { n: imageCount })}</li>
           </ul>
           {scan.warnings.length > 0 && (
             <div className="mt-3 rounded-md bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
@@ -156,6 +165,24 @@ export function CourseExportPage() {
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={includeOriginals} onChange={(e) => setIncludeOriginals(e.target.checked)} className="h-4 w-4 accent-accent-600" />
                 {t('Also include the original files')}
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={withImages} onChange={(e) => setWithImages(e.target.checked)} className="h-4 w-4 accent-accent-600" />
+                {t('Include images (pictures in pages and assignments, and image files)')}
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={withGrades} onChange={(e) => setWithGrades(e.target.checked)} className="h-4 w-4 accent-accent-600" />
+                {t('Include my grades (scores, teacher comments and rubric scores on every assignment)')}
+              </label>
+              <label className={`ml-6 flex items-center gap-2 text-sm ${withGrades ? '' : 'opacity-50'}`}>
+                <input
+                  type="checkbox"
+                  checked={withGrades && withQuizResults}
+                  disabled={!withGrades}
+                  onChange={(e) => setWithQuizResults(e.target.checked)}
+                  className="h-4 w-4 accent-accent-600"
+                />
+                {t('Include which quiz questions I got right and wrong')}
               </label>
               <label className="flex items-center gap-2 text-sm">
                 {t('Skip files larger than')}
@@ -187,7 +214,8 @@ export function CourseExportPage() {
               docs: result.summary.documents,
               originals: result.summary.originals,
               text: result.summary.textFiles,
-            })}
+            })}{' '}
+            {t('{n} images', { n: result.summary.images })}.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <a href={result.url} download={result.summary.fileName} className={button}>
@@ -200,6 +228,19 @@ export function CourseExportPage() {
           <p className="mt-3 text-xs text-neutral-500 dark:text-neutral-400">
             {t('Unzip it, then give the folder (or just ALL_TEXT.md) to your AI. README.md inside explains how.')}
           </p>
+          {result.summary.grades && (
+            <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">{t('Your grades are in grades.md and in each assignment. Only share this export with people and tools you trust.')}</p>
+          )}
+          {result.summary.gradeWarnings.length > 0 && (
+            <div className="mt-3 rounded-md bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+              <p className="font-medium">{t('Some of your grades could not be read:')}</p>
+              <ul className="mt-1 list-disc pl-5">
+                {result.summary.gradeWarnings.map((w) => (
+                  <li key={w}>{w}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           {result.summary.notes.length > 0 && (
             <div className="mt-3 rounded-md bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
               <p className="font-medium">{t('Files that are missing or incomplete:')}</p>

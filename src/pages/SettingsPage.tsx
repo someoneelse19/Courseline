@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { CanvasConnection } from '../components/CanvasConnection';
 import { CapturedDataBrowser } from '../components/CapturedDataBrowser';
+import { MicrosoftTest } from '../components/MicrosoftTest';
 import { TokenForm } from '../components/TokenForm';
+import { microsoftConfigured } from '../lib/microsoft';
 import { useAuth } from '../context/AuthContext';
 import { usePull } from '../context/PullContext';
 import { API_ONLY } from '../edition';
@@ -156,6 +158,8 @@ function ConnectionTab() {
           </button>
         </div>
       </Card>
+
+      {microsoftConfigured && <MicrosoftTest />}
 
       {/* The extension's own setup and tools: only while the data comes from it. With a token they do nothing; "Use
           the extension instead" above leads to its sign-in, which sets it up. */}
