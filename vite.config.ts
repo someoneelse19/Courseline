@@ -65,7 +65,13 @@ export default defineConfig(({ mode }) => {
             // Cookies the browser holds for localhost (this app's, e.g. the token vault's secret, and any other
             // localhost app's: cookies are not kept apart by port) are not Canvas's business. The token goes in the
             // Authorization header.
-            configure: (proxyServer) => proxyServer.on('proxyReq', (req) => req.removeHeader('cookie')),
+            // Dropped from the incoming request on 'start', before http-proxy copies its headers. Not on 'proxyReq':
+            // with followRedirects that event fires after the headers are sent, and removeHeader then throws
+            // ERR_HTTP_HEADERS_SENT, which kills the dev server on every file download.
+            configure: (proxyServer) =>
+              proxyServer.on('start', (req) => {
+                delete req.headers.cookie;
+              }),
           },
         }
       : undefined;

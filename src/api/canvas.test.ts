@@ -89,6 +89,17 @@ describe('getAssignmentGroups', () => {
   });
 });
 
+describe('getAssignment', () => {
+  it('asks for the class statistics, and retries without them when this Canvas rejects them', async () => {
+    const { calls } = installFetch(({ url }) =>
+      url.searchParams.getAll('include[]').includes('score_statistics') ? err(400, 'invalid include') : json({ id: 5, name: 'Set 1' }),
+    );
+    expect(await api().getAssignment(7, 5)).toMatchObject({ id: 5 });
+    expect(calls[0].url.searchParams.getAll('include[]')).toEqual(['submission', 'score_statistics']);
+    expect(calls[1].url.searchParams.getAll('include[]')).toEqual(['submission']);
+  });
+});
+
 describe('getCourseFiles', () => {
   it('returns null (not an error) when the course hides its Files tab', async () => {
     installFetch(() => err(401, 'user not authorized to perform that action'));

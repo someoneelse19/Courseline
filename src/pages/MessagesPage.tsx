@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import type { Conversation, ConversationMessage, MessageAttachment, Recipient } from '../api/types';
+import { Attachments } from '../components/Attachments';
 import { ErrorMessage, Spinner } from '../components/ui';
 import { useApi, useAuth } from '../context/AuthContext';
-import { useFileViewer } from '../context/FileViewerContext';
-import { formatBytes } from '../lib/format';
 import { useQueryStore } from '../context/DataContext';
 import { refreshMail } from '../extension/bridge';
 import { useConversation, useConversations, useCourseRecipients, useVisibleCourses } from '../hooks/useCanvasData';
-import { attachmentKind, chatName, composeTarget, mergeFolders, type AttachmentKind, dayHeading, linkify, listTime, otherPeople, peopleLabel, threadDays, timeOf } from '../lib/messages';
+import { chatName, composeTarget, mergeFolders, dayHeading, linkify, listTime, otherPeople, peopleLabel, threadDays, timeOf } from '../lib/messages';
 import { t } from '../i18n';
 
 // Messages, made to feel like texting: every conversation (received or sent) in one list on the left, the open one as a thread of bubbles on the right
@@ -180,54 +179,12 @@ function Body({ text }: { text: string }) {
   );
 }
 
-const KIND_ICON: Record<AttachmentKind, string> = { image: '🖼️', pdf: '📕', doc: '📝', sheet: '📊', slides: '📽️', code: '💻', video: '🎬', audio: '🎵', archive: '🗜️', file: '📄' };
-
-/**
- * A message's attachments, like a texting app: images as thumbnails, other files as cards, both opening in the in-app
- * viewer. Without a file link (the extension version leaves those out: they work for anyone who has them) a card
- * opens the conversation in Canvas instead.
- */
-function Attachments({ list, mine }: { list: MessageAttachment[]; mine: boolean }) {
-  const { openFile } = useFileViewer();
+/** A message's attachments, like a texting app. Without a file link a card opens the conversation in Canvas. */
+function MessageAttachments({ list, mine }: { list: MessageAttachment[]; mine: boolean }) {
   const { baseUrl } = useAuth();
-  const images = list.filter((a) => attachmentKind(a) === 'image' && a.url);
-  const others = list.filter((a) => !images.includes(a));
-  const open = (a: MessageAttachment) => {
-    if (a.url) openFile(a.url, a.display_name, a['content-type']);
-    else if (baseUrl) window.open(`${baseUrl}/conversations`, '_blank', 'noopener,noreferrer');
-  };
-  const card = mine ? 'bg-white/15 hover:bg-white/25' : 'bg-white hover:bg-neutral-50 dark:bg-neutral-900 dark:hover:bg-neutral-950';
   return (
-    <div className="mt-2 space-y-1.5">
-      {images.length > 0 && (
-        <div className={`grid gap-1.5 ${images.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-          {images.map((a) => (
-            <button key={String(a.id)} type="button" onClick={() => open(a)} title={a.display_name} className="block overflow-hidden rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400">
-              <img src={a.thumbnail_url || a.url} alt={a.display_name} loading="lazy" className="max-h-64 w-full object-cover" />
-            </button>
-          ))}
-        </div>
-      )}
-      {others.map((a) => {
-        const kind = attachmentKind(a);
-        return (
-          <button
-            key={String(a.id)}
-            type="button"
-            onClick={() => open(a)}
-            title={a.url ? t('Open {name}', { name: a.display_name }) : t('Open in Canvas to see this file')}
-            className={`flex w-full min-w-[12rem] items-center gap-2.5 rounded-xl px-3 py-2 text-left ${card}`}
-          >
-            <span aria-hidden className="text-xl">{KIND_ICON[kind]}</span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-xs font-medium">{a.display_name}</span>
-              <span className={`block text-[11px] ${mine ? 'text-white/80' : 'text-neutral-500 dark:text-neutral-400'}`}>
-                {[a.size ? formatBytes(a.size) : null, a.url ? null : t('Open in Canvas')].filter(Boolean).join(' · ')}
-              </span>
-            </span>
-          </button>
-        );
-      })}
+    <div className="mt-2">
+      <Attachments list={list} tone={mine ? 'mine' : 'bubble'} onMissing={() => baseUrl && window.open(`${baseUrl}/conversations`, '_blank', 'noopener,noreferrer')} />
     </div>
   );
 }
@@ -308,7 +265,7 @@ function Thread({ id }: { id: number }) {
                   } ${mine ? (last ? 'rounded-br-md' : '') : last ? 'rounded-bl-md' : ''}`}
                 >
                   <Body text={m.body} />
-                  {m.attachments?.length ? <Attachments list={m.attachments} mine={mine} /> : null}
+                  {m.attachments?.length ? <MessageAttachments list={m.attachments} mine={mine} /> : null}
                 </div>
                 {last && <span className="mt-0.5 px-2 text-[11px] text-neutral-500 dark:text-neutral-400">{timeOf(m.created_at)}</span>}
               </div>

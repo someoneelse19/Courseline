@@ -15,8 +15,7 @@ export function CourseTabs({ courseId }: { courseId: number }) {
     { to: `${base}/announcements`, label: t('Announcements'), active: pathname.startsWith(`${base}/announcements`), fresh: fresh.announcements },
     { to: `${base}/people`, label: t('People'), active: pathname.startsWith(`${base}/people`) },
     { to: `${base}/files`, label: t('Files by unit'), active: pathname.startsWith(`${base}/files`) },
-    { to: `${base}/grades`, label: t('Grades'), active: pathname.startsWith(`${base}/grades`) },
-    { to: `${base}/export`, label: t('AI export'), active: pathname.startsWith(`${base}/export`) },
+    { to: `${base}/grades`, label: t('Grades'), active: pathname.startsWith(`${base}/grades`), fresh: fresh.feedback },
   ] as Array<{ to: string; label: string; active: boolean; fresh?: number }>;
   return (
     <nav className="mb-4 flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
@@ -31,7 +30,7 @@ export function CourseTabs({ courseId }: { courseId: number }) {
           }`}
         >
           {tab.label}
-          {/* Something new since the student last opened this tab (see lib/seen.ts). */}
+          {/* Something new since the student last opened this tab (see lib/seen.ts), or feedback not looked at yet (Grades). */}
           {!!tab.fresh && (
             <>
               <span aria-hidden className="h-2 w-2 rounded-full bg-accent-600 dark:bg-accent-400" />

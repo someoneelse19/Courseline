@@ -16,6 +16,9 @@ export function assignmentTone(a: Assignment): Tone {
   return a.submission?.missing ? 'missing' : 'todo';
 }
 
+/** Canvas marked it missing and it is still not handed in (red everywhere). */
+export const isMissing = (a: Assignment): boolean => assignmentTone(a) === 'missing';
+
 export const TONE_CLASSES: Record<Tone, string> = {
   missing: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300',
   todo: 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300',
@@ -35,8 +38,9 @@ export const assignmentDate = (a: Assignment): string | null =>
 /**
  * Most relevant first: what is coming up, soonest first, then what already passed, most recent
  * first. Undated assignments go last. Applies the same way to pending and finished work.
+ * `missingFirst` puts missing work (most recent first) ahead of all that, as the Pending tab does.
  */
-export function sortAssignments(list: Assignment[], now = Date.now()): Assignment[] {
+export function sortAssignments(list: Assignment[], now = Date.now(), { missingFirst = false } = {}): Assignment[] {
   const time = (a: Assignment) => {
     const d = assignmentDate(a);
     return d ? new Date(d).getTime() : null;
@@ -46,6 +50,7 @@ export function sortAssignments(list: Assignment[], now = Date.now()): Assignmen
     return x === null ? 2 : x >= now ? 0 : 1;
   };
   return [...list].sort((a, b) => {
+    if (missingFirst && isMissing(a) !== isMissing(b)) return isMissing(a) ? -1 : 1;
     const ra = rank(a);
     const rb = rank(b);
     if (ra !== rb) return ra - rb;

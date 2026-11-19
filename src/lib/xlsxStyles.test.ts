@@ -61,6 +61,59 @@ describe('readWorkbookStyles', () => {
   });
 });
 
+/** A sheet with conditional formatting and a drawing part holding a chart, a picture and a text box. */
+async function workbookWithDrawings(): Promise<ArrayBuffer> {
+  const zip = new JSZip();
+  const rel = (id: string, target: string) => `<Relationship Id="${id}" Type="x" Target="${target}"/>`;
+  const rels = (...r: string[]) => `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${r.join('')}</Relationships>`;
+  zip.file('xl/workbook.xml', `<workbook ${NS}><sheets><sheet name="Grades" sheetId="1" r:id="rId1"/></sheets></workbook>`);
+  zip.file('xl/_rels/workbook.xml.rels', rels(rel('rId1', 'worksheets/sheet1.xml')));
+  zip.file('xl/styles.xml', `<styleSheet ${NS}><cellXfs count="1"><xf/></cellXfs><dxfs count="1"><dxf><font><b/><color rgb="FF9C0006"/></font><fill><patternFill><bgColor rgb="FFFFC7CE"/></patternFill></fill></dxf></dxfs></styleSheet>`);
+  zip.file(
+    'xl/worksheets/sheet1.xml',
+    `<worksheet ${NS}><sheetData><row r="1"><c r="A1"><v>4</v></c></row></sheetData>
+      <conditionalFormatting sqref="A1:A5"><cfRule type="colorScale" priority="2"><colorScale><cfvo type="min"/><cfvo type="max"/><color rgb="FFF8696B"/><color theme="9"/></colorScale></cfRule>
+        <cfRule type="cellIs" dxfId="0" priority="1" operator="lessThan" stopIfTrue="1"><formula>5</formula></cfRule></conditionalFormatting>
+      <drawing r:id="rId3"/></worksheet>`,
+  );
+  zip.file('xl/worksheets/_rels/sheet1.xml.rels', rels(rel('rId3', '../drawings/drawing1.xml')));
+  const A = 'xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"';
+  const at = (tag: string, col: number, row: number, off = 0) => `<xdr:${tag}><xdr:col>${col}</xdr:col><xdr:colOff>${off}</xdr:colOff><xdr:row>${row}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:${tag}>`;
+  zip.file(
+    'xl/drawings/drawing1.xml',
+    `<xdr:wsDr ${A}>
+      <xdr:twoCellAnchor>${at('from', 1, 16, 95250)}${at('to', 9, 38)}<xdr:graphicFrame><xdr:nvGraphicFramePr><xdr:cNvPr id="2" name="Chart 1"/></xdr:nvGraphicFramePr><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart r:id="rId1"/></a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:twoCellAnchor>
+      <xdr:oneCellAnchor>${at('from', 0, 2)}<xdr:ext cx="952500" cy="476250"/><xdr:pic><xdr:blipFill><a:blip r:embed="rId2"/></xdr:blipFill></xdr:pic><xdr:clientData/></xdr:oneCellAnchor>
+      <xdr:twoCellAnchor>${at('from', 4, 0)}${at('to', 6, 3)}<xdr:sp><xdr:spPr><a:prstGeom prst="rect"/><a:solidFill><a:srgbClr val="FFFF00"/></a:solidFill></xdr:spPr><xdr:txBody><a:bodyPr/><a:p><a:r><a:t>Note</a:t></a:r></a:p></xdr:txBody></xdr:sp><xdr:clientData/></xdr:twoCellAnchor>
+    </xdr:wsDr>`,
+  );
+  zip.file('xl/drawings/_rels/drawing1.xml.rels', rels(rel('rId1', '../charts/chart1.xml'), rel('rId2', '../media/image1.png')));
+  zip.file('xl/charts/chart1.xml', '<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart><c:plotArea><c:pieChart><c:ser><c:idx val="0"/><c:order val="0"/><c:val><c:numLit><c:ptCount val="1"/><c:pt idx="0"><c:v>1</c:v></c:pt></c:numLit></c:val></c:ser></c:pieChart></c:plotArea></c:chart></c:chartSpace>');
+  zip.file('xl/media/image1.png', new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+  return zip.generateAsync({ type: 'arraybuffer' });
+}
+
+describe('conditional formatting and drawings', () => {
+  it('reads the formats rules apply (dxfs) and each sheet\'s rules', async () => {
+    const wb = (await readWorkbookStyles(await workbookWithDrawings()))!;
+    expect(wb.dxfs[0]).toMatchObject({ bg: '#FFC7CE', color: '#9C0006', bold: true });
+    const [scale, cellIs] = wb.sheets.get('Grades')!.conditional;
+    expect(scale.ranges).toEqual([{ s: { r: 0, c: 0 }, e: { r: 4, c: 0 } }]);
+    expect(scale.colorScale).toEqual({ cfvos: [{ type: 'min', val: undefined }, { type: 'max', val: undefined }], colors: ['#F8696B', '#70AD47'] });
+    expect(cellIs).toMatchObject({ type: 'cellIs', operator: 'lessThan', formulas: ['5'], dxfId: 0, priority: 1, stopIfTrue: true });
+  });
+
+  it('reads the sheet\'s chart, picture and text box with where they sit', async () => {
+    const [chart, picture, box] = (await readWorkbookStyles(await workbookWithDrawings()))!.sheets.get('Grades')!.drawings;
+    expect(chart).toMatchObject({ kind: 'chart', name: 'Chart 1', from: { col: 1, row: 16, dx: 10, dy: 0 }, to: { col: 9, row: 38 } });
+    expect(chart.chart?.plots[0].type).toBe('pie');
+    expect(picture).toMatchObject({ kind: 'image', from: { col: 0, row: 2 }, size: { w: 100, h: 50 } });
+    expect(picture.src).toMatch(/^data:image\/png;base64,/);
+    expect(box.kind).toBe('shape');
+    expect(box.shape).toMatchObject({ fill: '#FFFF00', paragraphs: [{ text: 'Note' }] });
+  });
+});
+
 describe('helpers', () => {
   // The published tint formula (what LibreOffice uses too); Excel's own palette differs by a few levels at most.
   it('applies Excel\'s tint to within a few levels of Excel\'s own palette', () => {

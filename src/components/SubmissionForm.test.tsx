@@ -7,8 +7,15 @@ import { SubmissionForm } from './SubmissionForm';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // The form only talks to Canvas through the API object, so a fake one is all it needs.
-const api = { uploadSubmissionFile: vi.fn(), submitAssignment: vi.fn() };
-vi.mock('../context/AuthContext', () => ({ useApi: () => api }));
+const api = { uploadSubmissionFile: vi.fn(), submitAssignment: vi.fn(), uploadEditorFile: vi.fn() };
+vi.mock('../context/AuthContext', () => ({ useApi: () => api, useAuth: () => ({ baseUrl: 'https://school.test', user: { id: 5 } }) }));
+// The real editor (Tiptap) has its own test (RichTextEditor.test.tsx); here a plain box stands in for it.
+vi.mock('./RichTextEditor', () => ({
+  RichTextEditor: ({ value, onChange }: { value: string; onChange: (html: string) => void }) => (
+    <textarea data-testid="editor" defaultValue={value} onChange={(e) => onChange(e.target.value)} />
+  ),
+}));
+vi.mock('./HtmlContent', () => ({ HtmlContent: ({ html }: { html: string }) => <div data-testid="preview">{html}</div> }));
 
 const assignment = (o: Partial<Assignment> = {}): Assignment => ({
   id: 2, course_id: 1, name: 'A', due_at: null, points_possible: 10, html_url: '', submission_types: ['online_upload', 'online_text_entry'], ...o,
@@ -34,6 +41,7 @@ beforeEach(() => {
   api.uploadSubmissionFile.mockReset();
   api.submitAssignment.mockReset().mockResolvedValue({});
   onSubmitted.mockReset();
+  localStorage.clear();
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
@@ -98,28 +106,39 @@ describe('SubmissionForm: file upload', () => {
 });
 
 describe('SubmissionForm: text entry', () => {
+  const openEditor = async () => {
+    await act(async () => void button('Text entry').click());
+    await act(async () => void button('Open the editor').click());
+    await act(async () => {}); // the lazy editor resolves
+  };
   const type = async (html: string) => {
-    const box = q<HTMLElement>('[contenteditable]')!;
+    const box = q<HTMLTextAreaElement>('[data-testid=editor]')!;
     await act(async () => {
-      box.innerHTML = html;
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+      setter.call(box, html);
       box.dispatchEvent(new Event('input', { bubbles: true }));
     });
   };
+  /** The overlay's Submit button (the last submit button on the page while it is open). */
+  const overlaySubmit = () => [...host.querySelectorAll<HTMLButtonElement>('button[type=submit]')].at(-1)!;
 
-  it('submits the formatted text as HTML', async () => {
+  it('writes in an overlay and submits the formatted text as HTML from it', async () => {
     await render();
-    await act(async () => void button('Text entry').click());
-    await type('my <b>answer</b>');
-    await submit();
-    expect(api.submitAssignment).toHaveBeenCalledWith(1, 2, { submission_type: 'online_text_entry', body: 'my <b>answer</b>' });
+    await openEditor();
+    expect(q('[role=dialog]')).not.toBeNull();
+    await type('<p>my <strong>answer</strong></p>');
+    await act(async () => void overlaySubmit().click());
+    expect(api.submitAssignment).toHaveBeenCalledWith(1, 2, { submission_type: 'online_text_entry', body: '<p>my <strong>answer</strong></p>' });
     expect(api.uploadSubmissionFile).not.toHaveBeenCalled();
+    expect(q('[role=dialog]')).toBeNull(); // closes after a successful submit
+    expect(localStorage.getItem('courseline.draft.1.2')).toBeNull(); // and the draft is gone
   });
 
   it('strips scripts and event handlers before submitting', async () => {
     await render();
-    await act(async () => void button('Text entry').click());
+    await openEditor();
     await type('<p onclick="x()">hi</p><script>alert(1)</script><a href="javascript:alert(1)">bad</a>');
-    await submit();
+    await act(async () => void overlaySubmit().click());
     const body = api.submitAssignment.mock.calls[0][2].body as string;
     expect(body).toContain('hi');
     expect(body).not.toMatch(/script|onclick|javascript:/);
@@ -127,25 +146,43 @@ describe('SubmissionForm: text entry', () => {
 
   it('keeps Submit disabled while the editor has no visible text', async () => {
     await render();
-    await act(async () => void button('Text entry').click());
+    await openEditor();
     await type('<p><br></p>');
-    expect(q<HTMLButtonElement>('button[type=submit]')!.disabled).toBe(true);
+    expect(overlaySubmit().disabled).toBe(true);
     await type('<p>x</p>');
-    expect(q<HTMLButtonElement>('button[type=submit]')!.disabled).toBe(false);
+    expect(overlaySubmit().disabled).toBe(false);
   });
 
-  it('clears the editor after a successful submit', async () => {
+  it('keeps the draft when the editor closes, shows it in the card, and restores it on the next visit', async () => {
     await render();
-    await act(async () => void button('Text entry').click());
-    await type('done');
+    await openEditor();
+    await type('<p>half an essay</p>');
+    await act(async () => void button('Done').click());
+    expect(q('[role=dialog]')).toBeNull();
+    expect(q('[data-testid=preview]')!.textContent).toContain('half an essay');
+    expect(text()).toContain('3 words');
+    expect(localStorage.getItem('courseline.draft.1.2')).toBe('<p>half an essay</p>');
+
+    act(() => root.unmount());
+    root = createRoot(host);
+    await render(assignment({ submission_types: ['online_text_entry'] }));
+    expect(q('[data-testid=preview]')!.textContent).toContain('half an essay');
+    await act(async () => void button('Continue editing').click());
+    await act(async () => {});
+    expect(q<HTMLTextAreaElement>('[data-testid=editor]')!.value).toBe('<p>half an essay</p>');
+  });
+
+  it('can submit a draft from the card without reopening the editor', async () => {
+    localStorage.setItem('courseline.draft.1.2', '<p>ready</p>');
+    await render(assignment({ submission_types: ['online_text_entry'] }));
     await submit();
-    expect(q<HTMLElement>('[contenteditable]')!.innerHTML).toBe('');
+    expect(api.submitAssignment).toHaveBeenCalledWith(1, 2, { submission_type: 'online_text_entry', body: '<p>ready</p>' });
   });
 
   it('shows only the tabs the assignment accepts', async () => {
     await render(assignment({ submission_types: ['online_text_entry'] }));
     expect(button('File upload')).toBeUndefined();
-    expect(q('[contenteditable]')).not.toBeNull(); // opens on the only available tab
+    expect(button('Open the editor')).toBeDefined(); // opens on the only available tab
   });
 
   it('renders nothing for assignments that take neither', async () => {

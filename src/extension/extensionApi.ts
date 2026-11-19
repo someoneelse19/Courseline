@@ -1335,7 +1335,13 @@ function extensionInternals(fullSnapshot: Snapshot, onIssue: IssueSink) {
     },
 
     postSubmissionComment: needsToken,
+    // Canvas's read state of submissions is not in what the extension captures, and marking things read is a write:
+    // the app keeps its own record instead (lib/feedback.ts, lib/seen.ts).
+    getSubmissionReadStates: needsToken,
+    markSubmissionRead: needsToken,
+    markTopicRead: needsToken,
     uploadSubmissionFile: needsToken,
+    uploadEditorFile: needsToken,
     submitAssignment: needsToken,
 
     // The same window as the API's /users/self/upcoming_events: due from now to a week from now.

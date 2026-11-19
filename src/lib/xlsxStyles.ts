@@ -1,8 +1,11 @@
-// Cell formatting from an .xlsx/.xlsm file: fills, fonts, borders, alignment, column widths, row heights, gridlines.
-// SheetJS (community edition) reads values and number formats but not formatting, so the viewer reads the parts of the
-// file that hold it (xl/styles.xml, the theme, each sheet's XML) here and draws the sheet itself. Pure (JSZip and
-// DOMParser only), so it can be tested.
+// Cell formatting from an .xlsx/.xlsm file: fills, fonts, borders, alignment, column widths, row heights, gridlines,
+// conditional formatting rules (evaluated in lib/xlsxConditional.ts), and what floats over the cells: charts (drawn by
+// lib/officeChart.ts), pictures and text boxes. SheetJS (community edition) reads values and number formats but none of
+// this, so the viewer reads the parts of the file that hold it (xl/styles.xml, the theme, each sheet's XML, its drawing
+// and chart parts) here and draws the sheet itself. Pure (JSZip and DOMParser only), so it can be tested.
 import JSZip from 'jszip';
+import { drawingColor, fillOf, parseChart, readOfficeTheme, strokeOf, type ChartModel, type OfficeTheme, type Stroke } from './officeChart';
+import { parseSqref, type Cfvo, type ConditionalRule } from './xlsxConditional';
 
 export interface CellStyle {
   bg?: string; // CSS color
@@ -30,10 +33,37 @@ export interface SheetLayout {
   defaultColWidthPx: number;
   defaultRowHeightPx: number;
   showGridLines: boolean;
+  /** Conditional formatting rules, as the sheet lists them. */
+  conditional: ConditionalRule[];
+  /** Charts, pictures and text boxes over the cells. */
+  drawings: SheetDrawing[];
+}
+
+/** Where a drawing sits: a cell (0-based) plus an offset into it, in px. */
+export interface CellAnchor {
+  col: number;
+  row: number;
+  dx: number;
+  dy: number;
+}
+export interface SheetDrawing {
+  from: CellAnchor;
+  /** The bottom-right corner, for drawings that stretch with their cells. */
+  to?: CellAnchor;
+  /** The size in px, for drawings anchored by one corner. */
+  size?: { w: number; h: number };
+  kind: 'chart' | 'image' | 'shape';
+  chart?: ChartModel;
+  /** A picture, as a data: URL. */
+  src?: string;
+  shape?: { fill?: string; stroke?: Stroke; round: boolean; ellipse: boolean; paragraphs: { text: string; align: string }[]; text: { sizePt: number; color: string; bold: boolean; italic: boolean }; vAlign: string };
+  name?: string;
 }
 
 export interface WorkbookStyles {
   xfs: CellStyle[];
+  /** The formats conditional rules apply (`dxfId`). */
+  dxfs: CellStyle[];
   /** Sheet name -> its layout. */
   sheets: Map<string, SheetLayout>;
 }
@@ -196,6 +226,24 @@ export function readStyles(stylesXml: string | null, theme: string[]): CellStyle
   });
 }
 
+/** The differential formats (<dxfs>) conditional rules point at: fill, font color and font style. */
+export function readDxfs(stylesXml: string | null, theme: string[]): CellStyle[] {
+  if (!stylesXml) return [];
+  const root = parse(stylesXml).documentElement;
+  return kids(kid(root, 'dxfs'), 'dxf').map((d) => {
+    const font = kid(d, 'font');
+    const flag = (n: string) => {
+      const e = kid(font, n);
+      return e ? e.getAttribute('val') !== '0' && e.getAttribute('val') !== 'false' : undefined;
+    };
+    const pattern = kid(kid(d, 'fill'), 'patternFill');
+    // In a dxf, a solid fill's color is usually its bgColor (fgColor in some files).
+    const bg = pattern && pattern.getAttribute('patternType') !== 'none' ? (colorOf(kid(pattern, 'bgColor'), theme) ?? colorOf(kid(pattern, 'fgColor'), theme)) : undefined;
+    const style: CellStyle = { bg, color: colorOf(kid(font, 'color'), theme), bold: flag('b'), italic: flag('i'), strike: flag('strike'), underline: kid(font, 'u') ? kid(font, 'u')!.getAttribute('val') !== 'none' : undefined };
+    return Object.fromEntries(Object.entries(style).filter(([, v]) => v !== undefined)) as CellStyle;
+  });
+}
+
 // --- each sheet ---------------------------------------------------------------------------------------------------
 
 /** Column letters -> 0-based index ("A" -> 0, "AA" -> 26). */
@@ -209,7 +257,43 @@ export function colIndex(letters: string): number {
 const charsToPx = (w: number) => Math.round(w * 7 + 5);
 const ptToPx = (pt: number) => Math.round((pt * 96) / 72);
 
-export function readSheet(xml: string, maxRows = Infinity): SheetLayout {
+/** A sheet's conditional formatting rules (colors resolved against the theme). */
+export function readConditionalRules(root: Element, theme: string[]): ConditionalRule[] {
+  const rules: ConditionalRule[] = [];
+  for (const cf of kids(root, 'conditionalFormatting')) {
+    const ranges = parseSqref(cf.getAttribute('sqref') ?? '');
+    if (!ranges.length) continue;
+    for (const rule of kids(cf, 'cfRule')) {
+      const attr = (n: string) => rule.getAttribute(n) ?? undefined;
+      const numAttr = (n: string) => (rule.hasAttribute(n) ? Number(rule.getAttribute(n)) : undefined);
+      const cfvos = (el: Element | undefined): Cfvo[] => kids(el, 'cfvo').map((v) => ({ type: v.getAttribute('type') ?? 'min', val: v.getAttribute('val') ?? undefined }));
+      const scale = kid(rule, 'colorScale');
+      const bar = kid(rule, 'dataBar');
+      const colors = (el: Element | undefined) => kids(el, 'color').map((c) => colorOf(c, theme) ?? '#FFFFFF');
+      rules.push({
+        ranges,
+        priority: numAttr('priority') ?? 1000,
+        stopIfTrue: attr('stopIfTrue') === '1' || attr('stopIfTrue') === 'true',
+        type: attr('type') ?? '',
+        operator: attr('operator'),
+        formulas: kids(rule, 'formula').map((f) => f.textContent ?? ''),
+        text: attr('text'),
+        dxfId: numAttr('dxfId'),
+        colorScale: scale ? { cfvos: cfvos(scale), colors: colors(scale) } : undefined,
+        dataBar: bar ? { cfvos: cfvos(bar), color: colors(bar)[0] ?? '#638EC6', showValue: bar.getAttribute('showValue') !== '0' } : undefined,
+        rank: numAttr('rank'),
+        percent: attr('percent') === '1' || attr('percent') === 'true',
+        bottom: attr('bottom') === '1' || attr('bottom') === 'true',
+        aboveAverage: attr('aboveAverage') === undefined ? undefined : attr('aboveAverage') !== '0' && attr('aboveAverage') !== 'false',
+        equalAverage: attr('equalAverage') === '1' || attr('equalAverage') === 'true',
+        stdDev: numAttr('stdDev'),
+      });
+    }
+  }
+  return rules.filter((r) => (r.type === 'colorScale' ? !!r.colorScale?.colors.length : r.type === 'dataBar' ? !!r.dataBar : true));
+}
+
+export function readSheet(xml: string, maxRows = Infinity, theme: string[] = DEFAULT_THEME): SheetLayout {
   const doc = parse(xml);
   const root = doc.documentElement;
   const view = kid(kid(root, 'sheetViews'), 'sheetView');
@@ -245,7 +329,144 @@ export function readSheet(xml: string, maxRows = Infinity): SheetLayout {
     defaultColWidthPx: Number.isFinite(defaultColChars) && defaultColChars > 0 ? charsToPx(defaultColChars) : 64,
     defaultRowHeightPx: ptToPx(Number.isFinite(defaultRowPt) && defaultRowPt > 0 ? defaultRowPt : 15),
     showGridLines: view?.getAttribute('showGridLines') !== '0' && view?.getAttribute('showGridLines') !== 'false',
+    conditional: readConditionalRules(root, theme),
+    drawings: [],
   };
+}
+
+// --- drawings (charts, pictures, text boxes) -------------------------------------------------------------------------
+
+const EMU_PER_PX = 9525;
+const NS_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+const IMAGE_TYPES: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', webp: 'image/webp', svg: 'image/svg+xml' };
+
+/** A part's relationships: id -> the target's path inside the zip. */
+async function relsOf(zip: JSZip, partPath: string): Promise<Map<string, string>> {
+  const dir = partPath.slice(0, partPath.lastIndexOf('/') + 1);
+  const relsPath = `${dir}_rels/${partPath.slice(dir.length)}.rels`;
+  const xml = await zip.file(relsPath)?.async('string');
+  const out = new Map<string, string>();
+  if (!xml) return out;
+  for (const r of all(parse(xml), 'Relationship')) {
+    if (r.getAttribute('TargetMode') === 'External') continue;
+    out.set(r.getAttribute('Id') ?? '', resolvePath(dir, r.getAttribute('Target') ?? ''));
+  }
+  return out;
+}
+/** A relationship target relative to `dir` ("../charts/chart1.xml" from "xl/drawings/") as a zip path. */
+export function resolvePath(dir: string, target: string): string {
+  if (target.startsWith('/')) return target.slice(1);
+  const parts = dir.split('/').filter(Boolean);
+  for (const seg of target.split('/')) {
+    if (seg === '..') parts.pop();
+    else if (seg && seg !== '.') parts.push(seg);
+  }
+  return parts.join('/');
+}
+
+function anchorOf(el: Element | undefined): CellAnchor | undefined {
+  if (!el) return undefined;
+  const n = (name: string) => Number(kid(el, name)?.textContent ?? 0) || 0;
+  return { col: n('col'), row: n('row'), dx: n('colOff') / EMU_PER_PX, dy: n('rowOff') / EMU_PER_PX };
+}
+
+/** The picture, chart or text box in one anchor (the first one it holds; groups are not drawn). */
+async function drawingContent(el: Element, zip: JSZip, rels: Map<string, string>, theme: OfficeTheme): Promise<Omit<SheetDrawing, 'from' | 'to' | 'size'> | null> {
+  for (const child of el.children) {
+    switch (child.localName) {
+      case 'AlternateContent': {
+        // Newer kinds of chart (waterfall, histogram, map...) come as a choice with an old-Excel fallback.
+        const choice = kid(child, 'Choice');
+        const frame = kid(choice, 'graphicFrame');
+        const data = frame?.getElementsByTagNameNS('*', 'graphicData')[0];
+        if (data && /chartex|2014\/chartex/.test(data.getAttribute('uri') ?? '')) return { kind: 'chart', chart: { ...parseChart('<c:chartSpace xmlns:c="x"/>', theme), unsupported: 'newer Office' } };
+        const inner = choice ? await drawingContent(choice, zip, rels, theme) : null;
+        if (inner) return inner;
+        const fallback = kid(child, 'Fallback');
+        if (fallback) return drawingContent(fallback, zip, rels, theme);
+        break;
+      }
+      case 'graphicFrame': {
+        const chartRef = child.getElementsByTagNameNS('*', 'chart')[0];
+        const id = chartRef?.getAttributeNS(NS_REL, 'id') ?? chartRef?.getAttribute('r:id');
+        const target = id ? rels.get(id) : undefined;
+        const xml = target ? await zip.file(target)?.async('string') : undefined;
+        if (xml) return { kind: 'chart', chart: parseChart(xml, theme), name: child.getElementsByTagNameNS('*', 'cNvPr')[0]?.getAttribute('name') ?? undefined };
+        break;
+      }
+      case 'pic': {
+        const blip = child.getElementsByTagNameNS('*', 'blip')[0];
+        const id = blip?.getAttributeNS(NS_REL, 'embed') ?? blip?.getAttribute('r:embed');
+        const target = id ? rels.get(id) : undefined;
+        const type = target ? IMAGE_TYPES[target.split('.').pop()!.toLowerCase()] : undefined;
+        const file = target && type ? zip.file(target) : null;
+        // An SVG picture could carry script: shown through <img>, which never runs it.
+        if (file) return { kind: 'image', src: `data:${type};base64,${await file.async('base64')}`, name: child.getElementsByTagNameNS('*', 'cNvPr')[0]?.getAttribute('descr') ?? undefined };
+        break;
+      }
+      case 'sp': {
+        const spPr = kid(child, 'spPr');
+        const geom = kid(spPr, 'prstGeom')?.getAttribute('prst') ?? 'rect';
+        const body = kid(child, 'txBody');
+        const paragraphs = kids(body, 'p').map((p) => ({
+          text: [...p.children].filter((r) => r.localName === 'r' || r.localName === 'fld' || r.localName === 'br').map((r) => (r.localName === 'br' ? '\n' : (kid(r, 't')?.textContent ?? ''))).join(''),
+          align: kid(p, 'pPr')?.getAttribute('algn') ?? 'l',
+        }));
+        const rPr = body?.getElementsByTagNameNS('*', 'rPr')[0] ?? body?.getElementsByTagNameNS('*', 'defRPr')[0];
+        // The shape's style (<xdr:style>) gives the colors the file leaves automatic: fillRef / lnRef / fontRef.
+        const style = kid(child, 'style');
+        const styleColor = (ref: string) => drawingColor([...(kid(style, ref)?.children ?? [])][0], theme);
+        const fill = fillOf(spPr, theme) ?? styleColor('fillRef');
+        const stroke = strokeOf(spPr, theme) ?? (style ? { color: styleColor('lnRef') ?? '#000000', width: 1 } : undefined);
+        const sz = Number(rPr?.getAttribute('sz'));
+        const textColor = fillOf(rPr ?? undefined, theme);
+        return {
+          kind: 'shape',
+          shape: {
+            fill,
+            stroke: stroke && stroke.color === 'auto' ? { ...stroke, color: '#000000' } : stroke,
+            round: geom === 'roundRect',
+            ellipse: geom === 'ellipse',
+            paragraphs,
+            text: {
+              sizePt: sz > 0 ? sz / 100 : 11,
+              color: textColor && textColor !== 'none' ? textColor : (styleColor('fontRef') ?? '#000000'),
+              bold: rPr?.getAttribute('b') === '1',
+              italic: rPr?.getAttribute('i') === '1',
+            },
+            vAlign: kid(body, 'bodyPr')?.getAttribute('anchor') ?? 't',
+          },
+        };
+      }
+    }
+  }
+  return null;
+}
+
+/** A sheet's drawing part: every anchored chart, picture and text box. */
+export async function readDrawings(zip: JSZip, drawingPath: string, theme: OfficeTheme): Promise<SheetDrawing[]> {
+  const xml = await zip.file(drawingPath)?.async('string');
+  if (!xml) return [];
+  const rels = await relsOf(zip, drawingPath);
+  const out: SheetDrawing[] = [];
+  for (const a of parse(xml).documentElement.children) {
+    if (!['twoCellAnchor', 'oneCellAnchor', 'absoluteAnchor'].includes(a.localName)) continue;
+    const content = await drawingContent(a, zip, rels, theme).catch(() => null);
+    if (!content) continue;
+    const ext = kid(a, 'ext');
+    const size = ext ? { w: Number(ext.getAttribute('cx')) / EMU_PER_PX, h: Number(ext.getAttribute('cy')) / EMU_PER_PX } : undefined;
+    if (a.localName === 'absoluteAnchor') {
+      const pos = kid(a, 'pos');
+      if (!size) continue;
+      // Rare: placed in px from the sheet's corner. Expressed as an offset from A1.
+      out.push({ ...content, from: { col: 0, row: 0, dx: Number(pos?.getAttribute('x') ?? 0) / EMU_PER_PX, dy: Number(pos?.getAttribute('y') ?? 0) / EMU_PER_PX }, size });
+      continue;
+    }
+    const from = anchorOf(kid(a, 'from'));
+    if (!from) continue;
+    out.push({ ...content, from, to: a.localName === 'twoCellAnchor' ? anchorOf(kid(a, 'to')) : undefined, size: a.localName === 'oneCellAnchor' ? size : undefined });
+  }
+  return out;
 }
 
 /** The formatting of every sheet of an .xlsx/.xlsm file, or null when it is not one (an .xls, .ods or .csv). */
@@ -259,8 +480,12 @@ export async function readWorkbookStyles(bytes: ArrayBuffer, maxRows = Infinity)
   const text = async (path: string) => (await zip.file(path)?.async('string')) ?? null;
   const workbookXml = await text('xl/workbook.xml');
   if (!workbookXml) return null;
-  const theme = readTheme(await text('xl/theme/theme1.xml'));
-  const xfs = readStyles(await text('xl/styles.xml'), theme);
+  const themeXml = await text('xl/theme/theme1.xml');
+  const theme = readTheme(themeXml);
+  const officeTheme = readOfficeTheme(themeXml);
+  const stylesXml = await text('xl/styles.xml');
+  const xfs = readStyles(stylesXml, theme);
+  const dxfs = readDxfs(stylesXml, theme);
 
   // Sheet names -> their files, through the workbook's relationships.
   const rels = new Map<string, string>();
@@ -274,7 +499,15 @@ export async function readWorkbookStyles(bytes: ArrayBuffer, maxRows = Infinity)
     if (!name || !target) continue;
     const path = target.startsWith('/') ? target.slice(1) : `xl/${target.replace(/^\.\//, '')}`;
     const xml = await text(path);
-    if (xml) sheets.set(name, readSheet(xml, maxRows));
+    if (!xml) continue;
+    const layout = readSheet(xml, maxRows, theme);
+    // Its drawing part, through the sheet's relationships.
+    const drawingId = xml.match(/<(?:\w+:)?drawing\b[^>]*\br:id="([^"]+)"/)?.[1];
+    if (drawingId) {
+      const target = (await relsOf(zip, path)).get(drawingId);
+      if (target) layout.drawings = await readDrawings(zip, target, officeTheme).catch(() => []);
+    }
+    sheets.set(name, layout);
   }
-  return { xfs, sheets };
+  return { xfs, dxfs, sheets };
 }

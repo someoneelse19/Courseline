@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Assignment, AssignmentGroup, Course } from '../api/types';
+import { DataProvider } from '../context/DataContext';
 import { AssignmentDetailPage } from './AssignmentDetailPage';
 import { CourseGradesPage } from './CourseGradesPage';
 
@@ -33,7 +34,7 @@ async function render(path: string, pattern: string, page: React.ReactElement) {
   const el = document.createElement('div');
   document.body.append(el);
   const root = createRoot(el);
-  await act(async () => root.render(<MemoryRouter initialEntries={[path]}><Routes><Route path={pattern} element={page} /></Routes></MemoryRouter>));
+  await act(async () => root.render(<DataProvider><MemoryRouter initialEntries={[path]}><Routes><Route path={pattern} element={page} /></Routes></MemoryRouter></DataProvider>));
   cleanup = () => {
     act(() => root.unmount());
     el.remove();
@@ -95,6 +96,17 @@ describe('the assignment screen in extension mode', () => {
     const text = (await screen()).textContent ?? '';
     expect(text).toContain('No instructions provided.');
     expect(text).not.toContain('not been synced yet');
+  });
+
+  it('puts the facts under the title, with how to submit since the form is not shown, and no Details card', async () => {
+    data.assignment = assignment({ description: '', allowed_extensions: ['pdf', 'docx'] });
+    const text = (await screen()).textContent ?? '';
+    expect(text).toContain('No due date');
+    expect(text).toContain('10 pts');
+    expect(text).toContain('Submit via File upload');
+    expect(text).toContain('File types pdf, docx');
+    expect(text).toContain('Submit in Canvas ↗');
+    expect(text).not.toContain('Details');
   });
 
   it('says instructions were not kept when they held a link that works without signing in', async () => {

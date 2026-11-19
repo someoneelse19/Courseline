@@ -4,7 +4,8 @@
 // plus a directory, and lets the student hide the ones they do not care about.
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { DiscussionTopic } from '../api/types';
-import { isNew, markSeen, useSeenAll, type SeenRecord } from './seen';
+import { useCanvasDecides, useIsNewPost, useMarkPostsRead } from '../hooks/useReadState';
+import { useSeenAll } from './seen';
 
 /** One community's announcements, or null when they could not be loaded (not synced yet, or hidden by the school). */
 export interface CommunityNews {
@@ -30,9 +31,9 @@ export function buildFeed(news: CommunityNews[], hidden: ReadonlySet<number>, fr
   return items.sort((a, b) => time(b.post.posted_at) - time(a.post.posted_at));
 }
 
-/** How many posts are new in one community. */
-export function newCount(posts: DiscussionTopic[] | null, seen: SeenRecord | undefined): number {
-  return (posts ?? []).filter((p) => isNew({ ...p, date: p.posted_at }, seen)).length;
+/** How many posts are new in one community (`isNewPost` from hooks/useReadState.ts, for this community). */
+export function newCount(posts: DiscussionTopic[] | null, isNewPost: (post: DiscussionTopic) => boolean): number {
+  return (posts ?? []).filter(isNewPost).length;
 }
 
 /** When a community last posted (ms), or 0 if never / unknown. */
@@ -42,26 +43,27 @@ export function lastPostAt(posts: DiscussionTopic[] | null): number {
 
 /**
  * What was new when the screen opened keeps its "New" label for this visit (keys `courseId:postId`); opening the screen
- * marks those communities' posts seen. Waits for each community's starting point (see useCommunityNews). Null until then.
+ * marks those communities' posts read (in Canvas too, with a token). Without a token it waits for each community's
+ * starting point (see useCommunityNews). Null until then.
  */
 export function useFreshOnOpen(news: CommunityNews[] | undefined, hidden: ReadonlySet<number>): ReadonlySet<string> | null {
   const seenOf = useSeenAll();
+  const canvasDecides = useCanvasDecides();
+  const isNewPost = useIsNewPost();
+  const markPostsRead = useMarkPostsRead();
   const [fresh, setFresh] = useState<ReadonlySet<string> | null>(null);
   // Once per visit. (Marking seen re-renders at once, before `fresh` is set: the state alone would let it run twice.)
   const done = useRef(false);
   useEffect(() => {
     if (done.current || !news) return;
     const shown = news.filter((n): n is CommunityNews & { posts: DiscussionTopic[] } => !!n.posts && !hidden.has(n.courseId));
-    if (shown.some((n) => !seenOf(n.courseId, 'announcements'))) return;
+    if (!canvasDecides && shown.some((n) => !seenOf(n.courseId, 'announcements'))) return;
     const keys = new Set<string>();
-    for (const n of shown) {
-      const seen = seenOf(n.courseId, 'announcements');
-      for (const p of n.posts) if (isNew({ ...p, date: p.posted_at }, seen)) keys.add(`${n.courseId}:${p.id}`);
-    }
+    for (const n of shown) for (const p of n.posts) if (isNewPost(n.courseId, p)) keys.add(`${n.courseId}:${p.id}`);
     done.current = true;
     setFresh(keys);
-    for (const n of shown) markSeen(n.courseId, 'announcements', n.posts.map((p) => p.id));
-  }, [news, hidden, seenOf]);
+    for (const n of shown) markPostsRead(n.courseId, n.posts);
+  }, [news, hidden, seenOf, canvasDecides, isNewPost, markPostsRead]);
   return fresh;
 }
 

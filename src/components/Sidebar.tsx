@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useCommunities, useCommunityNews, useUnreadCount, useVisibleCourses } from '../hooks/useCanvasData';
 import { newCount, useHiddenCommunities } from '../lib/communities';
-import { useSeenAll } from '../lib/seen';
+import { useIsNewPost } from '../hooks/useReadState';
 import { API_ONLY } from '../edition';
 import { ExtensionStatus } from './ExtensionStatus';
 import { CourseIcon, navIcons } from './icons';
@@ -36,8 +36,8 @@ function useCommunityNewCount(): number {
   const ids = useMemo(() => (communities ?? []).map((c) => c.id), [communities]);
   const { data: news } = useCommunityNews(ids);
   const { hidden } = useHiddenCommunities();
-  const seenOf = useSeenAll();
-  return (news ?? []).reduce((sum, n) => sum + (hidden.has(n.courseId) ? 0 : newCount(n.posts, seenOf(n.courseId, 'announcements'))), 0);
+  const isNewPost = useIsNewPost();
+  return (news ?? []).reduce((sum, n) => sum + (hidden.has(n.courseId) ? 0 : newCount(n.posts, (p) => isNewPost(n.courseId, p))), 0);
 }
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {

@@ -65,6 +65,9 @@ export interface FileAttachment {
   display_name: string;
   url: string; // pre-signed (includes a verifier), so it opens without a session
   size?: number;
+  'content-type'?: string;
+  mime_class?: string;
+  thumbnail_url?: string | null;
 }
 
 export interface Submission {

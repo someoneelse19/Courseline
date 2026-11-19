@@ -43,3 +43,17 @@ describe('markSeen', () => {
     expect(JSON.parse(localStorage.getItem('courseline.seen')!)['5:announcements']).toEqual({ ids: [], since: 1000 });
   });
 });
+
+describe('isNew when Canvas decides (a token)', () => {
+  it('follows Canvas\'s read state, whatever was seen here', () => {
+    const seen = record([1]);
+    expect(isNew({ id: 1, read_state: 'unread', date: '2026-10-01T00:00:00Z' }, seen, true)).toBe(true); // seen here, unread again in Canvas
+    expect(isNew({ id: 2, read_state: 'read', date: '2026-10-25T00:00:00Z' }, seen, true)).toBe(false);
+    expect(isNew({ id: 3, read_state: 'unread', date: '2026-01-01T00:00:00Z' }, undefined, true)).toBe(true); // old and no record yet: still unread
+  });
+
+  it('falls back to the record kept here when Canvas sent no read state', () => {
+    expect(isNew({ id: 4, date: '2026-10-25T00:00:00Z' }, record([]), true)).toBe(true);
+    expect(isNew({ id: 4, date: '2026-10-25T00:00:00Z' }, record([4]), true)).toBe(false);
+  });
+});

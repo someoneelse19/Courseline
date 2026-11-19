@@ -6,7 +6,7 @@ import { Card, EmptyState, ErrorMessage, Spinner } from '../components/ui';
 import { useAnnouncements, useDiscussions } from '../hooks/useCanvasData';
 import { formatDue } from '../lib/format';
 import { htmlText } from '../lib/html';
-import { isNew, markSeen, useSeen } from '../lib/seen';
+import { useIsNewPost, useMarkPostsRead } from '../hooks/useReadState';
 import { t, tn } from '../i18n';
 
 // Per-course announcements (what the instructor posted) and discussions (conversations). Messages are
@@ -74,14 +74,16 @@ export function CourseAnnouncementsPage() {
   const courseId = Number(useParams().courseId);
   const announcements = useAnnouncements(courseId);
   const discussions = useDiscussions(courseId);
-  const seen = useSeen(courseId, 'announcements');
-  // What was new when the tab opened keeps its "New" label for this visit; opening the tab marks it all seen.
+  const isNewPost = useIsNewPost();
+  const markPostsRead = useMarkPostsRead();
+  // What was new when the tab opened keeps its "New" label for this visit; opening the tab marks it all read (in Canvas
+  // too, with a token: the announcements are shown in full here).
   const [fresh, setFresh] = useState<ReadonlySet<number> | null>(null);
   useEffect(() => {
     if (!announcements.data || fresh) return;
-    setFresh(new Set(announcements.data.filter((a) => isNew({ ...a, date: a.posted_at }, seen)).map((a) => a.id)));
-    markSeen(courseId, 'announcements', announcements.data.map((a) => a.id));
-  }, [courseId, announcements.data, seen, fresh]);
+    setFresh(new Set(announcements.data.filter((a) => isNewPost(courseId, a)).map((a) => a.id)));
+    markPostsRead(courseId, announcements.data);
+  }, [courseId, announcements.data, isNewPost, markPostsRead, fresh]);
   return (
     <div className="space-y-6">
       <Section title={t('Announcements')} empty={t('No announcements.')} query={announcements} fresh={fresh ?? undefined} />

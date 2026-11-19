@@ -1,6 +1,11 @@
 // What the student has already seen in each course (announcements, assignments), so a course tab can show a dot for
-// what is new. Kept in this browser (localStorage `courseline.seen`): Canvas has no "seen" for assignments, and reading
-// an announcement here does not mark it read in Canvas. Per course and kind: the ids seen, and since when this is kept.
+// what is new. Kept in this browser (localStorage `courseline.seen`). Per course and kind: the ids seen, and since when
+// this is kept.
+//
+// Announcements: with a token, Canvas's own read state decides (isNew's `canvasDecides`), and opening one here marks it
+// read in Canvas (hooks/useReadState.ts); this record is only the fallback for the extension, which cannot write to
+// Canvas, and for posts Canvas sent no read state for. Assignments: Canvas has no read state for them, so this record
+// is all there is.
 import { useCallback, useSyncExternalStore } from 'react';
 
 export type SeenKind = 'announcements' | 'assignments';
@@ -67,10 +72,13 @@ export function useSeenAll(): (courseId: number, kind: SeenKind) => SeenRecord |
 }
 
 /**
- * Is this item new? Not seen here, not marked read in Canvas, and not older than the record (an older item that turns
- * up later, say from a page the extension had not captured yet, was already there). Canvas's own "unread" always counts.
+ * Is this item new? With `canvasDecides` (a token: what is read here is marked read in Canvas too) and a read state
+ * from Canvas, Canvas's answer is the answer. Otherwise: not seen here, not marked read in Canvas, and not older than
+ * the record (an older item that turns up later, say from a page the extension had not captured yet, was already
+ * there). Canvas's own "unread" counts unless it was seen here.
  */
-export function isNew(item: { id: number; read_state?: string; date?: string | null }, seen: SeenRecord | undefined): boolean {
+export function isNew(item: { id: number; read_state?: string; date?: string | null }, seen: SeenRecord | undefined, canvasDecides = false): boolean {
+  if (canvasDecides && (item.read_state === 'read' || item.read_state === 'unread')) return item.read_state === 'unread';
   if (item.read_state === 'read' || seen?.ids.includes(item.id)) return false;
   if (item.read_state === 'unread') return true;
   if (!seen) return false; // nothing recorded yet: what is there now is the starting point

@@ -1,15 +1,23 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { lazy, Suspense, useCallback, useRef, useState, type FormEvent } from 'react';
 import type { Assignment } from '../api/types';
-import { useApi } from '../context/AuthContext';
-import { cleanEditorHtml, isEditorEmpty, RichTextEditor } from './RichTextEditor';
-import { Card, ErrorMessage } from './ui';
+import { useApi, useAuth } from '../context/AuthContext';
+import { cleanEditorHtml, countWords, isEditorEmpty, loadDraft, saveDraft } from '../lib/editorHtml';
+import { HtmlContent } from './HtmlContent';
+import { Overlay, OverlayPanel, overlayButton } from './Overlay';
+import { Card, ErrorMessage, Spinner } from './ui';
+import { htmlText } from '../lib/html';
 import { t } from '../i18n';
+
+// The editor (and Tiptap with it) loads the first time it is opened.
+const RichTextEditor = lazy(() => import('./RichTextEditor').then((m) => ({ default: m.RichTextEditor })));
 
 interface SubmissionFormProps {
   courseId: number;
   assignmentId: number;
   assignment: Assignment;
   onSubmitted?: () => void;
+  /** Something is already handed in: the card offers to resubmit (a new attempt). */
+  resubmit?: boolean;
 }
 
 // One picked file. `uploadedId` is set once Canvas has confirmed the upload, so a retry after a
@@ -25,11 +33,22 @@ interface PickedFile {
 const extensionOf = (name: string) => name.split('.').pop()?.toLowerCase() ?? '';
 const megabytes = (bytes: number) => (bytes / 1024 / 1024).toFixed(1);
 
-export function SubmissionForm({ courseId, assignmentId, assignment, onSubmitted }: SubmissionFormProps) {
+export function SubmissionForm({ courseId, assignmentId, assignment, onSubmitted, resubmit = false }: SubmissionFormProps) {
   const api = useApi();
+  const { baseUrl, user } = useAuth();
   const [tab, setTab] = useState<'upload' | 'text'>('upload');
   const [files, setFiles] = useState<PickedFile[]>([]);
-  const [text, setText] = useState('');
+  // Text entry: written in the editor overlay, kept as a draft in this browser until it is submitted.
+  const [text, setTextState] = useState(() => loadDraft(courseId, assignmentId));
+  const [editorOpen, setEditorOpen] = useState(false);
+  const setText = useCallback(
+    (html: string) => {
+      setTextState(html);
+      saveDraft(courseId, assignmentId, html);
+    },
+    [courseId, assignmentId],
+  );
+  const closeEditor = useCallback(() => setEditorOpen(false), []);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const nextKey = useRef(0);
@@ -97,6 +116,7 @@ export function SubmissionForm({ courseId, assignmentId, assignment, onSubmitted
         if (isEditorEmpty(text)) throw new Error(t('Write something to submit.'));
         await api.submitAssignment(courseId, assignmentId, { submission_type: 'online_text_entry', body: cleanEditorHtml(text) });
         setText('');
+        setEditorOpen(false);
         onSubmitted?.();
       }
     } catch (err) {
@@ -111,7 +131,7 @@ export function SubmissionForm({ courseId, assignmentId, assignment, onSubmitted
   const canSubmit = activeTab === 'upload' ? files.length > 0 : !isEditorEmpty(text);
 
   return (
-    <Card title={t('Submit assignment')}>
+    <Card title={resubmit ? t('Resubmit assignment') : t('Submit assignment')}>
       <div className="mb-4 flex gap-2 border-b border-neutral-200 dark:border-neutral-800">
         {canUpload && (
           <button type="button" onClick={() => setTab('upload')} className={tabClass(activeTab === 'upload')}>
@@ -172,11 +192,78 @@ export function SubmissionForm({ courseId, assignmentId, assignment, onSubmitted
           </>
         )}
 
-        {activeTab === 'text' && (
-          <RichTextEditor value={text} onChange={setText} ariaLabel={t('Your submission')} placeholder={t('Write your submission here…')} />
+        {activeTab === 'text' &&
+          (isEditorEmpty(text) ? (
+            <button
+              type="button"
+              onClick={() => setEditorOpen(true)}
+              className="block w-full rounded-lg border-2 border-dashed border-neutral-300 p-6 text-center text-sm text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800/50"
+            >
+              <span className="font-medium text-accent-600 dark:text-accent-400">✏️ {t('Open the editor')}</span>
+              <span className="mt-1 block text-xs">{t('Write your submission with the same tools as Canvas')}</span>
+            </button>
+          ) : (
+            <div className="overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-800">
+              {/* The draft, cut short; a click anywhere on it reopens the editor. */}
+              <div onClick={() => setEditorOpen(true)} className="relative max-h-40 cursor-text overflow-hidden px-3 py-2">
+                <div className="pointer-events-none">
+                  <HtmlContent html={text} />
+                </div>
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-white dark:from-neutral-900" />
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-neutral-200 px-3 py-1.5 text-xs text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
+                <span>
+                  {t('{n} words', { n: countWords(htmlText(text)) })} · {t('Draft kept in this browser')}
+                </span>
+                <button type="button" onClick={() => setEditorOpen(true)} className="font-medium text-accent-600 hover:underline dark:text-accent-400">
+                  ✏️ {t('Continue editing')}
+                </button>
+              </div>
+            </div>
+          ))}
+
+        {editorOpen && (
+          <Overlay onClose={closeEditor} label={t('Text entry')}>
+            <OverlayPanel
+              tall
+              title={`${assignment.name} · ${t('Text entry')}`}
+              onClose={closeEditor}
+              bodyClassName=""
+              footer={
+                <div className="space-y-2">
+                  {error && <ErrorMessage error={error} />}
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <p className="mr-auto text-xs text-neutral-500 dark:text-neutral-400">{t('Your draft is kept in this browser until you submit it.')}</p>
+                    <button type="button" onClick={closeEditor} className={overlayButton}>
+                      {t('Done')}
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={submitting || isEditorEmpty(text)}
+                      className="rounded-md bg-accent-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-accent-700 disabled:opacity-50"
+                    >
+                      {submitting ? t('Submitting…') : resubmit ? t('Resubmit') : t('Submit')}
+                    </button>
+                  </div>
+                </div>
+              }
+            >
+              <Suspense fallback={<Spinner label={t('Opening the editor…')} />}>
+                <RichTextEditor
+                  value={text}
+                  onChange={setText}
+                  ariaLabel={t('Your submission')}
+                  placeholder={t('Write your submission here…')}
+                  baseUrl={baseUrl}
+                  userId={user?.id ?? null}
+                  upload={(file) => api.uploadEditorFile(file)}
+                />
+              </Suspense>
+            </OverlayPanel>
+          </Overlay>
         )}
 
-        {error && <ErrorMessage error={error} />}
+        {error && !editorOpen && <ErrorMessage error={error} />}
 
         <div className="flex flex-wrap items-center gap-3">
           <button
@@ -184,7 +271,7 @@ export function SubmissionForm({ courseId, assignmentId, assignment, onSubmitted
             disabled={submitting || !canSubmit}
             className="rounded-md bg-accent-600 px-4 py-2 text-sm font-medium text-white hover:bg-accent-700 disabled:opacity-50"
           >
-            {submitting ? t('Submitting…') : t('Submit')}
+            {submitting ? t('Submitting…') : resubmit ? t('Resubmit') : t('Submit')}
           </button>
           {activeTab === 'upload' && allowed.length > 0 && (
             <p className="text-xs text-neutral-500 dark:text-neutral-400">{t('Allowed: {allowed}', { allowed: allowed.join(', ') })}</p>

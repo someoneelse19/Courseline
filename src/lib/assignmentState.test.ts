@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Assignment } from '../api/types';
 import { assignmentStatus } from '../components/AssignmentList';
-import { assignmentDate, assignmentTone, isDone, isFaded, sortAssignments, TONE_CLASSES } from './assignmentState';
+import { assignmentDate, assignmentTone, isDone, isFaded, isMissing, sortAssignments, TONE_CLASSES } from './assignmentState';
 
 const DAY = 86_400_000;
 const make = (submission: Partial<NonNullable<Assignment['submission']>> | undefined, dueOffsetDays: number): Assignment =>
@@ -56,6 +56,15 @@ describe('assignmentStatus badges use the same colors as the calendar', () => {
   ] as const)('%s', (tone, a) => expect(assignmentStatus(a).className).toBe(TONE_CLASSES[tone]));
 });
 
+describe('isMissing', () => {
+  it('is work Canvas marked missing that is still not handed in', () => {
+    expect(isMissing(make({ missing: true }, -2))).toBe(true);
+    expect(isMissing(make({ missing: true, workflow_state: 'submitted' }, -2))).toBe(false);
+    expect(isMissing(make({}, -2))).toBe(false); // past due but not marked
+    expect(isMissing(make(undefined, 3))).toBe(false);
+  });
+});
+
 describe('sortAssignments', () => {
   const NOW = Date.parse('2026-10-08T12:00:00Z');
   const at = (name: string, iso: string | null, extra: Partial<Assignment> = {}) =>
@@ -79,6 +88,13 @@ describe('sortAssignments', () => {
     const input = [at('x', null), a];
     sortAssignments(input, NOW);
     expect(input.map((i) => i.name)).toEqual(['x', 'a']);
+  });
+
+  it('with missingFirst, puts missing work (most recent first) ahead of everything else', () => {
+    const missing = (name: string, iso: string) => at(name, iso, { submission: { workflow_state: 'unsubmitted', missing: true } as Assignment['submission'] });
+    const list = [at('soon', '2026-10-09T00:00:00Z'), missing('missed-old', '2026-09-01T00:00:00Z'), at('past', '2026-10-07T00:00:00Z'), missing('missed-recent', '2026-10-06T00:00:00Z')];
+    expect(sortAssignments(list, NOW, { missingFirst: true }).map((a) => a.name)).toEqual(['missed-recent', 'missed-old', 'soon', 'past']);
+    expect(names(list)).toEqual(['soon', 'past', 'missed-recent', 'missed-old']); // without it, by date only
   });
 });
 

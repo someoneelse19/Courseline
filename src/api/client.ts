@@ -140,6 +140,10 @@ export function downloadTarget(url: string, baseUrl: string, origin: string): st
 export interface UploadedFile {
   id: number;
   display_name?: string;
+  /** The file's verifier: with it the file's address works without a session (what Canvas's editor embeds). */
+  uuid?: string;
+  url?: string;
+  'content-type'?: string;
 }
 
 export function createClient({ baseUrl, token, proxyPrefix, onUnauthorized }: ClientConfig) {
@@ -193,7 +197,24 @@ export function createClient({ baseUrl, token, proxyPrefix, onUnauthorized }: Cl
       headers: { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    return res.json() as Promise<T>;
+    // Some writes answer 204 with no body (marking things read).
+    const text = await res.text();
+    return (text ? JSON.parse(text) : undefined) as T;
+  }
+
+  /**
+   * A GraphQL query (Canvas's /api/graphql, same token). Some data is only there: the read state of the student's
+   * submissions, which REST can give only by marking them read. Errors in the answer reject like a failed request.
+   */
+  async function graphql<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
+    const res = await fetchUrl(`${origin}/api/graphql`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, variables }),
+    });
+    const answer = (await res.json()) as { data?: T; errors?: { message?: string }[] };
+    if (answer.errors?.length || !answer.data) throw new CanvasApiError(answer.errors?.[0]?.message ?? 'Canvas sent no data.', res.status, 'unknown');
+    return answer.data;
   }
 
   /** GET a list endpoint and follow every `next` page. Use per_page=100 (Canvas's max). */
@@ -290,7 +311,7 @@ export function createClient({ baseUrl, token, proxyPrefix, onUnauthorized }: Cl
     throw new CanvasApiError(`Canvas did not confirm the upload of ${file.name} (${res.status}).`, res.status, 'unknown');
   }
 
-  return { get, getAll, getUpTo, send, getBlob, uploadFile, origin };
+  return { get, getAll, getUpTo, send, graphql, getBlob, uploadFile, origin };
 }
 
 export type CanvasClient = ReturnType<typeof createClient>;
