@@ -220,7 +220,7 @@ in [DEVELOPER_GUIDE.md § Canvas quirks](DEVELOPER_GUIDE.md#8-canvas-quirks-refe
 
 ## License
 
-[Courseline Personal Use License 1.0.0](LICENSE) (adapted from PolyForm Noncommercial 1.0.0, but stricter). In plain
+[Courseline Personal Use License 1.0.0](LICENSE.md) (adapted from PolyForm Noncommercial 1.0.0, but stricter). In plain
 words:
 
 - **You can** use it, change it and share it free of charge (with the license attached) **as an individual, for

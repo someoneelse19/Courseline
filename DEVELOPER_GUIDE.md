@@ -209,7 +209,7 @@ Checklist before making it public:
 
 - `git ls-files | grep -E '^\.env$|\.claude|node_modules'` prints nothing.
 - You have **no real token** in `.env.example` (it holds placeholders only).
-- The `LICENSE` is the Courseline Personal Use License 1.0.0 (adapted from PolyForm Noncommercial 1.0.0: individuals
+- The `LICENSE.md` is the Courseline Personal Use License 1.0.0 (adapted from PolyForm Noncommercial 1.0.0: individuals
   may use it for themselves only; no use by or for schools, companies or any other organization, commercial or not,
   without a separate written license). Check the `Required Notice:` line at the top has the name you want shown publicly.
 - Check the CI run for `main` goes green on GitHub (it runs on pushes to `main` and on pull requests, and installs with
@@ -319,7 +319,7 @@ Config files sit in the project root.
 | `.gitignore` | Keeps `.env` (and `.env.local` variants), `node_modules`, `dist`, `coverage`, `.claude/`, logs, OS/editor files and the e2e test's generated certificate, browser profile and screenshots out of Git. |
 | `.claude/` | Claude Code settings for this folder (git-ignored; not part of the app). |
 | `docs/screenshots/` | The README's images. They were taken from a fake Canvas with made-up course data. |
-| `LICENSE` | Courseline Personal Use License 1.0.0: PolyForm Noncommercial 1.0.0 with the noncommercial-purpose and noncommercial-organization grants replaced by personal use by individuals only. Organizations (schools, edtech companies, non-profits, governments) need a separate written license. |
+| `LICENSE.md` | Courseline Personal Use License 1.0.0: PolyForm Noncommercial 1.0.0 with the noncommercial-purpose and noncommercial-organization grants replaced by personal use by individuals only. Organizations (schools, edtech companies, non-profits, governments) need a separate written license. |
 
 ### `src/api/` — talking to Canvas (no React in here)
 
