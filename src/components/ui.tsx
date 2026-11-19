@@ -55,3 +55,8 @@ export function EmptyState({ children }: { children: ReactNode }) {
 export function PageTitle({ children }: { children: ReactNode }) {
   return <h1 className="mb-4 text-2xl font-bold tracking-tight">{children}</h1>;
 }
+
+/** The browser blocked the new tab a quiz or an external tool opens in (hooks/useCanvasTab.ts). */
+export function TabBlocked() {
+  return <p role="alert" className="mb-3 text-sm text-amber-700 dark:text-amber-400">{t('Your browser blocked the new tab. Allow pop-ups for Courseline and try again.')}</p>;
+}

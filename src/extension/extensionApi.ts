@@ -1328,6 +1328,12 @@ function extensionInternals(fullSnapshot: Snapshot, onIssue: IssueSink) {
       return { people, complete: !!ds.newest(PEOPLE_COMPLETE, courseId), more: false };
     },
 
+    // New message reads the captured class list (getCourseRecipients) instead: it is only as big as Canvas's People
+    // page loaded.
+    getCourseStaff: needsToken,
+    getCourseTabs: needsToken,
+    findClassmates: needsToken,
+
     getCourseRecipients: async (courseId: number) => {
       const found = peopleFrom(snapshot.records, courseId);
       if (!found.length && hidden(courseId, 'people')) throw hiddenByCanvas(sectionName.people);
@@ -1335,7 +1341,13 @@ function extensionInternals(fullSnapshot: Snapshot, onIssue: IssueSink) {
     },
 
     postSubmissionComment: needsToken,
+    // Canvas's read state of submissions is not in what the extension captures, and marking things read is a write:
+    // the app keeps its own record instead (lib/feedback.ts, lib/seen.ts).
+    getSubmissionReadStates: needsToken,
+    markSubmissionRead: needsToken,
+    markTopicRead: needsToken,
     uploadSubmissionFile: needsToken,
+    uploadEditorFile: needsToken,
     submitAssignment: needsToken,
 
     // The same window as the API's /users/self/upcoming_events: due from now to a week from now.

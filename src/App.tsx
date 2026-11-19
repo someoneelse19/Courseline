@@ -27,14 +27,14 @@ const MessagesPage = lazyPage(() => import('./pages/MessagesPage'), 'MessagesPag
 const CommunitiesPage = lazyPage(() => import('./pages/CommunitiesPage'), 'CommunitiesPage');
 const CommunityPage = lazyPage(() => import('./pages/CommunityPage'), 'CommunityPage');
 const CourseAnnouncementsPage =lazyPage(() => import('./pages/CourseAnnouncementsPage'), 'CourseAnnouncementsPage');
+const CourseDiscussionsPage = lazyPage(() => import('./pages/CourseAnnouncementsPage'), 'CourseDiscussionsPage');
+const CourseToolsPage = lazyPage(() => import('./pages/CourseToolsPage'), 'CourseToolsPage');
 const CourseDetailPage = lazyPage(() => import('./pages/CourseDetailPage'), 'CourseDetailPage');
-const CourseExportPage = lazyPage(() => import('./pages/CourseExportPage'), 'CourseExportPage');
 const CourseFilesPage = lazyPage(() => import('./pages/CourseFilesPage'), 'CourseFilesPage');
 const CourseGradesPage = lazyPage(() => import('./pages/CourseGradesPage'), 'CourseGradesPage');
 const CoursePagesPage = lazyPage(() => import('./pages/CoursePagesPage'), 'CoursePagesPage');
 const CoursePeoplePage = lazyPage(() => import('./pages/CoursePeoplePage'), 'CoursePeoplePage');
 const SettingsPage = lazyPage(() => import('./pages/SettingsPage'), 'SettingsPage');
-const SubmissionViewPage = lazyPage(() => import('./pages/SubmissionViewPage'), 'SubmissionViewPage');
 
 /** New data arrived (the extension captured something): reload what is on screen in place, without remounting. */
 function RefreshOnNewData({ version }: { version: string }) {
@@ -88,12 +88,16 @@ export default function App() {
             <Route path="pages" element={<Navigate to=".." relative="path" replace />} />
             <Route path="assignments" element={<CourseDetailPage />} />
             <Route path="announcements" element={<CourseAnnouncementsPage />} />
+            <Route path="discussions" element={<CourseDiscussionsPage />} />
             <Route path="people" element={<CoursePeoplePage />} />
             <Route path="files" element={<CourseFilesPage />} />
-            <Route path="export" element={<CourseExportPage />} />
+            {/* The AI export tab was removed (Nov 19, 2026); old links land on the course. */}
+            <Route path="export" element={<Navigate to=".." relative="path" replace />} />
             <Route path="grades" element={<CourseGradesPage />} />
+            <Route path="tools" element={<CourseToolsPage />} />
             <Route path="assignments/:assignmentId" element={<AssignmentDetailPage />} />
-            <Route path="assignments/:assignmentId/submission" element={<SubmissionViewPage />} />
+            {/* The full submission opens in an overlay on the assignment now (Nov 19, 2026); old links land there. */}
+            <Route path="assignments/:assignmentId/submission" element={<Navigate to=".." relative="path" replace />} />
           </Route>
           <Route path="assignments" element={<AssignmentsPage />} />
           <Route path="calendar" element={<CalendarPage />} />

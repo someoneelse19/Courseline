@@ -58,6 +58,9 @@
   .canvas-html h1, .canvas-html h2, .canvas-html h3, .canvas-html h4 { @apply font-semibold; }
   .canvas-html h1 { @apply text-xl; }
   .canvas-html h2 { @apply text-lg; }
+  .canvas-html h3 { @apply text-base; }
+  .canvas-html hr { @apply border-neutral-300 dark:border-neutral-700; }
+  .canvas-html img.equation_image { @apply inline align-middle; }
   .canvas-html ul { @apply list-disc pl-6; }
   .canvas-html ol { @apply list-decimal pl-6; }
   .canvas-html a { @apply text-accent-600 underline dark:text-accent-400; }
@@ -78,6 +81,13 @@
   .canvas-html .external_link_icon::after { content: '\00a0\2197'; }
   .canvas-html blockquote { @apply border-l-4 border-neutral-300 pl-3 dark:border-neutral-700; }
   .canvas-html pre { @apply overflow-x-auto rounded-sm bg-neutral-100 p-2 dark:bg-neutral-800; }
+  /* The text-entry editor (components/RichTextEditor.tsx): placeholder, selected image and table cells. */
+  .rce-content p.is-editor-empty:first-child::before { content: attr(data-placeholder); @apply pointer-events-none float-left h-0 text-neutral-400; }
+  .rce-content .ProseMirror-selectednode { @apply outline-2 outline-accent-500; }
+  .rce-content .selectedCell { @apply bg-accent-50 dark:bg-accent-950; }
+  .rce-content table { @apply my-2 w-full table-fixed; }
+  .rce-content th { @apply bg-neutral-50 text-left font-semibold dark:bg-neutral-800/60; }
+  .rce-content a { @apply cursor-text; }
   /* Instructors paste inline colors that are unreadable in dark mode; let the theme win. */
   .dark .canvas-html [style*="color"] { color: inherit !important; }
   .dark .canvas-html [style*="background"] { background: transparent !important; }

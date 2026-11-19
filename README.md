@@ -29,7 +29,8 @@ not have. Merging `dev` into `main` keeps
   scores (group weights and drop rules included).
 - **Messages that feel like texting.** Your Canvas Inbox and sent messages as conversations, each a thread of
   bubbles with its subject on top as the chat name; reply with Enter, attach files (images and files preview inline),
-  or start a new message to a course's teachers and classmates. The sidebar shows how many conversations are unread;
+  or start a new message to a course's teachers and classmates (in a class of thousands too: it shows the 30 most
+  likely, people you've written with first, and searches the whole class as you type). The sidebar shows how many conversations are unread;
   with a token, opening one marks it read. Works with a
   token and, on `dev`, with the extension.
 - **Communities as one news feed.** The Canvas spaces you belong to besides your classes (library, student life, your
@@ -37,13 +38,15 @@ not have. Merging `dev` into `main` keeps
   of new posts, and a directory that says which have news. Hide the ones you don't care about; each opens as a single
   page (posts, resources, discussions) instead of class tabs. Courseline tells classes and communities apart on its
   own, and you can correct it.
+- **Course tabs that follow Canvas's menu**: Discussions only when the course has it, and a **Tools** tab with the
+  course's quizzes and external tools (attendance and the like). Canvas will not let those be shown inside another
+  site, so they open in a new tab without Canvas's menus; your quiz answers open the same way from the submission.
 - **People tab in every course**, filtered by role (teachers, TAs, students) and searchable, with a Message button per
   person. Big courses load the first 500 students; **Load everyone** reads the rest (also with the extension).
 - **Calendar and All assignments** across your chosen courses, colored by course and by status (missing, to do,
   handed in).
 - **Dark mode and a custom accent color**, your own color and icon per course, and a setting to pick which courses to
   show.
-- **AI export tab in every course**: packs the syllabus, units, pages, assignments, file text and images (and, if you choose, your grades and quiz results) into a zip an AI can use as a tutor (stays on your computer).
 - **No access token needed, optionally.** A Chrome-based browser extension (in `extension/`) saves the data your own
   Canvas pages load, and Courseline reads it, with a live preview, per-course freshness and one-click refresh of any
   page. See [Use it without a token](#use-it-without-a-token). Not in the API-token edition (`main`).
@@ -66,6 +69,8 @@ Screenshots use made-up course data, signed in with a token, so they look the sa
 | ![Calendar](docs/screenshots/calendar.png) | ![Communities: one news feed and a directory with new-post counts](docs/screenshots/communities.png) |
 | **One community on one page** | **People tab: role filters, search, message anyone** |
 | ![A community's page: its news and resources](docs/screenshots/community.png) | ![A course's People tab](docs/screenshots/people.png) |
+| **Tools: a course's quizzes and external tools, opening in a new tab** | |
+| ![A course's Tools tab: quizzes with their scores, and the attendance tool](docs/screenshots/tools.png) | |
 
 Developer documentation (architecture, every file, how to change anything, known gaps):
 **[DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md)**.

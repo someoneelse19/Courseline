@@ -11,6 +11,8 @@ import { ThemeProvider } from './context/ThemeContext';
 import { installFetch, json, type Call } from './test/fakeFetch';
 import { resetHiddenCommunities } from './lib/communities';
 import { resetSeen } from './lib/seen';
+import { resetReadHere } from './lib/canvasRead';
+import { resetFeedbackSeen } from './lib/feedback';
 
 // Smoke test for the screens: every route renders against a small fake Canvas, through the real providers,
 // cache and lazy-loaded pages. It checks the screens come up with their data, not how they look.
@@ -45,6 +47,10 @@ const routes: Record<string, unknown> = {
   '/api/v1/courses/1/assignments/5/submissions/self': { ...lab.submission, body: '<p>My lab</p>', submission_comments: [{ id: 1, author_id: 9, author_name: 'Prof', comment: 'Nice work', created_at: '2026-09-23T10:00:00Z' }] },
   '/api/v1/courses/1/assignment_groups': [{ id: 1, name: 'Labs', position: 1, group_weight: 0, assignments: [lab, quiz, essay] }],
   // The same address serves announcements (asked with only_announcements=true) and discussions: see the handler below.
+  '/api/v1/courses/1/tabs': [
+    { id: 'home', label: 'Home', type: 'internal', html_url: '/courses/1', position: 1 },
+    { id: 'discussions', label: 'Discussions', type: 'internal', html_url: '/courses/1/discussion_topics', position: 2 },
+  ],
   '/api/v1/courses/1/users': [{ id: 7, name: 'Prof Rivera', sortable_name: 'Rivera, Prof', enrollments: [{ type: 'TeacherEnrollment' }] }],
   '/api/v1/courses/1/discussion_topics': [{ id: 92, title: 'Week 2 questions', message: '<p>Ask here</p>', posted_at: '2026-10-02T10:00:00Z', discussion_subentry_count: 3, author: { display_name: 'Prof Rivera' } }],
   '/api/v1/courses/1/modules': [
@@ -75,6 +81,9 @@ let calls: Call[];
 
 beforeEach(() => {
   localStorage.clear();
+  // Kept in memory between tests otherwise.
+  resetReadHere();
+  resetFeedbackSeen();
   localStorage.setItem('courseline.credentials', JSON.stringify({ baseUrl: 'https://school.test', token: 'T' }));
   localStorage.setItem('theme', 'light');
   const announcements = [{ id: 91, title: 'Midterm moved', message: '<p>The midterm is now Friday.</p>', posted_at: '2026-10-01T10:00:00Z', is_announcement: true, author: { display_name: 'Prof Rivera' } }];
@@ -125,12 +134,13 @@ describe('screens', () => {
     ['/courses/1', ['Week 1', 'Slides.pdf', 'Welcome to Bio']],
     ['/courses/1/assignments', ['Lab report', '8/10', 'Quiz 1']],
     ['/courses/1/files', ['Slides.pdf', 'Not in a unit', 'Extra.docx']],
-    ['/courses/1/announcements', ['Midterm moved', 'Prof Rivera', 'Week 2 questions']],
-    ['/courses/1/export', ['AI export', 'Scan course']],
+    ['/courses/1/announcements', ['Midterm moved', 'Prof Rivera', 'Discussions']],
+    ['/courses/1/discussions', ['Week 2 questions']],
+    ['/courses/1/export', ['Week 1', 'Slides.pdf', 'Welcome to Bio']], // the old AI export address lands on the course
     ['/courses/1/grades', ['Current grade', 'Grade over time', 'Labs']],
     ['/courses/1/people', ['People', 'Prof Rivera', 'Everyone 1', 'Teachers 1', 'Message']],
     ['/courses/1/assignments/5', ['Instructions', 'rubric.pdf', 'Nice work']],
-    ['/courses/1/assignments/5/submission', ['Your submission', '8 / 10', 'My lab']],
+    ['/courses/1/assignments/5/submission', ['Instructions', 'rubric.pdf', 'Nice work']], // the old full-submission address lands on the assignment
     ['/calendar', ['Calendar', 'Today']],
     ['/communities', ['Communities', 'No communities.']],
     ['/settings', ['Appearance', 'Accent color']],
@@ -190,12 +200,107 @@ describe('communities', () => {
     expect(host.querySelector('a[href="https://school.test/courses/2"]')).not.toBeNull();
   }, 15_000);
 
+  it('opening the feed marks the posts Canvas has unread as read there too', async () => {
+    ({ calls } = installFetch((c) => {
+      const p = path(c);
+      if (c.init?.method === 'PUT' && p.endsWith('/read')) return new Response(null, { status: 204 });
+      if (p === '/api/v1/courses/2/discussion_topics') return json(c.url.searchParams.get('only_announcements') === 'true' ? [hours] : [forum]);
+      return p in community ? json(community[p]) : p in routes ? json(routes[p]) : undefined;
+    }));
+    await show('/communities');
+    await until('Extended opening hours', 'New');
+    for (let i = 0; i < 20 && !calls.some((c) => c.init?.method === 'PUT'); i++) await act(() => new Promise((r) => setTimeout(r, 25)));
+    expect(calls.filter((c) => c.init?.method === 'PUT').map(path)).toEqual(['/api/v1/courses/2/discussion_topics/301/read']);
+    // The sidebar's count goes at once, before Canvas's list is fetched again.
+    const link = [...host.querySelectorAll('aside a')].find((a) => a.textContent?.startsWith('Communities'))!;
+    expect(link.textContent).not.toMatch(/\d/);
+  }, 15_000);
+
   it('the sidebar counts new community posts', async () => {
     await show('/');
     await until('Welcome, Sam');
     const link = [...host.querySelectorAll('aside a')].find((a) => a.textContent?.startsWith('Communities'))!;
     await until('1 new post');
     expect(link.textContent).toContain('1');
+  }, 15_000);
+});
+
+describe('unread markers come from Canvas (with a token)', () => {
+  // Canvas has the lab unread with one teacher comment (its grade is older than the comment: only the comment is new) and
+  // the quiz unread with no comments (its grade is new); nothing else.
+  const readStates = (courseId: string) => ({
+    data: {
+      course: {
+        submissionsConnection: {
+          nodes:
+            courseId === '1'
+              ? [
+                  { readState: 'unread', unreadCommentCount: 1, hasUnreadRubricAssessment: false, assignment: { _id: '5' } },
+                  { readState: 'unread', unreadCommentCount: 0, hasUnreadRubricAssessment: false, assignment: { _id: '7' } },
+                ]
+              : [],
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+      },
+    },
+  });
+  beforeEach(() => {
+    ({ calls } = installFetch((c) => {
+      const p = path(c);
+      if (p === '/api/graphql') return json(readStates(String(JSON.parse(String(c.init?.body)).variables.courseId)));
+      if (c.init?.method === 'PUT' && /\/read(\/comment)?$/.test(p)) return new Response(null, { status: 204 });
+      if (p === '/api/v1/courses/1/discussion_topics' && c.url.searchParams.get('only_announcements') === 'true') return json([]);
+      return p in routes ? json(routes[p]) : undefined;
+    }));
+  });
+  const puts = () => calls.filter((c) => c.init?.method === 'PUT').map(path);
+
+  it('marks feedback new because Canvas has it unread, though it is older than anything recorded here', async () => {
+    await show('/assignments');
+    await until('Done (2)', 'New feedback');
+  }, 15_000);
+
+  it('opening the assignment shows what is new and marks it read in Canvas', async () => {
+    await show('/courses/1/assignments/5');
+    await until('Lab report', 'Nice work', 'New feedback');
+    await until('New'); // the comment's own marker
+    for (let i = 0; i < 20 && !puts().length; i++) await act(() => new Promise((r) => setTimeout(r, 25)));
+    expect(puts()).toContain('/api/v1/courses/1/assignments/5/submissions/42/read');
+  }, 15_000);
+
+  it('the Grades screen marks the row; opening it shows the submission and feedback and marks them read', async () => {
+    await show('/courses/1/grades');
+    await until('Labs', 'Lab report', 'New feedback', 'New grade');
+    const nameCell = (name: string) => [...host.querySelectorAll('tbody td:first-child')].find((td) => td.textContent?.includes(name))!;
+    // Each row says what is new: the lab only its comment (its grade is older), the quiz only its grade.
+    expect(nameCell('Lab report').textContent).toContain('New feedback');
+    expect(nameCell('Quiz 1').textContent).toContain('New grade');
+    expect(nameCell('Quiz 1').textContent).not.toContain('New feedback');
+    // Once the lab's comments are loaded, its grade is known not to be new.
+    for (let i = 0; i < 40 && calls.every((c) => !path(c).endsWith('/assignments/5/submissions/self')); i++) await act(() => new Promise((r) => setTimeout(r, 25)));
+    await act(() => new Promise((r) => setTimeout(r, 25)));
+    expect(nameCell('Lab report').textContent).not.toContain('New grade');
+    // The Grades tab carries the dot too.
+    const tab = [...host.querySelectorAll('nav a')].find((a) => a.textContent?.startsWith('Grades'))!;
+    expect(tab.textContent).toContain('2 new');
+    expect(puts()).toEqual([]);
+
+    const row = [...host.querySelectorAll('button[aria-expanded]')].find((b) => b.textContent?.includes('Lab report'))!;
+    expect(row.getAttribute('aria-expanded')).toBe('false');
+    await act(async () => (row as HTMLElement).click());
+    await until('Your submission', 'Nice work', 'View assignment →');
+    expect(row.getAttribute('aria-expanded')).toBe('true');
+    expect(host.querySelector('a[href="/courses/1/assignments/5"]')?.textContent).toBe('View assignment →');
+    for (let i = 0; i < 20 && !puts().length; i++) await act(() => new Promise((r) => setTimeout(r, 25)));
+    expect(puts()).toContain('/api/v1/courses/1/assignments/5/submissions/42/read');
+    // Read now: the row's marker goes, the comment keeps its own for this visit.
+    await act(() => new Promise((r) => setTimeout(r, 25)));
+    expect(nameCell('Lab report').textContent).not.toContain('New feedback');
+    expect(host.textContent).toContain('1 new'); // "Feedback · 1 new"
+
+    // A second click closes it.
+    await act(async () => (row as HTMLElement).click());
+    expect(host.textContent).not.toContain('View assignment →');
   }, 15_000);
 });
 

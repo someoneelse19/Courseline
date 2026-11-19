@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import type { Conversation, ConversationMessage, MessageAttachment, Recipient } from '../api/types';
+import { Attachments } from '../components/Attachments';
+import { UiIcon } from '../components/icons';
 import { ErrorMessage, Spinner } from '../components/ui';
 import { useApi, useAuth } from '../context/AuthContext';
-import { useFileViewer } from '../context/FileViewerContext';
-import { formatBytes } from '../lib/format';
 import { useQueryStore } from '../context/DataContext';
 import { refreshMail } from '../extension/bridge';
-import { useConversation, useConversations, useCourseRecipients, useVisibleCourses } from '../hooks/useCanvasData';
-import { attachmentKind, chatName, composeTarget, mergeFolders, type AttachmentKind, dayHeading, linkify, listTime, otherPeople, peopleLabel, threadDays, timeOf } from '../lib/messages';
+import { useClassmates, useConversation, useConversations, useCourseRecipients, useCourseStaff, useVisibleCourses } from '../hooks/useCanvasData';
+import { chatName, composeTarget, contactedIds, foldName, mergeFolders, pickRecipients, dayHeading, linkify, listTime, otherPeople, peopleLabel, threadDays, timeOf } from '../lib/messages';
 import { t } from '../i18n';
 
 // Messages, made to feel like texting: every conversation (received or sent) in one list on the left, the open one as a thread of bubbles on the right
@@ -180,54 +180,12 @@ function Body({ text }: { text: string }) {
   );
 }
 
-const KIND_ICON: Record<AttachmentKind, string> = { image: '🖼️', pdf: '📕', doc: '📝', sheet: '📊', slides: '📽️', code: '💻', video: '🎬', audio: '🎵', archive: '🗜️', file: '📄' };
-
-/**
- * A message's attachments, like a texting app: images as thumbnails, other files as cards, both opening in the in-app
- * viewer. Without a file link (the extension version leaves those out: they work for anyone who has them) a card
- * opens the conversation in Canvas instead.
- */
-function Attachments({ list, mine }: { list: MessageAttachment[]; mine: boolean }) {
-  const { openFile } = useFileViewer();
+/** A message's attachments, like a texting app. Without a file link a card opens the conversation in Canvas. */
+function MessageAttachments({ list, mine }: { list: MessageAttachment[]; mine: boolean }) {
   const { baseUrl } = useAuth();
-  const images = list.filter((a) => attachmentKind(a) === 'image' && a.url);
-  const others = list.filter((a) => !images.includes(a));
-  const open = (a: MessageAttachment) => {
-    if (a.url) openFile(a.url, a.display_name, a['content-type']);
-    else if (baseUrl) window.open(`${baseUrl}/conversations`, '_blank', 'noopener,noreferrer');
-  };
-  const card = mine ? 'bg-white/15 hover:bg-white/25' : 'bg-white hover:bg-neutral-50 dark:bg-neutral-900 dark:hover:bg-neutral-950';
   return (
-    <div className="mt-2 space-y-1.5">
-      {images.length > 0 && (
-        <div className={`grid gap-1.5 ${images.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-          {images.map((a) => (
-            <button key={String(a.id)} type="button" onClick={() => open(a)} title={a.display_name} className="block overflow-hidden rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400">
-              <img src={a.thumbnail_url || a.url} alt={a.display_name} loading="lazy" className="max-h-64 w-full object-cover" />
-            </button>
-          ))}
-        </div>
-      )}
-      {others.map((a) => {
-        const kind = attachmentKind(a);
-        return (
-          <button
-            key={String(a.id)}
-            type="button"
-            onClick={() => open(a)}
-            title={a.url ? t('Open {name}', { name: a.display_name }) : t('Open in Canvas to see this file')}
-            className={`flex w-full min-w-[12rem] items-center gap-2.5 rounded-xl px-3 py-2 text-left ${card}`}
-          >
-            <span aria-hidden className="text-xl">{KIND_ICON[kind]}</span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-xs font-medium">{a.display_name}</span>
-              <span className={`block text-[11px] ${mine ? 'text-white/80' : 'text-neutral-500 dark:text-neutral-400'}`}>
-                {[a.size ? formatBytes(a.size) : null, a.url ? null : t('Open in Canvas')].filter(Boolean).join(' · ')}
-              </span>
-            </span>
-          </button>
-        );
-      })}
+    <div className="mt-2">
+      <Attachments list={list} tone={mine ? 'mine' : 'bubble'} onMissing={() => baseUrl && window.open(`${baseUrl}/conversations`, '_blank', 'noopener,noreferrer')} />
     </div>
   );
 }
@@ -308,7 +266,7 @@ function Thread({ id }: { id: number }) {
                   } ${mine ? (last ? 'rounded-br-md' : '') : last ? 'rounded-bl-md' : ''}`}
                 >
                   <Body text={m.body} />
-                  {m.attachments?.length ? <Attachments list={m.attachments} mine={mine} /> : null}
+                  {m.attachments?.length ? <MessageAttachments list={m.attachments} mine={mine} /> : null}
                 </div>
                 {last && <span className="mt-0.5 px-2 text-[11px] text-neutral-500 dark:text-neutral-400">{timeOf(m.created_at)}</span>}
               </div>
@@ -354,9 +312,7 @@ function AttachButton({ onPick, disabled }: { onPick: (files: FileList | null) =
         title={t('Attach files')}
         className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 disabled:opacity-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
       >
-        <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-          <path d="m21 11-8.5 8.5a5 5 0 0 1-7-7L14 4a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4L15.5 7" />
-        </svg>
+        <UiIcon name="paperclip" className="h-5 w-5" />
       </button>
       <input
         ref={input}
@@ -378,7 +334,7 @@ function AttachedFiles({ files, onRemove, disabled }: { files: File[]; onRemove:
     <ul className="mb-2 flex flex-wrap gap-1.5" aria-label={t('Attached files')}>
       {files.map((f, i) => (
         <li key={`${f.name}-${i}`} className="flex items-center gap-1 rounded-full bg-neutral-100 py-0.5 pl-2.5 pr-1 text-xs dark:bg-neutral-800">
-          <span aria-hidden>📎</span>
+          <UiIcon name="paperclip" className="h-3.5 w-3.5" />
           <span className="max-w-[12rem] truncate">{f.name}</span>
           <button
             type="button"
@@ -496,6 +452,78 @@ function PeopleChips({ people, chosen, onToggle }: { people: Recipient[]; chosen
   );
 }
 
+const SHOWN = 30; // classmates offered at once; a search reaches everyone else
+
+/** Waits until `value` has stopped changing for `ms`. */
+function useSettled<T>(value: T, ms: number): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(value), ms);
+    return () => clearTimeout(timer);
+  }, [value, ms]);
+  return settled;
+}
+
+/**
+ * Who New message offers for a course. With a token the class is never read in full (a university-wide course has
+ * thousands): teachers and TAs in full, then at most SHOWN classmates, from Canvas's own search while typing, else the
+ * people the student has written with and the first by name. In extension mode, the captured class list.
+ */
+function useRecipientChoices(courseId: number | null, query: string, target: ReturnType<typeof composeTarget>) {
+  const { source, user } = useAuth();
+  const tokenMode = source === 'token';
+  const meId = user ? Number(user.id) : null;
+  const notMe = <T extends Recipient>(list: readonly T[] | undefined) => (list ?? []).filter((p) => Number(p.id) !== meId);
+
+  const inbox = useConversations('inbox');
+  const sent = useConversations('sent');
+  const mailDone = inbox.data !== undefined && (sent.data !== undefined || sent.error !== undefined);
+  const contacted = useMemo(() => contactedIds([...(inbox.data ?? []), ...(sent.data ?? [])], meId), [inbox.data, sent.data, meId]);
+
+  const settled = useSettled(query.trim(), 250);
+  const canSearch = foldName(settled).length >= 2; // Canvas's search needs two characters
+  const roster = useCourseRecipients(tokenMode ? null : courseId);
+  const staff = useCourseStaff(courseId, tokenMode);
+  const firstByName = useClassmates(courseId, {}, tokenMode);
+  const known = useClassmates(courseId, { userIds: contacted.slice(0, 50) }, tokenMode && mailDone);
+  const found = useClassmates(courseId, { term: settled }, tokenMode && canSearch);
+
+  const staffList = tokenMode ? notMe(staff.data) : notMe(roster.data).filter((p) => p.role !== 'student');
+  const pool = tokenMode ? notMe([...(known.data ?? []), ...(canSearch ? (found.data ?? []) : []), ...(firstByName.data ?? [])]) : notMe(roster.data).filter((p) => p.role === 'student');
+
+  // Names of everyone seen so far, so a chosen person keeps their name when the list changes.
+  const names = useRef(new Map<number, string>());
+  for (const p of [...staffList, ...pool]) names.current.set(Number(p.id), p.name);
+  if (target.userId && target.userName && !names.current.has(target.userId)) names.current.set(target.userId, target.userName);
+
+  const typing = query.trim();
+  const teachers = pickRecipients(staffList, typing, contacted, Infinity);
+  const classmates = pickRecipients(pool, typing, contacted, SHOWN);
+  const searching = tokenMode && foldName(typing).length >= 2 && (typing !== settled || found.data === undefined) && !found.error;
+  const fullPage = (firstByName.data?.length ?? 0) >= SHOWN;
+  const moreHint = found.error && canSearch && typing
+    ? t('Could not search the class: {error}', { error: found.error.message })
+    : !typing
+    ? (tokenMode ? fullPage : pool.length > SHOWN)
+      ? t('Search to find anyone else in the class.')
+      : null
+    : tokenMode && foldName(typing).length < 2
+      ? t('Type another letter to search the whole class.')
+      : null;
+
+  const failed = tokenMode ? staff.error ?? firstByName.error : roster.error;
+  const retry = tokenMode ? () => [staff, firstByName].forEach((q) => q.error && q.refetch()) : roster.refetch;
+  return {
+    teachers,
+    classmates,
+    loading: tokenMode ? !staff.data || !firstByName.data : !roster.data,
+    problem: failed ? { error: failed, retry } : null,
+    searching,
+    moreHint,
+    nameOf: (id: number) => names.current.get(id) ?? t('Person {id}', { id }),
+  };
+}
+
 function NewMessage({ search }: { search: string }) {
   const api = useApi();
   const navigate = useNavigate();
@@ -503,8 +531,6 @@ function NewMessage({ search }: { search: string }) {
   const target = useMemo(() => composeTarget(search), [search]);
   const { data: courses } = useVisibleCourses();
   const [courseId, setCourseId] = useState<number | null>(target.courseId);
-  const roster = useCourseRecipients(courseId);
-  const { user } = useAuth();
   const [to, setTo] = useState<number[]>(target.userId ? [target.userId] : []);
   const [query, setQuery] = useState('');
   const [subject, setSubject] = useState('');
@@ -512,19 +538,9 @@ function NewMessage({ search }: { search: string }) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const attach = useAttachments();
+  const { teachers, classmates, loading, problem, searching, moreHint, nameOf } = useRecipientChoices(courseId, query, target);
 
-  // Everyone in the course but the student; someone named in the link who is not (or not yet) in the class list still
-  // shows as chosen.
-  const people = useMemo(() => {
-    const list = (roster.data ?? []).filter((p) => !user || Number(p.id) !== Number(user.id));
-    if (target.userId && !list.some((p) => Number(p.id) === target.userId)) list.unshift({ id: target.userId, name: target.userName ?? t('Person {id}', { id: target.userId }), role: 'teacher' });
-    return list;
-  }, [roster.data, target, user]);
-  const teachers = people.filter((p) => p.role !== 'student');
-  const classmates = people.filter((p) => p.role === 'student');
-  const q = query.trim().toLowerCase();
-  const shownClassmates = q ? classmates.filter((p) => p.name.toLowerCase().includes(q)) : classmates;
-  const nameOf = (id: number) => people.find((p) => Number(p.id) === id)?.name ?? t('Person {id}', { id });
+  useEffect(() => setQuery(''), [courseId]);
 
   const toggle = (id: number) => setTo((list) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]));
 
@@ -587,40 +603,41 @@ function NewMessage({ search }: { search: string }) {
               ))}
             </ul>
           )}
-          {roster.error ? (
-            <ErrorMessage error={roster.error} onRetry={roster.refetch} />
-          ) : courseId && !roster.data ? (
-            <Spinner />
-          ) : !courseId ? (
+          {!courseId ? (
             <p className="text-xs text-neutral-500 dark:text-neutral-400">{t('Choose a course to see its teachers and classmates.')}</p>
-          ) : people.length === 0 ? (
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">{t('No one found for this course. Open its People page in Canvas, or press Sync now.')}</p>
+          ) : problem ? (
+            <ErrorMessage error={problem.error} onRetry={problem.retry} />
+          ) : loading ? (
+            <Spinner />
           ) : (
             <>
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t('Search people in this course')}
+                aria-label={t('Search people in this course')}
+                className="w-full rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              />
               {teachers.length > 0 && (
                 <div>
                   <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">{t('Teachers')}</p>
                   <PeopleChips people={teachers} chosen={to} onToggle={toggle} />
                 </div>
               )}
-              {classmates.length > 0 && (
-                <div>
-                  <div className="mb-1 flex items-center justify-between gap-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">{t('Classmates')}</p>
-                    <input
-                      type="search"
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                      placeholder={t('Search classmates')}
-                      aria-label={t('Search classmates')}
-                      className="w-44 rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-950"
-                    />
-                  </div>
-                  <div className="max-h-40 overflow-y-auto">
-                    {shownClassmates.length ? <PeopleChips people={shownClassmates} chosen={to} onToggle={toggle} /> : <p className="text-xs text-neutral-500 dark:text-neutral-400">{t('No classmate matches.')}</p>}
-                  </div>
-                </div>
-              )}
+              <div>
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">{t('Classmates')}</p>
+                {classmates.length ? (
+                  <PeopleChips people={classmates} chosen={to} onToggle={toggle} />
+                ) : searching ? null : (
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">{query.trim() ? t('No one matches.') : t('No one found for this course. Open its People page in Canvas, or press Sync now.')}</p>
+                )}
+                {searching ? (
+                  <p role="status" className="mt-1.5 text-xs text-neutral-500 dark:text-neutral-400">{t('Searching the class…')}</p>
+                ) : moreHint ? (
+                  <p className="mt-1.5 text-xs text-neutral-500 dark:text-neutral-400">{moreHint}</p>
+                ) : null}
+              </div>
             </>
           )}
         </fieldset>

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { DiscussionTopic } from '../api/types';
+import { isNew } from './seen';
 import { buildFeed, lastPostAt, looksLikeClass, newCount, resetHiddenCommunities, setCommunityHidden, setCourseKind, type CommunityNews } from './communities';
 
 const post = (id: number, posted_at: string, extra: Partial<DiscussionTopic> = {}): DiscussionTopic => ({ id, title: `Post ${id}`, posted_at, ...extra });
@@ -28,8 +29,9 @@ describe('buildFeed', () => {
 describe('newCount and lastPostAt', () => {
   it('counts what is not seen yet, and finds the latest post', () => {
     const seen = { ids: [10], since: Date.parse('2026-11-02T00:00:00Z') };
-    expect(newCount(news[0].posts, seen)).toBe(1);
-    expect(newCount(null, seen)).toBe(0);
+    const isNewPost = (p: DiscussionTopic) => isNew({ ...p, date: p.posted_at }, seen);
+    expect(newCount(news[0].posts, isNewPost)).toBe(1);
+    expect(newCount(null, isNewPost)).toBe(0);
     expect(lastPostAt(news[0].posts)).toBe(Date.parse('2026-11-10T10:00:00Z'));
     expect(lastPostAt(null)).toBe(0);
   });

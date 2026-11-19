@@ -1,6 +1,6 @@
 // Pure helpers for the Messages screen: thread layout (days, runs of messages by one person), who a conversation is
 // with, and plain-text bodies with clickable links. No React.
-import type { Conversation, ConversationMessage, ConversationParticipant, MessageAttachment } from '../api/types';
+import type { Conversation, ConversationMessage, ConversationParticipant, MessageAttachment, Recipient } from '../api/types';
 import { getLocale, t } from '../i18n';
 import { withClock } from './systemClock';
 
@@ -157,4 +157,52 @@ export function composeTarget(search: string): { courseId: number | null; userId
     userId: user && /^\d+$/.test(user) ? Number(user) : null,
     userName: q.get('user_name') ?? q.get('name'),
   };
+}
+
+/** Everyone the student has been in a conversation with, most recent first (by the conversation's last message). */
+export function contactedIds(conversations: readonly Pick<Conversation, 'participants' | 'last_message_at'>[], meId: number | null): number[] {
+  const latest = new Map<number, string>();
+  for (const c of conversations) {
+    for (const p of c.participants) {
+      const id = Number(p.id);
+      if (id === meId) continue;
+      const at = c.last_message_at ?? '';
+      if (!latest.has(id) || at > latest.get(id)!) latest.set(id, at);
+    }
+  }
+  return [...latest].sort((a, b) => b[1].localeCompare(a[1])).map(([id]) => id);
+}
+
+/** Lower case without accents, so "gomez" finds "Gómez". */
+export const foldName = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+
+/**
+ * Who to offer in New message: the people matching `query` (all of them when it is empty), each once, at most `limit`.
+ * People the student has written with come first (most recent first), then names starting with the query, then the
+ * rest by name.
+ */
+export function pickRecipients<T extends Recipient>(people: readonly T[], query: string, contacted: readonly number[], limit: number): T[] {
+  const q = foldName(query.trim());
+  const rank = new Map(contacted.map((id, i) => [id, i]));
+  const seen = new Set<number>();
+  const found: { p: T; folded: string }[] = [];
+  for (const p of people) {
+    const id = Number(p.id);
+    const folded = foldName(p.name);
+    if (seen.has(id) || (q && !folded.includes(q))) continue;
+    seen.add(id);
+    found.push({ p, folded });
+  }
+  const starts = (f: string) => !!q && (f.startsWith(q) || f.includes(` ${q}`));
+  return found
+    .sort((a, b) => {
+      const ra = rank.get(Number(a.p.id)) ?? Infinity;
+      const rb = rank.get(Number(b.p.id)) ?? Infinity;
+      if (ra !== rb) return ra - rb;
+      const sa = starts(a.folded);
+      if (sa !== starts(b.folded)) return sa ? -1 : 1;
+      return a.p.name.localeCompare(b.p.name);
+    })
+    .slice(0, limit)
+    .map((x) => x.p);
 }

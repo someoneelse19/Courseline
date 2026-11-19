@@ -1,21 +1,27 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { Assignment } from '../api/types';
+import { FeedbackCard, SubmissionCard } from '../components/AssignmentFeedback';
 import { GradeTrendChart, type TrendDatum } from '../components/GradeTrendChart';
 import { Card, EmptyState, ErrorMessage, Spinner } from '../components/ui';
-import { useAssignmentGroups, useCourse } from '../hooks/useCanvasData';
+import { useAuth } from '../context/AuthContext';
+import { useAssignmentGroups, useCourse, useMySubmission } from '../hooks/useCanvasData';
+import { resolveNewGrade, useOpenFeedback, useNewFeedbackKind, type NewFeedbackKind } from '../hooks/useReadState';
 import { assignmentTone, TONE_CLASSES } from '../lib/assignmentState';
+import { startFeedbackRecord } from '../lib/feedback';
 import { classPercentile, computeGrade, gradeTrend, medianComparison, toModel, type QuantileStats } from '../lib/grades';
-import { formatDay } from '../lib/format';
+import { formatDay, formatPoints } from '../lib/format';
 import { t } from '../i18n';
 
 // Per-course grades: how the grade has moved, with the current grade, the work status and the class percentile beside
-// it, then every assignment with a what-if calculator. All the maths lives in lib/grades.ts.
+// it, then every assignment with a what-if calculator. All the maths lives in lib/grades.ts. An assignment with feedback
+// not looked at yet has a dot and says what is new: "New grade", "New feedback" (comments) or both. Clicking its row
+// opens your submission and the feedback on it below the row (which marks it read, as opening the assignment does).
 
 type Filter = 'all' | 'graded' | 'missing' | 'pending';
 
 const pct = (n: number | null | undefined, digits = 1) => (n == null ? '—' : `${n.toFixed(digits)}%`);
-const pts = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+const pts = formatPoints;
 const sign = (n: number) => `${n >= 0 ? '+' : '−'}${Math.abs(n).toFixed(1)}`;
 
 function rowStatus(a: Assignment | undefined, graded: boolean): { label: string; className: string } {
@@ -46,6 +52,13 @@ export function CourseGradesPage() {
   const groupsQ = useAssignmentGroups(courseId);
   const [overrides, setOverrides] = useState<Record<number, number | null>>({});
   const [filter, setFilter] = useState<Filter>('all');
+  // The assignment opened below its row (one at a time).
+  const [openId, setOpenId] = useState<number | null>(null);
+  const { user } = useAuth();
+  const courseIds = useMemo(() => [courseId], [courseId]);
+  const kindOf = useNewFeedbackKind(user?.id, courseIds);
+  // The first visit starts the course's feedback record (the fallback when Canvas's read state is not known).
+  useEffect(() => startFeedbackRecord(courseIds), [courseIds]);
 
   const weighted = !!course.data?.apply_assignment_group_weights;
   const model = useMemo(() => (groupsQ.data ? toModel(groupsQ.data) : null), [groupsQ.data]);
@@ -112,12 +125,25 @@ export function CourseGradesPage() {
     });
 
   const hasStats = [...byId.values()].some((a) => a.score_statistics);
+  const newKind = (id: number) => {
+    const a = byId.get(id);
+    return a ? kindOf(a) : null;
+  };
+  const isUnread = (id: number) => newKind(id) != null;
+  const unreadIn = (f: Filter) => model.items.some((i) => (f === 'all' || kind(i.id) === f) && isUnread(i.id));
   const filters: { key: Filter; label: string; n: number }[] = [
     { key: 'all', label: t('All'), n: model.items.length },
     { key: 'graded', label: t('Graded'), n: counts.graded },
     { key: 'missing', label: t('Missing'), n: counts.missing },
     { key: 'pending', label: t('Not graded yet'), n: counts.pending },
   ];
+  const columns = hasStats ? 7 : 6;
+  const toggle = (id: number) => setOpenId((o) => (o === id ? null : id));
+  // A click anywhere on the row opens it, except on what does something of its own (the what-if box, a link).
+  const onRowClick = (id: number) => (e: MouseEvent) => {
+    if ((e.target as HTMLElement).closest('input, a, button')) return;
+    toggle(id);
+  };
   const input = 'rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm placeholder:text-neutral-400 dark:border-neutral-700 dark:bg-neutral-950 dark:placeholder:text-neutral-600';
 
   return (
@@ -191,6 +217,11 @@ export function CourseGradesPage() {
                 }`}
               >
                 {f.label} · {f.n}
+                {unreadIn(f.key) && (
+                  <span className={`ml-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle ${filter === f.key ? 'bg-white' : 'bg-accent-600 dark:bg-accent-400'}`} title={t('New feedback')}>
+                    <span className="sr-only">{t('New feedback')}</span>
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -231,7 +262,7 @@ export function CourseGradesPage() {
               return (
                 <tbody key={g.id} className="divide-y divide-neutral-200 dark:divide-neutral-800">
                   <tr>
-                    <th colSpan={hasStats ? 7 : 6} className="bg-neutral-50 px-3 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:bg-neutral-950 dark:text-neutral-400">
+                    <th colSpan={columns} className="bg-neutral-50 px-3 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:bg-neutral-950 dark:text-neutral-400">
                       {g.name}
                       {weighted && g.weight > 0 ? ` · ${g.weight}%` : ''}
                     </th>
@@ -241,12 +272,34 @@ export function CourseGradesPage() {
                     const st = rowStatus(a, i.score != null);
                     const isDropped = dropped.includes(i.id);
                     const stats = a?.score_statistics;
+                    const isOpen = openId === i.id && !!a;
+                    const kind = newKind(i.id);
+                    const fresh = kind != null;
                     return (
-                      <tr key={i.id} className={i.excused || i.omitted ? 'text-neutral-400' : ''}>
+                      <Fragment key={i.id}>
+                      <tr
+                        onClick={a ? onRowClick(i.id) : undefined}
+                        className={`${i.excused || i.omitted ? 'text-neutral-400' : ''} ${a ? 'cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/40' : ''} ${isOpen ? 'bg-neutral-50 dark:bg-neutral-800/40' : ''}`}
+                      >
                         <td className="py-2 pr-3">
-                          <Link to={`/courses/${courseId}/assignments/${i.id}`} className="font-medium hover:underline">
-                            {i.name}
-                          </Link>
+                          {a ? (
+                            <button
+                              type="button"
+                              aria-expanded={isOpen}
+                              aria-controls={`grade-details-${i.id}`}
+                              onClick={() => toggle(i.id)}
+                              className="inline-flex items-center gap-1.5 text-left font-medium hover:underline"
+                            >
+                              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden className={`h-3.5 w-3.5 shrink-0 text-neutral-400 transition-transform ${isOpen ? 'rotate-90' : ''}`}>
+                                <path fillRule="evenodd" d="M7.2 14.8a.75.75 0 0 1 0-1.06L10.94 10 7.2 6.26a.75.75 0 1 1 1.06-1.06l4.27 4.27a.75.75 0 0 1 0 1.06l-4.27 4.27a.75.75 0 0 1-1.06 0Z" clipRule="evenodd" />
+                              </svg>
+                              {fresh && <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-accent-600 dark:bg-accent-400" />}
+                              {i.name}
+                            </button>
+                          ) : (
+                            <span className="font-medium">{i.name}</span>
+                          )}
+                          {kind && a && <NewLabels courseId={courseId} assignment={a} kind={kind} />}
                           {isDropped && <span className="ml-2 rounded-sm bg-neutral-100 px-1.5 py-0.5 text-[11px] text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">{t('dropped')}</span>}
                           {i.omitted && <span className="ml-2 text-[11px] text-neutral-500">{t('not in final grade')}</span>}
                         </td>
@@ -285,6 +338,14 @@ export function CourseGradesPage() {
                           />
                         </td>
                       </tr>
+                      {isOpen && (
+                        <tr id={`grade-details-${i.id}`}>
+                          <td colSpan={columns} className="bg-neutral-50 p-0 dark:bg-neutral-950">
+                            <GradeRowDetails courseId={courseId} assignment={a} />
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     );
                   })}
                 </tbody>
@@ -296,6 +357,79 @@ export function CourseGradesPage() {
           {t('What-if scores are only for planning: they never leave this page. Totals are calculated the way Canvas does it (group weights and drop rules included).')}
         </p>
       </Card>
+    </div>
+  );
+}
+
+const label = 'rounded-full bg-accent-50 px-1.5 py-0.5 text-[11px] font-medium text-accent-700 dark:bg-accent-950 dark:text-accent-300';
+
+/** "New grade", "New feedback" (comments) or both, beside an assignment's name. */
+function NewLabels({ courseId, assignment, kind }: { courseId: number; assignment: Assignment; kind: NewFeedbackKind }) {
+  return (
+    <span className="ml-2 inline-flex gap-1 align-middle">
+      {kind.grade === undefined && kind.canvas ? (
+        <ResolvedGradeLabel courseId={courseId} assignmentId={assignment.id} canvas={kind.canvas} />
+      ) : (
+        kind.grade && <span className={label}>{t('New grade')}</span>
+      )}
+      {kind.comments && <span className={label}>{t('New feedback')}</span>}
+    </span>
+  );
+}
+
+/** Graded and with unread comments: whether the grade is new too takes the comments' times (one request, cached for the row's panel). */
+function ResolvedGradeLabel({ courseId, assignmentId, canvas }: { courseId: number; assignmentId: number; canvas: NonNullable<NewFeedbackKind['canvas']> }) {
+  const { user } = useAuth();
+  const full = useMySubmission(courseId, assignmentId);
+  return resolveNewGrade(full.data, user?.id, canvas) ? <span className={label}>{t('New grade')}</span> : null;
+}
+
+/**
+ * An assignment opened on its row: your submission and the feedback on it, side by side, in a box of limited height,
+ * with the way to the full assignment below it. The box does not scroll: what does not fit is cut off under a fade, and
+ * the rest is on the assignment's page. The reply box (with a token) is always there, even where it is cut off.
+ * Opening it marks the feedback read.
+ */
+function GradeRowDetails({ courseId, assignment: a }: { courseId: number; assignment: Assignment }) {
+  const { source } = useAuth();
+  const submission = useMySubmission(courseId, a.id);
+  const { sub, newGrade, newCommentIds } = useOpenFeedback(courseId, a.id, submission, a.submission);
+  // Is anything cut off? Checked again whenever the content changes size (the submission loading, a reply sent, a resize).
+  const box = useRef<HTMLDivElement>(null);
+  const [clipped, setClipped] = useState(false);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const check = () => setClipped(el.scrollHeight > el.clientHeight + 1);
+    check();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(check);
+    observer.observe(el);
+    if (el.firstElementChild) observer.observe(el.firstElementChild);
+    return () => observer.disconnect();
+  }, []);
+  return (
+    // w-0 min-w-full: as wide as the table, without widening its columns (they would shift when a row opens).
+    <div className="w-0 min-w-full border-y border-neutral-200 dark:border-neutral-800">
+      <div ref={box} className="relative max-h-[28rem] overflow-hidden p-3">
+        <div className="grid items-start gap-3 md:grid-cols-2">
+          <SubmissionCard assignment={a} submission={submission} sub={sub} newGrade={newGrade} />
+          <FeedbackCard
+            courseId={courseId}
+            assignmentId={a.id}
+            comments={sub?.submission_comments ?? []}
+            newCommentIds={newCommentIds}
+            readOnly={source === 'extension'}
+            onSent={submission.refetch}
+          />
+        </div>
+        {clipped && <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-linear-to-t from-neutral-50 to-transparent dark:from-neutral-950" />}
+      </div>
+      <div className="flex justify-end border-t border-neutral-200 px-3 py-2 dark:border-neutral-800">
+        <Link to={`/courses/${courseId}/assignments/${a.id}`} className="text-sm font-medium text-accent-600 hover:underline dark:text-accent-400">
+          {t('View assignment →')}
+        </Link>
+      </div>
     </div>
   );
 }

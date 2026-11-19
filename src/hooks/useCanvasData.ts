@@ -10,6 +10,8 @@ import { DEFAULT_COURSE_ICON, type CourseIconKey } from '../lib/courseIcons';
 import { buildCourseColors, NEUTRAL_COURSE_COLOR } from '../lib/courseColor';
 import type { MailScope } from '../api/types';
 import { isNew, markSeen, useSeen, useSeenAll } from '../lib/seen';
+import { useIsNewPost, useUnreadFeedback } from './useReadState';
+import { startFeedbackRecord } from '../lib/feedback';
 import { useCourseKinds, type CommunityNews } from '../lib/communities';
 import { useQuery } from './useQuery';
 
@@ -62,8 +64,10 @@ const COMMUNITY_BACKLOG_MS = 14 * 24 * 3600_000;
  * useAnnouncements reads), so the community's own page shares it. One that cannot be loaded (not synced yet, or hidden
  * by the school) comes back with `posts: null` instead of failing the rest.
  *
- * The first time a community's posts load, what is there becomes the starting point: communities pile up posts nobody
- * opens in Canvas, so only Canvas-unread ones from the last two weeks stay new.
+ * The first time a community's posts load, what is there becomes the starting point of the record kept here:
+ * communities pile up posts nobody opens in Canvas, so for the extension only Canvas-unread ones from the last two weeks
+ * stay new. With a token Canvas decides (hooks/useReadState.ts): every post it has unread is new, until the feed is
+ * opened, which marks them read in Canvas.
  */
 export function useCommunityNews(courseIds: number[]) {
   const api = useApi();
@@ -185,15 +189,21 @@ export function useDiscussions(courseId: number) {
 }
 
 /**
- * How many announcements and assignments in a course are new to the student (see lib/seen.ts), for the dots on the
- * course tabs. The first time a course's list loads, what is there becomes the starting point (an announcement Canvas
- * says is unread stays new).
+ * How many announcements, assignments and pieces of feedback in a course are new to the student, for the dots on the
+ * course tabs.
+ * Announcements: Canvas's read state with a token (hooks/useReadState.ts), else lib/seen.ts. Assignments: lib/seen.ts
+ * (Canvas has no read state for them). The first time a course's list loads, what is there becomes the starting point
+ * of the record kept here (an announcement Canvas says is unread stays new). Feedback: see useUnreadFeedback.
  */
 export function useNewInCourse(courseId: number) {
   const announcements = useAnnouncements(courseId);
   const assignments = useAssignments(courseId);
   const seenAnnouncements = useSeen(courseId, 'announcements');
   const seenAssignments = useSeen(courseId, 'assignments');
+  const isNewPost = useIsNewPost();
+  const courseIds = useMemo(() => [courseId], [courseId]);
+  const unreadFeedback = useUnreadFeedback(useAuth().user?.id, courseIds);
+  useEffect(() => startFeedbackRecord(courseIds), [courseIds]);
   useEffect(() => {
     if (announcements.data && !seenAnnouncements) markSeen(courseId, 'announcements', announcements.data.filter((a) => a.read_state !== 'unread').map((a) => a.id));
   }, [courseId, announcements.data, seenAnnouncements]);
@@ -201,8 +211,10 @@ export function useNewInCourse(courseId: number) {
     if (assignments.data && !seenAssignments) markSeen(courseId, 'assignments', assignments.data.map((a) => a.id));
   }, [courseId, assignments.data, seenAssignments]);
   return {
-    announcements: (announcements.data ?? []).filter((a) => isNew({ ...a, date: a.posted_at }, seenAnnouncements)).length,
+    announcements: (announcements.data ?? []).filter((a) => isNewPost(courseId, a)).length,
     assignments: (assignments.data ?? []).filter((a) => isNew({ id: a.id, date: a.created_at }, seenAssignments)).length,
+    /** Assignments with feedback not looked at yet (shown on the Grades tab). */
+    feedback: (assignments.data ?? []).filter(unreadFeedback).length,
   };
 }
 
@@ -232,6 +244,27 @@ export function useUnreadCount() {
 export function useCoursePeople(courseId: number, everyone = false) {
   const api = useApi();
   return useQuery(`people:${courseId}${everyone ? ':everyone' : ''}`, () => api.getCoursePeople(courseId, everyone));
+}
+
+/** The course's Canvas menu (token mode; in extension mode it fails, and screens show what they did before). */
+export function useCourseTabs(courseId: number) {
+  const api = useApi();
+  return useQuery(`tabs:${courseId}`, () => api.getCourseTabs(courseId));
+}
+
+/** A course's teachers and TAs (token mode; New message). */
+export function useCourseStaff(courseId: number | null, enabled = true) {
+  const api = useApi();
+  const on = enabled && courseId !== null;
+  return useQuery(on ? `staff:${courseId}` : 'staff:none', async () => (on ? api.getCourseStaff(courseId) : []));
+}
+
+/** Some of a course's students: a name search, given ids, or the first by name (token mode; New message). */
+export function useClassmates(courseId: number | null, q: { term?: string; userIds?: number[] }, enabled = true) {
+  const api = useApi();
+  const key = q.userIds ? `ids=${q.userIds.join(',')}` : `term=${(q.term ?? '').trim().toLowerCase()}`;
+  const on = enabled && courseId !== null;
+  return useQuery(on ? `classmates:${courseId}:${key}` : 'classmates:none', async () => (on ? api.findClassmates(courseId, q) : []));
 }
 
 /** Teachers, TAs and classmates of a course: who the student can message about it. */

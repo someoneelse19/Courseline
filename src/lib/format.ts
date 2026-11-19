@@ -18,6 +18,14 @@ export function formatDue(iso: string | null | undefined): string {
   return iso ? dateFmt().format(new Date(iso)) : t('No due date');
 }
 
+/**
+ * Points as a person writes them: at most two decimals, none when whole. Canvas sends sums like 7.1999999999999975
+ * (New Quizzes adds up fractional question scores in floating point).
+ */
+export function formatPoints(n: number): string {
+  return String(Math.round(n * 100) / 100);
+}
+
 export function isPast(iso: string | null | undefined): boolean {
   return !!iso && new Date(iso).getTime() < Date.now();
 }

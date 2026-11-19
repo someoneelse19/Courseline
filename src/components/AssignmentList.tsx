@@ -1,8 +1,12 @@
+import { useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import type { Assignment } from '../api/types';
+import { useAuth } from '../context/AuthContext';
 import { useCourseColors } from '../hooks/useCanvasData';
+import { startFeedbackRecord } from '../lib/feedback';
+import { useUnreadFeedback } from '../hooks/useReadState';
 import { assignmentTone, isFaded, isSubmittedUndated, sortAssignments, TONE_CLASSES } from '../lib/assignmentState';
-import { formatDay, formatDue, isPast } from '../lib/format';
+import { formatDay, formatDue, formatPoints, isPast } from '../lib/format';
 import { EmptyState } from './ui';
 import { t } from '../i18n';
 
@@ -11,7 +15,7 @@ export function assignmentStatus(a: Assignment): { label: string; className: str
   const s = a.submission;
   const className = TONE_CLASSES[assignmentTone(a)];
   if (s?.excused) return { label: t('Excused'), className };
-  if (s?.workflow_state === 'graded' && s.score != null) return { label: `${s.score}/${a.points_possible ?? '?'}`, className };
+  if (s?.workflow_state === 'graded' && s.score != null) return { label: `${formatPoints(s.score)}/${a.points_possible != null ? formatPoints(a.points_possible) : '?'}`, className };
   if (s?.missing) return { label: t('Missing'), className };
   if (s?.workflow_state === 'submitted' || s?.workflow_state === 'pending_review')
     return { label: s.late ? t('Submitted (late)') : t('Submitted'), className };
@@ -23,25 +27,42 @@ export function assignmentStatus(a: Assignment): { label: string; className: str
 export function AssignmentList({
   assignments,
   courseNames,
+  missingFirst = false,
+  empty,
 }: {
   assignments: Assignment[];
   /** When given, each row shows its course name (for lists spanning several courses). */
   courseNames?: ReadonlyMap<number, string>;
+  /** Missing work at the top (the Pending tab of All assignments). */
+  missingFirst?: boolean;
+  /** What an empty list says (default "No assignments."). */
+  empty?: string;
 }) {
   const colorOf = useCourseColors();
-  if (assignments.length === 0) return <EmptyState>{t('No assignments.')}</EmptyState>;
+  const { user } = useAuth();
+  // A course seen for the first time starts its feedback record (the fallback when Canvas's read state is not known):
+  // what is graded already is not "new".
+  const courseKey = [...new Set(assignments.map((a) => a.course_id))].join(',');
+  const courseIds = useMemo(() => (courseKey ? courseKey.split(',').map(Number) : []), [courseKey]);
+  const unread = useUnreadFeedback(user?.id, courseIds);
+  useEffect(() => {
+    if (courseIds.length) startFeedbackRecord(courseIds);
+  }, [courseIds]);
+  if (assignments.length === 0) return <EmptyState>{empty ?? t('No assignments.')}</EmptyState>;
 
-  const sorted = sortAssignments(assignments);
+  const sorted = sortAssignments(assignments, Date.now(), { missingFirst });
 
   return (
     <ul className="divide-y divide-neutral-200 dark:divide-neutral-800">
       {sorted.map((a) => {
         const st = assignmentStatus(a);
+        const isUnread = unread(a);
         return (
           <li key={a.id} className={`flex items-center justify-between gap-3 py-3 ${isFaded(a) ? 'opacity-50' : ''}`}>
             <div className="min-w-0">
-              <Link to={`/courses/${a.course_id}/assignments/${a.id}`} className="block truncate font-medium hover:underline">
-                {a.name}
+              <Link to={`/courses/${a.course_id}/assignments/${a.id}`} className="flex items-center gap-2 font-medium hover:underline">
+                {isUnread && <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-accent-600 dark:bg-accent-400" />}
+                <span className="truncate">{a.name}</span>
               </Link>
               <p className="flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
                 {courseNames?.has(a.course_id) && (
@@ -58,6 +79,12 @@ export function AssignmentList({
                       ? formatDue(a.due_at)
                       : t('No due date · posted {date}', { date: formatDay(a.created_at ?? a.unlock_at) })}
                 </span>
+                {isUnread && (
+                  <>
+                    <span aria-hidden>·</span>
+                    <span className="shrink-0 font-medium text-accent-700 dark:text-accent-300">{t('New feedback')}</span>
+                  </>
+                )}
               </p>
             </div>
             <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${st.className}`}>{st.label}</span>

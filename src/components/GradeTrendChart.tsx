@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { getLocale, t } from '../i18n';
+import { formatPoints } from '../lib/format';
 
 export interface TrendDatum {
   name: string;
@@ -171,7 +172,7 @@ export function GradeTrendChart({ data, now = Date.now() }: { data: TrendDatum[]
               <p className="text-base font-semibold tabular-nums">{pct(a.running)}</p>
               <p className="mt-0.5 truncate text-neutral-600 dark:text-neutral-300">{a.name}</p>
               <p className="text-neutral-500 dark:text-neutral-400">
-                {a.score} / {a.points}
+                {formatPoints(a.score)} / {formatPoints(a.points)}
                 {a.points > 0 ? ` (${((a.score / a.points) * 100).toFixed(0)}%)` : ''}
                 {a.date ? ` · ${fmtDate(a.date)}` : ''}
               </p>
@@ -195,7 +196,7 @@ export function GradeTrendChart({ data, now = Date.now() }: { data: TrendDatum[]
               <td>{i + 1}</td>
               <td>{d.name}</td>
               <td>
-                {d.score} / {d.points}
+                {formatPoints(d.score)} / {formatPoints(d.points)}
               </td>
               <td>{fmtDate(d.date)}</td>
               <td>{pct(d.running)}</td>

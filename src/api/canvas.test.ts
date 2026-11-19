@@ -69,6 +69,30 @@ describe('getCoursePeople', () => {
   });
 });
 
+describe('New message recipients', () => {
+  it('searches the class with Canvas, one page of at most 30, and reads only the given ids', async () => {
+    const { calls } = installFetch(() => json([{ id: 4, name: 'Ana Gómez' }], { headers: { Link: '<https://school.test/api/v1/courses/9/users?page=2>; rel="next"' } }));
+    expect(await api().findClassmates(9, { term: 'go' })).toEqual([{ id: 4, name: 'Ana Gómez', role: 'student' }]);
+    expect(calls).toHaveLength(1); // never follows the next page
+    expect(calls[0].url.searchParams.get('search_term')).toBe('go');
+    expect(calls[0].url.searchParams.get('per_page')).toBe('30');
+    expect(calls[0].url.searchParams.getAll('enrollment_type[]')).toEqual(['student']);
+
+    await api().findClassmates(9, { term: 'g' }); // too short for Canvas: the first by name instead
+    expect(calls[1].url.searchParams.has('search_term')).toBe(false);
+
+    await api().findClassmates(9, { userIds: [4, 7] });
+    expect(calls[2].url.searchParams.getAll('user_ids[]')).toEqual(['4', '7']);
+    expect(await api().findClassmates(9, { userIds: [] })).toEqual([]);
+    expect(calls).toHaveLength(3);
+  });
+
+  it('reads teachers and TAs in full', async () => {
+    installFetch(() => json([{ id: 1, name: 'Prof', enrollments: [{ type: 'TeacherEnrollment' }] }, { id: 2, name: 'Help', enrollments: [{ type: 'TaEnrollment' }] }]));
+    expect(await api().getCourseStaff(9)).toEqual([{ id: 1, name: 'Prof', role: 'teacher' }, { id: 2, name: 'Help', role: 'ta' }]);
+  });
+});
+
 describe('getAssignmentGroups', () => {
   const group = { id: 1, name: 'HW', position: 1, group_weight: 30, assignments: [] };
 
@@ -86,6 +110,17 @@ describe('getAssignmentGroups', () => {
     const { calls } = installFetch(() => err(403, 'denied'));
     await expect(api().getAssignmentGroups(7)).rejects.toMatchObject({ kind: 'forbidden' });
     expect(calls).toHaveLength(1);
+  });
+});
+
+describe('getAssignment', () => {
+  it('asks for the class statistics, and retries without them when this Canvas rejects them', async () => {
+    const { calls } = installFetch(({ url }) =>
+      url.searchParams.getAll('include[]').includes('score_statistics') ? err(400, 'invalid include') : json({ id: 5, name: 'Set 1' }),
+    );
+    expect(await api().getAssignment(7, 5)).toMatchObject({ id: 5 });
+    expect(calls[0].url.searchParams.getAll('include[]')).toEqual(['submission', 'score_statistics']);
+    expect(calls[1].url.searchParams.getAll('include[]')).toEqual(['submission']);
   });
 });
 

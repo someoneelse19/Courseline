@@ -21,6 +21,8 @@ describe('SheetTable', () => {
       defaultColWidthPx: 64,
       defaultRowHeightPx: 20,
       showGridLines: false,
+      conditional: [],
+      drawings: [],
     };
     const xfs = [{}, { bg: '#D9E1F2', bold: true, color: '#C00000', hAlign: 'center' }];
     const el = document.createElement('div');

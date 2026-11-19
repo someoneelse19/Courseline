@@ -1,11 +1,29 @@
 // Canvas endpoints. One small function per resource; add new features here.
 import { CanvasApiError, createClient, type ClientConfig } from './client';
-import type { Assignment, AssignmentGroup, CourseRoster, Conversation, Course, CourseFile, DiscussionTopic, MailScope, Module, ModuleItem, NewMessage, Page, Quiz, QuizQuestion, QuizSubmission, Recipient, Submission, UpcomingEvent, UserProfile } from './types';
+import type { Assignment, AssignmentGroup, CourseRoster, CourseTab, Conversation, Course, CourseFile, DiscussionTopic, MailScope, Module, ModuleItem, NewMessage, Page, Quiz, QuizQuestion, QuizSubmission, Recipient, Submission, UpcomingEvent, UserProfile } from './types';
 
 /** Students read before the People tab offers "Load everyone". */
 export const STUDENTS_FIRST = 500;
 /** A safety valve even for "everyone": 1,000 pages of 100. */
 const PEOPLE_SAFETY_MAX = 100_000;
+
+/** One submission's read state in Canvas (see getSubmissionReadStates). */
+export interface SubmissionReadState {
+  assignmentId: number;
+  /** Something on it is unread in Canvas: the grade, a comment or the rubric. */
+  unread: boolean;
+  /** Comments not yet seen (Canvas counts 0 once the submission is read). */
+  unreadComments: number;
+}
+
+const SUBMISSION_READ_STATES = `query CourselineSubmissionReadStates($courseId: ID!, $after: String) {
+  course(id: $courseId) {
+    submissionsConnection(first: 100, after: $after, filter: { states: [unsubmitted, submitted, pending_review, graded] }) {
+      nodes { readState unreadCommentCount hasUnreadRubricAssessment assignment { _id } }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}`;
 
 export function createCanvasApi(config: ClientConfig) {
   const client = createClient(config);
@@ -193,8 +211,16 @@ export function createCanvasApi(config: ClientConfig) {
     },
 
     /** One assignment with full details (description HTML, rubric, lock info). */
-    getAssignment: (courseId: number, assignmentId: number) =>
-      client.get<Assignment>(`/courses/${courseId}/assignments/${assignmentId}`, { include: ['submission'] }),
+    /** One assignment with your submission and the class statistics (high/low/median), retried without them on a 400. */
+    getAssignment: async (courseId: number, assignmentId: number) => {
+      const path = `/courses/${courseId}/assignments/${assignmentId}`;
+      try {
+        return await client.get<Assignment>(path, { include: ['submission', 'score_statistics'] });
+      } catch (err) {
+        if (!(err instanceof CanvasApiError) || err.kind !== 'unknown') throw err;
+        return client.get<Assignment>(path, { include: ['submission'] });
+      }
+    },
 
     /**
      * The current user's submission, with teacher comments and rubric scores.
@@ -276,6 +302,38 @@ export function createCanvasApi(config: ClientConfig) {
       });
     },
 
+    /** A course's teachers and TAs, for New message: always few, so read in full. */
+    getCourseStaff: async (courseId: number): Promise<Recipient[]> => {
+      const users = await client.getAll<{ id: number; name: string; enrollments?: Array<{ type: string }> }>(`/courses/${courseId}/users`, {
+        enrollment_type: ['teacher', 'ta'],
+        include: ['enrollments'],
+      });
+      return users.map((u) => ({ id: u.id, name: u.name, role: u.enrollments?.some((e) => e.type === 'TeacherEnrollment') ? 'teacher' : 'ta' }));
+    },
+
+    /**
+     * Some of a course's students, for New message, without reading a class that can be thousands long: Canvas's own
+     * name search (`term`, which Canvas needs to be two characters or more), the ones among `userIds`, or else the first
+     * by name. One request, at most `limit` people.
+     */
+    findClassmates: async (courseId: number, q: { term?: string; userIds?: number[]; limit?: number }): Promise<Recipient[]> => {
+      const limit = q.limit ?? 30;
+      const term = q.term?.trim();
+      if (q.userIds && !q.userIds.length) return [];
+      const { items } = await client.getUpTo<{ id: number; name: string }>(
+        `/courses/${courseId}/users`,
+        {
+          enrollment_type: ['student'],
+          ...(term && term.length >= 2 ? { search_term: term } : {}),
+          ...(q.userIds ? { user_ids: q.userIds.map(String) } : {}),
+          per_page: Math.min(limit, 100),
+        },
+        limit,
+        1,
+      );
+      return items.map((u) => ({ id: u.id, name: u.name, role: 'student' }));
+    },
+
     /** Who the student can write to about a course: its teachers, TAs and classmates (the course's class list). */
     getCourseRecipients: async (courseId: number): Promise<Recipient[]> => {
       const users = await client.getAll<{ id: number; name: string; enrollments?: Array<{ type: string }> }>(`/courses/${courseId}/users`, {
@@ -327,6 +385,54 @@ export function createCanvasApi(config: ClientConfig) {
       return { people, complete: !students.more, more: students.more };
     },
 
+    // --- Read state (what Canvas shows as unread) ------------------------------------------------------------------
+
+    /**
+     * Canvas's read state of every submission of the student's in a course: unread when a grade, comment or rubric
+     * score came in that the student has not looked at. GraphQL, because REST gives a submission's read_status only by
+     * marking it read. A student is answered with their own submissions only. Paged by 100.
+     */
+    getSubmissionReadStates: async (courseId: number): Promise<SubmissionReadState[]> => {
+      type Page = {
+        course: {
+          submissionsConnection: {
+            nodes: { readState?: string | null; unreadCommentCount?: number | null; hasUnreadRubricAssessment?: boolean | null; assignment?: { _id: string } | null }[];
+            pageInfo: { hasNextPage: boolean; endCursor: string | null };
+          } | null;
+        } | null;
+      };
+      const out: SubmissionReadState[] = [];
+      let after: string | null = null;
+      for (let page = 0; page < 50; page++) {
+        const data: Page = await client.graphql<Page>(SUBMISSION_READ_STATES, { courseId: String(courseId), after });
+        const conn = data.course?.submissionsConnection;
+        if (!conn) break;
+        for (const n of conn.nodes) {
+          const id = Number(n.assignment?._id);
+          if (!Number.isInteger(id)) continue;
+          const unreadComments = n.unreadCommentCount ?? 0;
+          out.push({ assignmentId: id, unread: n.readState === 'unread' || unreadComments > 0 || !!n.hasUnreadRubricAssessment, unreadComments });
+        }
+        if (!conn.pageInfo.hasNextPage || !conn.pageInfo.endCursor) break;
+        after = conn.pageInfo.endCursor;
+      }
+      return out;
+    },
+
+    /**
+     * Marks the student's submission read in Canvas (grade, comments and rubric: the dot in Canvas goes too), then its
+     * comments as viewed, which Canvas counts apart and an older Canvas may not know (that second step may fail quietly).
+     * QUIRK: needs the real user id, like the comment PUT.
+     */
+    markSubmissionRead: async (courseId: number, assignmentId: number, userId: number) => {
+      const path = `/courses/${courseId}/assignments/${assignmentId}/submissions/${userId}/read`;
+      await client.send<void>('PUT', path);
+      await client.send<void>('PUT', `${path}/comment`).catch(() => {});
+    },
+
+    /** Marks an announcement or discussion read in Canvas, as opening it there does. */
+    markTopicRead: (courseId: number, topicId: number) => client.send<void>('PUT', `/courses/${courseId}/discussion_topics/${topicId}/read`),
+
     postSubmissionComment: (courseId: number, assignmentId: number, userId: number, text: string) =>
       client.send<Submission>('PUT', `/courses/${courseId}/assignments/${assignmentId}/submissions/${userId}`, {
         comment: { text_comment: text },
@@ -335,6 +441,12 @@ export function createCanvasApi(config: ClientConfig) {
     /** Upload one file for a submission (all three steps); returns the new file's id. Pass the ids to submitAssignment. */
     uploadSubmissionFile: (courseId: number, assignmentId: number, file: File) =>
       client.uploadFile(`/courses/${courseId}/assignments/${assignmentId}/submissions/self/files`, file),
+
+    /**
+     * Upload an image or document to put in a text entry, into your files' "Uploaded Media" folder, as Canvas's editor
+     * does. Returns the file (its `uuid` is the verifier the embedded address needs).
+     */
+    uploadEditorFile: (file: File) => client.uploadFile('/users/self/files', file, { parent_folder_path: 'Uploaded Media' }),
 
     /** Submit an assignment via text entry or file upload. */
     submitAssignment: (
@@ -365,6 +477,10 @@ export function createCanvasApi(config: ClientConfig) {
      */
     getAnnouncements: (courseId: number) =>
       client.getAll<DiscussionTopic>(`/courses/${courseId}/discussion_topics`, { only_announcements: true, order_by: 'recent_activity' }),
+
+    /** The course's Canvas menu as the student sees it: what the school hides is left out, external tools included. */
+    getCourseTabs: async (courseId: number): Promise<CourseTab[]> =>
+      (await client.getAll<CourseTab>(`/courses/${courseId}/tabs`)).filter((tab) => !tab.hidden).sort((a, b) => (a.position ?? 0) - (b.position ?? 0)),
 
     /** Discussion topics for one course (Canvas leaves announcements out of this list). */
     getDiscussions: (courseId: number) => client.getAll<DiscussionTopic>(`/courses/${courseId}/discussion_topics`, { order_by: 'recent_activity' }),
