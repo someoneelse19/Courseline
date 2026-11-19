@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { extname, join } from 'node:path';
-import { loadEnv, type Plugin } from 'vite';
+import { loadEnv, type Plugin, type ProxyOptions } from 'vite';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
@@ -51,7 +51,7 @@ export default defineConfig(({ mode }) => {
   // "Network error ... CORS" in the app, set VITE_USE_DEV_PROXY=true and the
   // browser will talk to this dev server (same origin) which forwards to Canvas.
   // Dev-only: it does nothing in a production build.
-  const proxy =
+  const proxy: Record<string, ProxyOptions> | undefined =
     env.VITE_USE_DEV_PROXY === 'true' && target
       ? {
           '/canvas-proxy': {
@@ -62,6 +62,10 @@ export default defineConfig(({ mode }) => {
             // Following it here keeps the bytes same-origin for the browser, so no CORS is involved.
             followRedirects: true,
             rewrite: (path: string) => path.replace(/^\/canvas-proxy/, ''),
+            // Cookies the browser holds for localhost (this app's, e.g. the token vault's secret, and any other
+            // localhost app's: cookies are not kept apart by port) are not Canvas's business. The token goes in the
+            // Authorization header.
+            configure: (proxyServer) => proxyServer.on('proxyReq', (req) => req.removeHeader('cookie')),
           },
         }
       : undefined;

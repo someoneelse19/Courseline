@@ -39,7 +39,7 @@ export function TokenForm() {
       </button>
 
       <p className="text-xs text-amber-700 dark:text-amber-400">
-        {t('⚠️ The token is saved in this browser’s localStorage. Only use this on a device you trust, and revoke it in Canvas when done.')}
+        {t('⚠️ The token is saved encrypted in this browser. Only use this on a device you trust, and revoke it in Canvas when done.')}
       </p>
     </form>
   );

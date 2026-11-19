@@ -1,7 +1,8 @@
 // Signing in to Microsoft (the student's school account), for what Canvas does not give students: people's emails and
 // ids from the school's directory, and files in OneDrive. MSAL (@azure/msal-browser) does the sign-in in a popup; the
 // popup comes back to this app's own address, where main.tsx hands the answer to the window that opened it. Tokens are
-// kept for this browser tab only (sessionStorage). Read-only Microsoft Graph permissions, each asked for when first
+// kept in localStorage, where MSAL encrypts them (AES-GCM, its key in a session cookie: cleared when the browser
+// closes, so the sign-in lasts until then; sessionStorage would keep them in plain text). Read-only Microsoft Graph permissions, each asked for when first
 // needed. Configured by VITE_MS_CLIENT_ID (the app registration) and VITE_MS_TENANT_ID (the school's directory).
 import type { AccountInfo, IPublicClientApplication } from '@azure/msal-browser';
 
@@ -23,7 +24,7 @@ function client(): Promise<IPublicClientApplication> {
   return (app ??= import('@azure/msal-browser').then(({ createStandardPublicClientApplication }) =>
     createStandardPublicClientApplication({
       auth: { clientId: CLIENT_ID, authority: `https://login.microsoftonline.com/${TENANT}`, redirectUri: `${window.location.origin}/` },
-      cache: { cacheLocation: 'sessionStorage' },
+      cache: { cacheLocation: 'localStorage' },
     }),
   ));
 }

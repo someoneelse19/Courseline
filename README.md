@@ -167,8 +167,11 @@ in to Canvas).
 
 ## Security
 
-- The token is stored in the browser's **localStorage**. Any script on the page (an XSS bug, a compromised npm package)
-  can read it, and the token has **your full Canvas access**.
+- The token is saved in the browser **encrypted** (AES-GCM under two keys: one the browser keeps in IndexedDB, one in a
+  cookie that Chrome encrypts with your system keychain). Neither the browser's storage nor a copy of its files
+  reveals it without the keychain, and clearing cookies or site data signs you out. Microsoft sign-in tokens are kept
+  encrypted by Microsoft's library until the browser closes. It is not protection against a script running on the page itself (an XSS bug, a compromised npm package):
+  that can still use the token while you are signed in, and the token has **your full Canvas access**.
 - `VITE_*` variables are **inlined into the built JavaScript**. Never build and publish with a real token in `.env`.
 - This is meant for personal use on your own computer. Before anyone else uses it, move the token behind a small
   backend or use Canvas OAuth2 (needs a developer key from your Canvas admin).
