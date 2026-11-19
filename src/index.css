@@ -62,8 +62,13 @@
   .canvas-html ol { @apply list-decimal pl-6; }
   .canvas-html a { @apply text-accent-600 underline dark:text-accent-400; }
   .canvas-html img { @apply h-auto max-w-full; }
-  /* Embedded video players (the only iframes kept): never wider than the card. */
+  /* Embedded players and pages (the only iframes kept): never wider than the card. */
   .canvas-html iframe { @apply max-w-full border-0; }
+  /* An embed Courseline does not show inline, as a link to it; and the "open in a new tab" link under one it does. */
+  .canvas-html a.canvas-embed { @apply my-2 flex items-center gap-2 rounded-lg border border-neutral-300 bg-neutral-50 px-3 py-2 text-sm no-underline dark:border-neutral-700 dark:bg-neutral-800/50; }
+  .canvas-html a.canvas-embed::after { content: '\2197'; @apply ml-auto; }
+  .canvas-html a.canvas-embed-open { @apply mt-1 block text-xs; }
+  .canvas-html a.canvas-embed-open::after { content: '\00a0\2197'; }
   .canvas-html table { @apply border-collapse; }
   .canvas-html th, .canvas-html td { @apply border border-neutral-300 px-2 py-1 dark:border-neutral-700; }
   /* Canvas marks up file/external links with SVG icons (stripped by sanitizing) and screenreader-only labels. */

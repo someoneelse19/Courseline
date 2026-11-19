@@ -24,7 +24,9 @@ const AssignmentDetailPage = lazyPage(() => import('./pages/AssignmentDetailPage
 const AssignmentsPage = lazyPage(() => import('./pages/AssignmentsPage'), 'AssignmentsPage');
 const CalendarPage = lazyPage(() => import('./pages/CalendarPage'), 'CalendarPage');
 const MessagesPage = lazyPage(() => import('./pages/MessagesPage'), 'MessagesPage');
-const CourseAnnouncementsPage = lazyPage(() => import('./pages/CourseAnnouncementsPage'), 'CourseAnnouncementsPage');
+const CommunitiesPage = lazyPage(() => import('./pages/CommunitiesPage'), 'CommunitiesPage');
+const CommunityPage = lazyPage(() => import('./pages/CommunityPage'), 'CommunityPage');
+const CourseAnnouncementsPage =lazyPage(() => import('./pages/CourseAnnouncementsPage'), 'CourseAnnouncementsPage');
 const CourseDetailPage = lazyPage(() => import('./pages/CourseDetailPage'), 'CourseDetailPage');
 const CourseExportPage = lazyPage(() => import('./pages/CourseExportPage'), 'CourseExportPage');
 const CourseFilesPage = lazyPage(() => import('./pages/CourseFilesPage'), 'CourseFilesPage');
@@ -98,6 +100,8 @@ export default function App() {
           <Route path="messages" element={<MessagesPage />} />
           <Route path="messages/new" element={<MessagesPage />} />
           <Route path="messages/:conversationId" element={<MessagesPage />} />
+          <Route path="communities" element={<CommunitiesPage />} />
+          <Route path="communities/:courseId" element={<CommunityPage />} />
           {/* Canvas's own Inbox address (its "message the teacher" links): the same screen, compose filled in. */}
           <Route path="conversations" element={<ComposeRedirect />} />
           <Route path="settings" element={<SettingsPage />} />

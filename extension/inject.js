@@ -493,6 +493,46 @@
     }
   });
 
+  // "Load everyone" on a course's People tab in Courseline (background.js loadPeopleViaTab opened this tab for it): read
+  // the course's whole class list with Canvas's own users API, page after page. Reads only (GET), that course's list
+  // only: a next-page address elsewhere ends it. Each person is trimmed to name and roles before it leaves the page.
+  window.addEventListener('message', async (event) => {
+    if (event.source !== window || event.origin !== location.origin) return;
+    const m = event.data;
+    if (!m || m.source !== 'courseline-command' || m.type !== 'people' || typeof m.nonce !== 'string' || window.__courselineCapture !== self) return;
+    const reply = (r) => window.postMessage({ source: TAG, type: 'peopleResult', nonce: m.nonce, where: location.host + location.pathname, ...r }, location.origin);
+    if (!Number.isInteger(m.courseId) || m.courseId <= 0) return reply({ ok: false, error: 'That is not a course.' });
+    try {
+      if (!looksLikeCanvas()) return reply({ ok: false, error: 'This is not a Canvas page.' });
+      const path = `/api/v1/courses/${m.courseId}/users`;
+      const slim = (u) => ({
+        id: u?.id,
+        name: u?.name,
+        sortable_name: u?.sortable_name,
+        short_name: u?.short_name,
+        enrollments: Array.isArray(u?.enrollments) ? u.enrollments.map((e) => ({ type: e?.type, role: e?.role })) : [],
+      });
+      let url = `${path}?enrollment_type[]=teacher&enrollment_type[]=ta&enrollment_type[]=student&include[]=enrollments&per_page=100`;
+      const pages = [];
+      // 1,000 pages of 100 is a safety valve, not a limit anyone should reach.
+      for (let i = 0; url && i < 1000; i++) {
+        const res = await realFetch.call(window, url, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+        if (!res.ok) throw new Error(`Canvas answered ${res.status} for the class list.`);
+        const body = parse(await res.text());
+        if (!Array.isArray(body)) throw new Error('Canvas did not give a class list.');
+        pages.push({ url: new URL(url, location.href).href, body: body.map(slim) });
+        // Each page also tells the extension it is still going (a background worker with no events is shut down).
+        window.postMessage({ source: TAG, type: 'peopleProgress', nonce: m.nonce, pages: pages.length }, location.origin);
+        const link = /<([^>]+)>;\s*rel="next"/.exec(res.headers.get('Link') ?? '');
+        const next = link ? new URL(link[1], location.href) : null;
+        url = next && next.origin === location.origin && next.pathname === path ? next.pathname + next.search : null;
+      }
+      reply({ ok: true, pages });
+    } catch (e) {
+      reply({ ok: false, error: String(e?.message ?? e) });
+    }
+  });
+
   window.addEventListener('message', async (event) => {
     if (event.source !== window || event.origin !== location.origin) return;
     const m = event.data;

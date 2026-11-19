@@ -3,7 +3,8 @@ import { cleanSendRequest, sendRequestFor } from './lib/message.js';
 import { classify, classifyPage, cleanPinnedIds, expiredKeys, keepCourse, sameOrigin, stripSensitive } from './lib/capture.js';
 import { peekSample } from './lib/peek.js';
 import { IDLE_MAX_MS, MIN_SETTLE_MS } from './lib/pullRunner.js';
-import { effectivePinnedIds } from './lib/pinned.js';
+import { keptCourseIds } from './lib/pinned.js';
+import { cleanCourseId, isPeopleKey, peopleRecords } from './lib/people.js';
 import { readDashboardCards } from './lib/readers.js';
 import { skeleton } from './lib/shape.js';
 
@@ -36,7 +37,7 @@ const MAX_RECORDS = 6000; // the oldest go first beyond this
 
 // Commands only the Courseline app may give (through bridge.js, which runs on localhost only). The relay on Canvas
 // pages never forwards these, and this check makes sure no other content-script context can send them either.
-const APP_ONLY = new Set(['setCanvasHost', 'openPage', 'cancelPull', 'setPinned', 'sendMessage', 'refreshMail']);
+const APP_ONLY = new Set(['setCanvasHost', 'openPage', 'cancelPull', 'setPinned', 'setCommunities', 'sendMessage', 'refreshMail', 'loadPeople']);
 const fromLocalApp = (sender) => {
   try {
     const u = new URL(sender.url);
@@ -71,6 +72,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     refreshMailViaTab(sender).then(sendResponse, (e) => sendResponse({ ok: false, error: String(e?.message ?? e) }));
     return true;
   }
+  if (msg?.type === 'loadPeople') {
+    // From the bridge, after a click on "Load everyone" on a course's People tab (see loadPeopleViaTab).
+    loadPeopleViaTab(msg.courseId, sender).then(sendResponse, (e) => sendResponse({ ok: false, error: String(e?.message ?? e) }));
+    return true;
+  }
+  // Arriving is the point: it keeps this worker running while a long class list is read.
+  if (msg?.type === 'peopleProgress') return;
+  if (msg?.type === 'peopleResult') {
+    const waiter = peopleWaiters.get(msg.nonce);
+    if (waiter && waiter.tabId === sender.tab.id) waiter.resolve(msg);
+    return;
+  }
   if (msg?.type === 'mailResult') {
     const waiter = mailWaiters.get(msg.nonce);
     if (waiter && waiter.tabId === sender.tab.id) waiter.resolve(msg);
@@ -97,6 +110,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     queue = queue.then(() => (ids.length ? chrome.storage.local.set({ appPinned: ids }) : chrome.storage.local.remove('appPinned'))).catch(() => {});
     return;
   }
+  if (msg?.type === 'setCommunities') {
+    // From the bridge: the student's communities (their other Canvas spaces) minus the ones they hid in the app. Their
+    // data is kept too, so a community sync is not thrown away. null/empty: only the pinned courses.
+    const ids = msg.ids === null ? [] : cleanPinnedIds(msg.ids);
+    if (ids === null) return;
+    queue = queue.then(() => (ids.length ? chrome.storage.local.set({ appCommunities: ids }) : chrome.storage.local.remove('appCommunities'))).catch(() => {});
+    return;
+  }
   if (msg?.type !== 'capture') return;
   queue = queue.then(() => save(msg.url, msg.body, msg.operation, msg.variables, sender.url, msg.page, sender.tab.id)).catch(() => {});
 });
@@ -109,7 +130,7 @@ async function save(url, body, operation, variables, senderUrl, page, tabId) {
   if (!info) return;
   const now = Date.now();
   const host = new URL(url).host;
-  const store = await chrome.storage.local.get(['canvasHost', 'pinned', 'appPinned', 'health', 'skippedLarge']);
+  const store = await chrome.storage.local.get(['canvasHost', 'pinned', 'appPinned', 'appCommunities', 'health', 'skippedLarge']);
 
   // Only the Canvas address the student saved is believed. The "is this Canvas?" check runs inside the page, where
   // any website can fake it, so nothing here ever picks the host for them: without a saved address, nothing is kept.
@@ -118,7 +139,7 @@ async function save(url, body, operation, variables, senderUrl, page, tabId) {
   if (info.kind === null) {
     // An API address Courseline has no reader for yet. Everything a page reads is kept, so it is saved in full as
     // kind "other"; the address shape and a count are also noted so the popup and the app can list what was seen.
-    if (!keepCourse(info.courseId, effectivePinnedIds({ pinned: store.pinned, appPinned: store.appPinned }))) return;
+    if (!keepCourse(info.courseId, keptCourseIds(store))) return;
     const record = { kind: 'other', route: info.unmapped, courseId: info.courseId, host: info.host, url, capturedAt: now, body: stripSensitive(body) };
     // A GraphQL read keeps what it asked for (small, checked by inject.js): the Inbox, for one, asks the same query for
     // the inbox and the sent folder, and only its variables say which.
@@ -145,7 +166,7 @@ async function save(url, body, operation, variables, senderUrl, page, tabId) {
   if (info.kind === 'dashboardCards' && info.shapeOk) {
     const ids = (readDashboardCards(body) ?? []).map((c) => c.id);
     if (ids.length) await chrome.storage.local.set({ pinned: ids });
-  } else if (!keepCourse(info.courseId, effectivePinnedIds({ pinned: store.pinned, appPinned: store.appPinned }))) {
+  } else if (!keepCourse(info.courseId, keptCourseIds(store))) {
     return;
   }
 
@@ -329,6 +350,44 @@ async function refreshMailViaTab(sender) {
     queue = queue.then(() => chrome.storage.local.set(records)).catch(() => {});
     await queue;
     return { ok: true, conversations: Object.keys(records).length };
+  } finally {
+    chrome.tabs.remove(tab.id).catch(() => {});
+  }
+}
+
+// Reading a course's whole class list (the owner's decision, Nov 13, 2026: "Load everyone" on the People tab, for a
+// university-wide course with more people than Canvas's People page loads without scrolling). Like reading messages: a
+// Canvas tab in the background, its page script makes GET requests to that course's users API only (inject.js), and
+// the pages are saved trimmed to names and roles (lib/people.js), replacing what was kept of that list before, so
+// someone who left the course is not listed. The tab closes. Only from a click, and the student asked for this course.
+const peopleWaiters = new Map(); // nonce -> { tabId, resolve }
+async function loadPeopleViaTab(rawCourseId, sender) {
+  const courseId = cleanCourseId(rawCourseId);
+  if (!courseId) return { ok: false, error: 'That is not a course.' };
+  const { canvasHost } = await chrome.storage.local.get('canvasHost');
+  if (!canvasHost) return { ok: false, error: 'Save your Canvas address first.' };
+  const tab = await chrome.tabs.create({ url: `https://${canvasHost}${SEND_FROM}`, active: false, windowId: sender.tab?.windowId });
+  try {
+    if (!(await waitForLoad(tab.id))) return { ok: false, error: 'Canvas did not load. Try again.' };
+    const nonce = crypto.randomUUID();
+    const answer = new Promise((resolve) => peopleWaiters.set(nonce, { tabId: tab.id, resolve }));
+    await chrome.tabs.sendMessage(tab.id, { type: 'courseline-people', nonce, courseId });
+    // About a page of 100 a second: ten minutes is a list of tens of thousands.
+    const result = await Promise.race([answer, sleep(10 * 60e3).then(() => ({ ok: false, error: 'Canvas did not answer in time.' }))]);
+    peopleWaiters.delete(nonce);
+    if (result.where !== undefined && !onSendPage(result.where, canvasHost)) return { ok: false, error: SIGNED_OUT };
+    if (!result.ok) return { ok: false, error: result.error ?? 'Canvas did not give the class list.' };
+    const saved = peopleRecords(canvasHost, courseId, result.pages, Date.now());
+    if (!saved) return { ok: false, error: 'Canvas gave something that is not this course’s class list.' };
+    queue = queue
+      .then(async () => {
+        const stale = Object.keys(await chrome.storage.local.get(null)).filter((k) => isPeopleKey(k, canvasHost, courseId) && !(k in saved.records));
+        if (stale.length) await chrome.storage.local.remove(stale);
+        await chrome.storage.local.set(saved.records);
+      })
+      .catch(() => {});
+    await queue;
+    return { ok: true, count: saved.count };
   } finally {
     chrome.tabs.remove(tab.id).catch(() => {});
   }

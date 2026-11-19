@@ -9,6 +9,17 @@ export function effectivePinnedIds(store) {
   return null;
 }
 
+/**
+ * The courses whose data is kept: the pinned ones, plus the communities the app named (the student's other Canvas
+ * spaces, minus the ones they hid; see setCommunities in background.js). Null when the pinned ones are not known yet
+ * (then nothing is filtered).
+ */
+export function keptCourseIds(store) {
+  const pinned = effectivePinnedIds(store);
+  if (!pinned) return null;
+  return Array.isArray(store.appCommunities) && store.appCommunities.length ? [...new Set([...pinned, ...store.appCommunities])] : pinned;
+}
+
 /** The pinned courses as [{ id, name, concluded: false }], or null if neither source is known. */
 export function pinnedList(all, records) {
   if (Array.isArray(all.appPinned) && all.appPinned.length) {

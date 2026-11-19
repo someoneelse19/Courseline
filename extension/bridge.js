@@ -1,8 +1,8 @@
 // Lets the Courseline web app (running on localhost) read what this extension has captured. It runs only on
 // localhost pages, answers only the Courseline app, and never starts a Canvas request.
 //
-//   app  -> { source: 'courseline-app', id, type: 'hello' | 'snapshot' | 'setPinned' | 'setCanvasHost' | 'pull' |
-//             'cancelPull', ids?, input?, steps?, continueFrom? }
+//   app  -> { source: 'courseline-app', id, type: 'hello' | 'snapshot' | 'setPinned' | 'setCommunities' | 'setCanvasHost' |
+//             'pull' | 'cancelPull' | 'sendMessage' | 'refreshMail' | 'loadPeople', ids?, input?, steps?, continueFrom?, courseId? }
 //   here -> { source: 'courseline-extension', id, ...reply }, { type: 'changed' } when data is saved, and while a
 //           pull runs { type: 'pullProgress', ... } per page and { type: 'pullDone', ... } at the end
 //
@@ -97,7 +97,7 @@ window.addEventListener('message', async (event) => {
       const records = Object.entries(all)
         .filter(([key]) => key.startsWith('cap:'))
         .map(([, record]) => record);
-      post({ id: m.id, records, health: all.health ?? {}, appPinned: all.appPinned ?? null, canvasHost: all.canvasHost ?? null, visited: all.visited ?? {}, takenAt: Date.now() });
+      post({ id: m.id, records, health: all.health ?? {}, appPinned: all.appPinned ?? null, appCommunities: all.appCommunities ?? null, canvasHost: all.canvasHost ?? null, visited: all.visited ?? {}, takenAt: Date.now() });
     } else if (m.type === 'pull') {
       void startPull(m);
     } else if (m.type === 'cancelPull') {
@@ -120,6 +120,11 @@ window.addEventListener('message', async (event) => {
       if (!navigator.userActivation?.isActive) return post({ id: m.id, ok: false, needsClick: true, error: 'Messages load from a click in Courseline.' });
       const result = await chrome.runtime.sendMessage({ type: 'refreshMail' });
       post({ id: m.id, ...(result ?? { ok: false, error: 'The extension did not answer.' }) });
+    } else if (m.type === 'loadPeople') {
+      // Reading a whole class list opens a Canvas tab in the background, so it needs a click on "Load everyone".
+      if (!navigator.userActivation?.isActive) return post({ id: m.id, ok: false, error: 'The class list loads from a click in Courseline.' });
+      const result = await chrome.runtime.sendMessage({ type: 'loadPeople', courseId: m.courseId });
+      post({ id: m.id, ...(result ?? { ok: false, error: 'The extension did not answer.' }) });
     } else if (m.type === 'endChain') {
       // The app has no more rounds to run: nothing may continue the last one.
       if (!pull) lastRun = null;
@@ -129,6 +134,9 @@ window.addEventListener('message', async (event) => {
       post({ id: m.id, ...(result ?? { ok: false, error: 'The extension did not answer.' }) });
     } else if (m.type === 'setPinned') {
       await chrome.runtime.sendMessage({ type: 'setPinned', ids: m.ids ?? null });
+      post({ id: m.id, ok: true });
+    } else if (m.type === 'setCommunities') {
+      await chrome.runtime.sendMessage({ type: 'setCommunities', ids: m.ids ?? null });
       post({ id: m.id, ok: true });
     }
   } catch {
@@ -143,7 +151,7 @@ chrome.runtime.onMessage.addListener((msg) => {
 
 // Tell the app only about changes to what a snapshot carries. Pull bookkeeping (session storage, written several
 // times per page) and internal counters would otherwise make the app copy the whole store again for nothing.
-const SNAPSHOT_KEYS = new Set(['health', 'appPinned', 'canvasHost', 'visited']);
+const SNAPSHOT_KEYS = new Set(['health', 'appPinned', 'appCommunities', 'canvasHost', 'visited']);
 let timer;
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local' || !Object.keys(changes ?? {}).some((k) => k.startsWith('cap:') || SNAPSHOT_KEYS.has(k))) return;

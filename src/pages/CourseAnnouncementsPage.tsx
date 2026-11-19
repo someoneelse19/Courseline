@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import type { DiscussionTopic } from '../api/types';
 import { HtmlContent } from '../components/HtmlContent';
@@ -12,20 +12,29 @@ import { t, tn } from '../i18n';
 // Per-course announcements (what the instructor posted) and discussions (conversations). Messages are
 // instructor-written HTML, so they go through HtmlContent. Replies are not loaded here: "Open in Canvas" goes to them.
 
-function Topic({ topic, fresh = false }: { topic: DiscussionTopic; fresh?: boolean }) {
+/**
+ * One announcement or discussion: title, author and date, and a short preview; opening it swaps the preview for the full
+ * message in its own panel, so the start of the text is not shown twice. `context` goes above the title (the community
+ * a post comes from, in the communities feed).
+ */
+export function Topic({ topic, fresh = false, context }: { topic: DiscussionTopic; fresh?: boolean; context?: ReactNode }) {
   const preview = useMemo(() => htmlText(topic.message ?? '').slice(0, 140), [topic.message]);
   return (
     <li className="py-3">
-      <details>
-        <summary className="cursor-pointer list-none">
-          <span className="font-medium">{topic.title}</span>
-          {fresh && <span className="ml-2 rounded-full bg-accent-600 px-1.5 py-0.5 align-middle text-[11px] font-semibold text-white">{t('New')}</span>}
-          <span className="ml-2 text-xs text-neutral-500 dark:text-neutral-400">
-            {[topic.author?.display_name, topic.posted_at ? formatDue(topic.posted_at) : null].filter(Boolean).join(' · ')}
+      {context}
+      <details className="group">
+        <summary className="flex cursor-pointer list-none gap-2 [&::-webkit-details-marker]:hidden">
+          <span aria-hidden className="mt-1 text-[10px] text-neutral-400 transition-transform group-open:rotate-90">▶</span>
+          <span className="min-w-0 flex-1">
+            <span className="font-medium">{topic.title}</span>
+            {fresh && <span className="ml-2 rounded-full bg-accent-600 px-1.5 py-0.5 align-middle text-[11px] font-semibold text-white">{t('New')}</span>}
+            <span className="ml-2 text-xs text-neutral-500 dark:text-neutral-400">
+              {[topic.author?.display_name, topic.posted_at ? formatDue(topic.posted_at) : null].filter(Boolean).join(' · ')}
+            </span>
+            {preview && <p className="mt-0.5 line-clamp-2 text-sm text-neutral-600 group-open:hidden dark:text-neutral-300">{preview}</p>}
           </span>
-          {preview && <p className="mt-0.5 line-clamp-2 text-sm text-neutral-600 dark:text-neutral-300">{preview}</p>}
         </summary>
-        <div className="mt-2">
+        <div className="ml-5 mt-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-800/40">
           {topic.message ? <HtmlContent html={topic.message} /> : <EmptyState>{t('No message.')}</EmptyState>}
           <p className="mt-2 flex flex-wrap gap-3 text-xs text-neutral-500 dark:text-neutral-400">
             {typeof topic.discussion_subentry_count === 'number' && <span>{tn(topic.discussion_subentry_count, '{n} reply', '{n} replies')}</span>}

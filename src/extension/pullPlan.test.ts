@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dashboardStep, estimateSeconds, planCourse, planSync, stepForAddress, stepsForKind } from './pullPlan';
+import { dashboardStep, estimateSeconds, planCommunities, planCourse, planSync, stepForAddress, stepsForKind } from './pullPlan';
 
 const bio = { id: 1, name: 'Biology' };
 const unnamed = { id: 3, name: null };
@@ -88,5 +88,18 @@ describe('stepForAddress', () => {
 describe('estimateSeconds', () => {
   it('scales with the number of pages', () => {
     expect(estimateSeconds(10)).toBeGreaterThan(estimateSeconds(1));
+  });
+});
+
+describe('planCommunities', () => {
+  it('opens what communities are read from (no grades or assignments), skipping tabs the school hides', () => {
+    const steps = planCommunities('h.test', [{ id: 8, name: 'Library', hidden: new Set(['pages'] as const) }]);
+    expect(steps.map((s) => s.url)).toEqual([
+      'https://h.test/courses/8',
+      'https://h.test/courses/8/announcements',
+      'https://h.test/courses/8/modules',
+      'https://h.test/courses/8/discussion_topics',
+    ]);
+    expect(steps[1].label).toBe('Library · Announcements');
   });
 });

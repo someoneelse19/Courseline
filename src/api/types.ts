@@ -42,6 +42,8 @@ export interface Course {
   course_code?: string;
   workflow_state?: string;
   access_restricted_by_date?: boolean;
+  start_at?: string | null; // the course's own dates, when the school sets them (classes do; communities usually not)
+  end_at?: string | null;
   term?: Term; // include[]=term
   // Whether the instructor weights assignment groups (vs. a plain points total).
   apply_assignment_group_weights?: boolean;
@@ -347,6 +349,15 @@ export interface CoursePerson extends Recipient {
   avatar_url?: string;
   email?: string;
   student_id?: string; // SIS id, else login id
+}
+
+/** A course's class list, and how sure it is to be everyone. */
+export interface CourseRoster {
+  people: CoursePerson[];
+  /** Known to be everyone: a list read to its end. */
+  complete: boolean;
+  /** Known to be cut short: Canvas had more students than were loaded (`everyone` loads them). */
+  more: boolean;
 }
 
 export interface NewMessage {

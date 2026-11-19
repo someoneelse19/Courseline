@@ -198,11 +198,18 @@ export function createClient({ baseUrl, token, proxyPrefix, onUnauthorized }: Cl
 
   /** GET a list endpoint and follow every `next` page. Use per_page=100 (Canvas's max). */
   async function getAll<T>(path: string, params?: Params): Promise<T[]> {
-    const MAX_PAGES = 50; // safety valve against runaway loops
+    return (await getUpTo<T>(path, params, Infinity, 50)).items; // 50 pages: a safety valve against runaway loops
+  }
+
+  /**
+   * Like getAll, but stops once `max` items are in (rounded up to a whole page), or after `maxPages` pages. `more`:
+   * Canvas had another page. For lists that can be huge (a university-wide course's class list).
+   */
+  async function getUpTo<T>(path: string, params: Params | undefined, max: number, maxPages = 1000): Promise<{ items: T[]; more: boolean }> {
     const items: T[] = [];
     let url: string | null = `${apiRoot}${path}${buildQuery({ per_page: 100, ...params })}`;
 
-    for (let page = 0; url && page < MAX_PAGES; page++) {
+    for (let page = 0; url && items.length < max && page < maxPages; page++) {
       const res: Response = await fetchUrl(url);
       items.push(...((await res.json()) as T[]));
 
@@ -212,7 +219,7 @@ export function createClient({ baseUrl, token, proxyPrefix, onUnauthorized }: Cl
       const nextUrl = next ? new URL(next, canvasBase) : null;
       url = nextUrl ? `${origin}${nextUrl.pathname}${nextUrl.search}` : null;
     }
-    return items;
+    return { items, more: url !== null };
   }
 
   /**
@@ -283,7 +290,7 @@ export function createClient({ baseUrl, token, proxyPrefix, onUnauthorized }: Cl
     throw new CanvasApiError(`Canvas did not confirm the upload of ${file.name} (${res.status}).`, res.status, 'unknown');
   }
 
-  return { get, getAll, send, getBlob, uploadFile, origin };
+  return { get, getAll, getUpTo, send, getBlob, uploadFile, origin };
 }
 
 export type CanvasClient = ReturnType<typeof createClient>;

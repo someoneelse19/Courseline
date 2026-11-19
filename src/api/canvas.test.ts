@@ -16,22 +16,56 @@ describe('getCourses', () => {
 });
 
 describe('getCoursePeople', () => {
+  const kinds = (url: URL) => url.searchParams.getAll('enrollment_type[]').join(',');
+
   it('lists teachers first, then by name, with email and student id only when Canvas gives them', async () => {
     const { calls } = installFetch(({ url }) =>
-      url.pathname === '/api/v1/courses/9/users'
-        ? json([
-            { id: 3, name: 'Zoe Student', sortable_name: 'Student, Zoe', enrollments: [{ type: 'StudentEnrollment' }] },
-            { id: 2, name: 'Ana Student', sortable_name: 'Student, Ana', email: 'ana@school.test', login_id: '226L0001', enrollments: [{ type: 'StudentEnrollment' }] },
-            { id: 1, name: 'Prof Ruiz', sortable_name: 'Ruiz, Prof', sis_user_id: 'T-1', login_id: 'pruiz', avatar_url: 'https://school.test/a.png', enrollments: [{ type: 'TeacherEnrollment' }] },
-          ])
-        : undefined,
+      url.pathname !== '/api/v1/courses/9/users'
+        ? undefined
+        : kinds(url) === 'teacher,ta'
+          ? json([{ id: 1, name: 'Prof Ruiz', sortable_name: 'Ruiz, Prof', sis_user_id: 'T-1', login_id: 'pruiz', avatar_url: 'https://school.test/a.png', enrollments: [{ type: 'TeacherEnrollment' }] }])
+          : json([
+              { id: 3, name: 'Zoe Student', sortable_name: 'Student, Zoe', enrollments: [{ type: 'StudentEnrollment' }] },
+              { id: 2, name: 'Ana Student', sortable_name: 'Student, Ana', email: 'ana@school.test', login_id: '226L0001', enrollments: [{ type: 'StudentEnrollment' }] },
+            ]),
     );
-    expect(await api().getCoursePeople(9)).toEqual([
-      { id: 1, name: 'Prof Ruiz', role: 'teacher', avatar_url: 'https://school.test/a.png', student_id: 'T-1' },
-      { id: 2, name: 'Ana Student', role: 'student', email: 'ana@school.test', student_id: '226L0001' },
-      { id: 3, name: 'Zoe Student', role: 'student' },
-    ]);
+    expect(await api().getCoursePeople(9)).toEqual({
+      people: [
+        { id: 1, name: 'Prof Ruiz', role: 'teacher', avatar_url: 'https://school.test/a.png', student_id: 'T-1' },
+        { id: 2, name: 'Ana Student', role: 'student', email: 'ana@school.test', student_id: '226L0001' },
+        { id: 3, name: 'Zoe Student', role: 'student' },
+      ],
+      complete: true,
+      more: false,
+    });
     expect(calls[0].url.searchParams.getAll('include[]')).toEqual(['enrollments', 'email', 'avatar_url']);
+  });
+
+  it('reads the first 500 students of a huge course, says there are more, and reads them all when asked', async () => {
+    // A university-wide course: always another page of 100 students, up to 30 pages.
+    const page = (n: number) => Array.from({ length: 100 }, (_, i) => ({ id: 1000 + n * 100 + i, name: `S ${n}-${i}`, enrollments: [{ type: 'StudentEnrollment' }] }));
+    const { calls } = installFetch(({ url }) => {
+      if (kinds(url) === 'teacher,ta') return json([{ id: 1, name: 'Librarian', enrollments: [{ type: 'TeacherEnrollment' }] }]);
+      const n = Number(url.searchParams.get('page') ?? 0);
+      const next = n < 29 ? { Link: `<https://school.test/api/v1/courses/9/users?enrollment_type[]=student&page=${n + 1}&per_page=100>; rel="next"` } : undefined;
+      return json(page(n), { headers: next });
+    });
+    const first = await api().getCoursePeople(9);
+    expect(first.people).toHaveLength(501);
+    expect(first.people[0].name).toBe('Librarian'); // staff are read apart, so never cut off
+    expect(first).toMatchObject({ complete: false, more: true });
+    expect(calls.filter((c) => kinds(c.url) === 'student')).toHaveLength(5);
+
+    const all = await api().getCoursePeople(9, true);
+    expect(all.people).toHaveLength(3001);
+    expect(all).toMatchObject({ complete: true, more: false });
+  });
+
+  it('lists someone who is both a TA and a student once, as a TA', async () => {
+    installFetch(({ url }) =>
+      json(kinds(url) === 'teacher,ta' ? [{ id: 5, name: 'Sam', enrollments: [{ type: 'TaEnrollment' }] }] : [{ id: 5, name: 'Sam', enrollments: [{ type: 'StudentEnrollment' }] }]),
+    );
+    expect((await api().getCoursePeople(9)).people).toEqual([{ id: 5, name: 'Sam', role: 'ta' }]);
   });
 });
 

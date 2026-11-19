@@ -15,8 +15,10 @@ describe('contentSecurityPolicy', () => {
     expect(script).not.toMatch(/ https:( |$)/);
   });
 
-  it('lets frames load only from here and the known video players', () => {
-    expect(prod).toContain("frame-src 'self' https://player.vimeo.com https://www.youtube.com https://www.youtube-nocookie.com");
+  it('lets frames load only from here, the known video players and LibGuides', () => {
+    expect(prod).toContain(
+      "frame-src 'self' https://player.vimeo.com https://www.youtube.com https://www.youtube-nocookie.com https://lgapi-eu.libapps.com https://lgapi-us.libapps.com https://lgapi-ca.libapps.com https://lgapi-au.libapps.com;",
+    );
   });
 
   it('only the dev policy talks to the dev server over a websocket', () => {

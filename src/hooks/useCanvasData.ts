@@ -9,7 +9,8 @@ import { useCourseStyles } from '../context/CourseStyleContext';
 import { DEFAULT_COURSE_ICON, type CourseIconKey } from '../lib/courseIcons';
 import { buildCourseColors, NEUTRAL_COURSE_COLOR } from '../lib/courseColor';
 import type { MailScope } from '../api/types';
-import { isNew, markSeen, useSeen } from '../lib/seen';
+import { isNew, markSeen, useSeen, useSeenAll } from '../lib/seen';
+import { useCourseKinds, type CommunityNews } from '../lib/communities';
 import { useQuery } from './useQuery';
 
 export function useCourses() {
@@ -33,6 +34,61 @@ export function useVisibleCourses() {
     [result.data, isVisible, captured, order],
   );
   return { ...result, data };
+}
+
+/**
+ * The school's communities (library, student life, the degree-wide space…): what the student is enrolled in besides
+ * their course list, minus what looks like a class (lib/communities.ts looksLikeClass, or the student's correction).
+ * `otherClasses`: those classes, say next semester's, not in the course list yet. Both sorted by name.
+ */
+export function useCommunities() {
+  const all = useCourses();
+  const { data: visible } = useVisibleCourses();
+  const { isClass } = useCourseKinds();
+  const split = useMemo(() => {
+    if (!all.data || !visible) return undefined;
+    const mine = new Set(visible.map((c) => c.id));
+    const rest = all.data.filter((c) => !mine.has(c.id)).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
+    return { communities: rest.filter((c) => !isClass(c)), otherClasses: rest.filter((c) => isClass(c)) };
+  }, [all.data, visible, isClass]);
+  return { ...all, data: split?.communities, otherClasses: split?.otherClasses };
+}
+
+/** Posts older than this are not "new" the first time a community is seen, even if Canvas still has them unread. */
+const COMMUNITY_BACKLOG_MS = 14 * 24 * 3600_000;
+
+/**
+ * Every community's announcements, for the feed and the sidebar count. Each goes through its own entry (the one
+ * useAnnouncements reads), so the community's own page shares it. One that cannot be loaded (not synced yet, or hidden
+ * by the school) comes back with `posts: null` instead of failing the rest.
+ *
+ * The first time a community's posts load, what is there becomes the starting point: communities pile up posts nobody
+ * opens in Canvas, so only Canvas-unread ones from the last two weeks stay new.
+ */
+export function useCommunityNews(courseIds: number[]) {
+  const api = useApi();
+  const store = useQueryStore();
+  const result = useQuery(`communityNews:${courseIds.join(',')}`, () =>
+    Promise.all(
+      courseIds.map(async (courseId): Promise<CommunityNews> => {
+        try {
+          return { courseId, posts: await store.ensure(`announcements:${courseId}`, () => api.getAnnouncements(courseId)) };
+        } catch {
+          return { courseId, posts: null };
+        }
+      }),
+    ),
+  );
+  const seenOf = useSeenAll();
+  useEffect(() => {
+    const cutoff = Date.now() - COMMUNITY_BACKLOG_MS;
+    for (const { courseId, posts } of result.data ?? []) {
+      if (!posts || seenOf(courseId, 'announcements')) continue;
+      const old = posts.filter((p) => p.read_state !== 'unread' || !(Date.parse(p.posted_at ?? '') >= cutoff));
+      markSeen(courseId, 'announcements', old.map((p) => p.id));
+    }
+  }, [result.data, seenOf]);
+  return result;
 }
 
 /** `colorOf(courseId)`: that course's unique color (see lib/courseColor.ts) unless the user picked one in Settings. Based on the full course list, so Settings filters don't shift colors. */
@@ -173,9 +229,9 @@ export function useUnreadCount() {
 }
 
 /** Everyone in a course, for its People tab (teachers first). */
-export function useCoursePeople(courseId: number) {
+export function useCoursePeople(courseId: number, everyone = false) {
   const api = useApi();
-  return useQuery(`people:${courseId}`, () => api.getCoursePeople(courseId));
+  return useQuery(`people:${courseId}${everyone ? ':everyone' : ''}`, () => api.getCoursePeople(courseId, everyone));
 }
 
 /** Teachers, TAs and classmates of a course: who the student can message about it. */

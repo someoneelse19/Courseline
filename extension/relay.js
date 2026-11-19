@@ -13,6 +13,22 @@ window.addEventListener('message', (event) => {
     }
     return;
   }
+  if (data.type === 'peopleProgress') {
+    try {
+      chrome.runtime.sendMessage({ type: 'peopleProgress', nonce: data.nonce });
+    } catch {
+      /* extension reloaded */
+    }
+    return;
+  }
+  if (data.type === 'peopleResult') {
+    try {
+      chrome.runtime.sendMessage({ type: 'peopleResult', nonce: data.nonce, where: String(data.where ?? ''), ok: data.ok === true, pages: data.pages, error: typeof data.error === 'string' ? data.error : undefined });
+    } catch {
+      /* extension reloaded */
+    }
+    return;
+  }
   if (data.type === 'sendResult') {
     try {
       chrome.runtime.sendMessage({ type: 'sendResult', nonce: data.nonce, where: String(data.where ?? ''), ok: data.ok === true, body: data.body, error: typeof data.error === 'string' ? data.error : undefined });
@@ -55,4 +71,9 @@ chrome.runtime.onMessage.addListener((msg) => {
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type !== 'courseline-mail' || typeof msg.nonce !== 'string') return;
   window.postMessage({ source: 'courseline-command', type: 'mail', nonce: msg.nonce }, location.origin);
+});
+
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg?.type !== 'courseline-people' || typeof msg.nonce !== 'string' || !Number.isInteger(msg.courseId)) return;
+  window.postMessage({ source: 'courseline-command', type: 'people', nonce: msg.nonce, courseId: msg.courseId }, location.origin);
 });

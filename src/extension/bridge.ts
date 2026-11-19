@@ -30,6 +30,8 @@ export interface Snapshot {
   health: Record<string, KindHealth>;
   /** The courses the app last told the extension to work with (null = none chosen, use the Canvas dashboard). */
   appPinned: number[] | null;
+  /** The communities the app last told the extension to keep as well (null = none). */
+  appCommunities?: number[] | null;
   /** The Canvas address saved in the extension (host only, for example school.instructure.com), or null. */
   canvasHost: string | null;
   /** Pages the extension has opened for a pull: address -> when (ms). Used to skip them next time. */
@@ -91,6 +93,7 @@ async function fetchSnapshot(): Promise<Snapshot | null> {
   return {
     ...reply,
     appPinned: Array.isArray(reply.appPinned) ? reply.appPinned : null,
+    appCommunities: Array.isArray(reply.appCommunities) ? reply.appCommunities : null,
     canvasHost: typeof reply.canvasHost === 'string' ? reply.canvasHost : null,
     visited: reply.visited && typeof reply.visited === 'object' ? reply.visited : {},
   };
@@ -212,6 +215,22 @@ export async function setCanvasAddress(input: string): Promise<AddressResult | n
 /** Tells the extension which courses to work with: the ones chosen in the app, or null to go back to the Canvas dashboard. */
 export async function setPinnedCourses(ids: number[] | null): Promise<boolean> {
   return !!(await ask('setPinned', 1500, { ids }));
+}
+
+/** Tells the extension which communities to keep data for as well (the student's other Canvas spaces, minus the hidden ones). */
+export async function setCommunityCourses(ids: number[] | null): Promise<boolean> {
+  return !!(await ask('setCommunities', 1500, { ids }));
+}
+
+/**
+ * Has the extension read a course's whole class list from Canvas (a background Canvas tab; needs a click). Resolves
+ * with how many people it read; the list itself arrives as new captured data.
+ */
+export async function loadCoursePeople(courseId: number): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
+  // A university-wide list is hundreds of pages: allow the extension its full ten minutes.
+  const reply = await ask<{ ok?: boolean; count?: number; error?: string }>('loadPeople', 11 * 60e3, { courseId });
+  if (!reply) return { ok: false, error: 'The extension did not answer. Reload this page and try again.' };
+  return reply.ok ? { ok: true, count: reply.count ?? 0 } : { ok: false, error: reply.error ?? 'The class list could not be loaded.' };
 }
 
 /** The popup's "Sync in Courseline" button, pressed while this page is open: show the plan (no reload). */
