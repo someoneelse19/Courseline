@@ -220,15 +220,20 @@ in [DEVELOPER_GUIDE.md § Canvas quirks](DEVELOPER_GUIDE.md#8-canvas-quirks-refe
 
 ## License
 
-[PolyForm Noncommercial 1.0.0](LICENSE). In plain words:
+[Courseline Personal Use License 1.0.0](LICENSE) (adapted from PolyForm Noncommercial 1.0.0, but stricter). In plain
+words:
 
-- **You can** use it, change it and share it (with the license attached) for **personal and other noncommercial use**:
-  your own coursework, hobby projects, learning, and use by schools and non-profits.
-- **You cannot** sell it, sell a changed version of it, or use it to make money.
-- **Commercial use is reserved to the copyright holder.** To license it commercially, contact the author.
+- **You can** use it, change it and share it free of charge (with the license attached) **as an individual, for
+  yourself**: your own courses with your own Canvas account, learning, hobby projects.
+- **Organizations cannot use it at all**, commercially or not. That includes schools, districts, colleges and
+  universities (and their staff acting in their roles), learning-platform and edtech companies, non-profits and
+  governments. They cannot deploy or host it for students or staff, offer or endorse it as an official tool, build it
+  into their own products or systems, or base their own software on its code.
+- **You cannot** sell it, sell a changed version of it, run it as a service for other people, or use it to make money.
+- **Any other use needs a separate written license** from the copyright holder. Contact the author.
 
-This is a "source-available" license, not an OSI-approved open-source license. The code is public, but it is not
-free for commercial use.
+This is a "source-available" license, not an OSI-approved open-source license. The code is public, but only
+individuals may use it, and only for themselves.
 
 ## Contributing
 
