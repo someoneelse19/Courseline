@@ -81,7 +81,8 @@ export interface Submission {
   missing?: boolean;
   excused?: boolean | null;
   body?: string | null; // online_text_entry submissions (HTML)
-  url?: string | null; // online_url submissions
+  url?: string | null; // online_url submissions; for basic_lti_launch, the address that reopens the tool's result
+  submission_type?: string | null; // online_upload, online_text_entry, online_url, basic_lti_launch (New Quizzes, other tools)…
   attachments?: FileAttachment[]; // online_upload submissions
   // Only present with include[]=submission_comments / rubric_assessment on the submission endpoint.
   submission_comments?: SubmissionComment[];
@@ -196,6 +197,7 @@ export interface Assignment {
   // include[]=score_statistics (needs include[]=submission); absent when the instructor hides distributions.
   score_statistics?: ScoreStatistics;
   quiz_id?: CanvasId; // present when the assignment is a classic quiz
+  is_quiz_lti_assignment?: boolean; // a New Quiz (an external tool)
   instructions_unknown?: boolean; // extension mode only: no captured source carried the description (not "there is none")
   description_removed?: boolean; // extension mode only: the instructions held a link that works without a login, so were not kept
 }
@@ -345,6 +347,20 @@ export interface Recipient {
   id: CanvasId;
   name: string;
   role?: 'teacher' | 'ta' | 'student' | string;
+}
+
+/**
+ * One entry of a course's Canvas menu, as the student sees it (GET /courses/:id/tabs). `id` is Canvas's: "home",
+ * "discussions", "quizzes"… and "context_external_tool_<tool id>" for an external (LTI) tool.
+ */
+export interface CourseTab {
+  id: string;
+  label: string;
+  type: 'internal' | 'external' | string;
+  html_url: string;
+  full_url?: string;
+  position?: number;
+  hidden?: boolean;
 }
 
 /** Someone in a course, for its People tab. Email and student id only when Canvas shows them to the student. */

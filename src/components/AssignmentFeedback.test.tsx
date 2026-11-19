@@ -29,10 +29,18 @@ const render = (s: Submission) => act(async () => root.render(<SubmissionView su
 const dialog = () => document.querySelector('[role=dialog]');
 
 describe('SubmissionView', () => {
+  it('rounds a New Quiz score and offers its answers in a new tab instead of the raw address', async () => {
+    await render(sub({ score: 7.1999999999999975, grade: '7.1999999999999975', workflow_state: 'graded', submission_type: 'basic_lti_launch', url: 'https://school.test/courses/1/external_tools/retrieve?assignment_id=5' }));
+    expect(host.textContent).toContain('7.2');
+    expect(host.textContent).not.toContain('7.19999');
+    expect(host.textContent).not.toContain('external_tools/retrieve');
+    expect(host.textContent).toContain('Your answers');
+  });
+
   it('shows files as cards (kind icon, name, size) that open in the viewer', async () => {
     await render(sub({ attachments: [{ id: 3, display_name: 'essay.pdf', url: 'https://files.test/essay.pdf?verifier=x', size: 2048 }] }));
     const card = [...host.querySelectorAll('button')].find((b) => b.textContent?.includes('essay.pdf'))!;
-    expect(card.textContent).toContain('📕');
+    expect(card.querySelector('svg')).not.toBeNull(); // the kind icon
     expect(card.textContent).toContain('2 KB');
     await act(async () => void card.click());
     expect(openFile).toHaveBeenCalledWith('https://files.test/essay.pdf?verifier=x', 'essay.pdf', undefined);

@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
 import { t } from '../i18n';
+import { UiIcon } from './icons';
 
 // The app's one overlay: a dimmed backdrop with a panel over the page. The file viewer, the full submission and the
 // text-entry editor all open in it, so they look and close the same way (Escape, the ✕ button, a click on the backdrop).
@@ -68,7 +69,10 @@ export function OverlayPanel({
         </h2>
         {toolbar}
         <button type="button" onClick={onClose} aria-label={t('Close')} className={overlayButton}>
-          ✕ {t('Close')}
+          <span className="inline-flex items-center gap-1">
+            <UiIcon name="close" className="h-3.5 w-3.5" />
+            {t('Close')}
+          </span>
         </button>
       </header>
       <div className={`min-h-0 ${bodyClassName} ${tall ? 'flex-1' : 'overflow-auto'}`}>{children}</div>

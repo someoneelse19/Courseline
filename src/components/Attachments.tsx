@@ -3,6 +3,7 @@ import { useFileViewer } from '../context/FileViewerContext';
 import { formatBytes } from '../lib/format';
 import { attachmentKind, type AttachmentKind } from '../lib/messages';
 import { t } from '../i18n';
+import { UiIcon, type UiIconName } from './icons';
 
 // Files shown the way Messages shows them: images as thumbnails, other files as cards (a kind icon, the name, the
 // size), all opening in the in-app viewer. Used for message attachments, an assignment's files, what you handed in and
@@ -19,7 +20,14 @@ export interface AttachmentLike {
   size?: number;
 }
 
-const KIND_ICON: Record<AttachmentKind, string> = { image: '🖼️', pdf: '📕', doc: '📝', sheet: '📊', slides: '📽️', code: '💻', video: '🎬', audio: '🎵', archive: '🗜️', file: '📄' };
+const KIND_ICON: Record<AttachmentKind, UiIconName> = { image: 'image', pdf: 'pdf', doc: 'fileText', sheet: 'sheet', slides: 'slides', code: 'code', video: 'video', audio: 'audio', archive: 'archive', file: 'file' };
+// The colors these kinds usually have (PDF red, Word blue, Excel green, PowerPoint orange).
+const KIND_COLOR: Partial<Record<AttachmentKind, string>> = {
+  pdf: 'text-red-600 dark:text-red-400',
+  doc: 'text-blue-600 dark:text-blue-400',
+  sheet: 'text-green-600 dark:text-green-400',
+  slides: 'text-orange-600 dark:text-orange-400',
+};
 
 /**
  * `tone`: `plain` on a page or card (bordered), `bubble` inside someone else's message bubble, `mine` inside your own
@@ -77,8 +85,8 @@ export function Attachments({
           title={a.url ? t('Open {name}', { name: a.display_name }) : t('Open in Canvas to see this file')}
           className={`flex w-full min-w-[12rem] items-center gap-2.5 rounded-xl px-3 py-2 text-left ${card}`}
         >
-          <span aria-hidden className="text-xl">
-            {KIND_ICON[attachmentKind(a)]}
+          <span className={tone === 'mine' ? '' : (KIND_COLOR[attachmentKind(a)] ?? 'text-neutral-500 dark:text-neutral-400')}>
+            <UiIcon name={KIND_ICON[attachmentKind(a)]} className="h-6 w-6" />
           </span>
           <span className="min-w-0 flex-1">
             <span className="block truncate text-xs font-medium">{a.display_name}</span>

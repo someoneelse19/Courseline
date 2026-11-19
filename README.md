@@ -29,7 +29,8 @@ not have. Merging `dev` into `main` keeps
   scores (group weights and drop rules included).
 - **Messages that feel like texting.** Your Canvas Inbox and sent messages as conversations, each a thread of
   bubbles with its subject on top as the chat name; reply with Enter, attach files (images and files preview inline),
-  or start a new message to a course's teachers and classmates. The sidebar shows how many conversations are unread;
+  or start a new message to a course's teachers and classmates (in a class of thousands too: it shows the 30 most
+  likely, people you've written with first, and searches the whole class as you type). The sidebar shows how many conversations are unread;
   with a token, opening one marks it read. Works with a
   token and, on `dev`, with the extension.
 - **Communities as one news feed.** The Canvas spaces you belong to besides your classes (library, student life, your
@@ -37,6 +38,9 @@ not have. Merging `dev` into `main` keeps
   of new posts, and a directory that says which have news. Hide the ones you don't care about; each opens as a single
   page (posts, resources, discussions) instead of class tabs. Courseline tells classes and communities apart on its
   own, and you can correct it.
+- **Course tabs that follow Canvas's menu**: Discussions only when the course has it, and a **Tools** tab with the
+  course's quizzes and external tools (attendance and the like). Canvas will not let those be shown inside another
+  site, so they open in a new tab without Canvas's menus; your quiz answers open the same way from the submission.
 - **People tab in every course**, filtered by role (teachers, TAs, students) and searchable, with a Message button per
   person. Big courses load the first 500 students; **Load everyone** reads the rest (also with the extension).
 - **Calendar and All assignments** across your chosen courses, colored by course and by status (missing, to do,

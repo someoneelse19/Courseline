@@ -6,7 +6,7 @@ import { useCourseColors } from '../hooks/useCanvasData';
 import { startFeedbackRecord } from '../lib/feedback';
 import { useUnreadFeedback } from '../hooks/useReadState';
 import { assignmentTone, isFaded, isSubmittedUndated, sortAssignments, TONE_CLASSES } from '../lib/assignmentState';
-import { formatDay, formatDue, isPast } from '../lib/format';
+import { formatDay, formatDue, formatPoints, isPast } from '../lib/format';
 import { EmptyState } from './ui';
 import { t } from '../i18n';
 
@@ -15,7 +15,7 @@ export function assignmentStatus(a: Assignment): { label: string; className: str
   const s = a.submission;
   const className = TONE_CLASSES[assignmentTone(a)];
   if (s?.excused) return { label: t('Excused'), className };
-  if (s?.workflow_state === 'graded' && s.score != null) return { label: `${s.score}/${a.points_possible ?? '?'}`, className };
+  if (s?.workflow_state === 'graded' && s.score != null) return { label: `${formatPoints(s.score)}/${a.points_possible != null ? formatPoints(a.points_possible) : '?'}`, className };
   if (s?.missing) return { label: t('Missing'), className };
   if (s?.workflow_state === 'submitted' || s?.workflow_state === 'pending_review')
     return { label: s.late ? t('Submitted (late)') : t('Submitted'), className };

@@ -11,6 +11,7 @@ import { applyMasterBodyStyles } from '../lib/pptxFix';
 import { drawDocxCharts } from '../lib/docxCharts';
 import { replaceChartNodes, slideChartSvgs } from '../lib/pptxCharts';
 import { pdfjsAssets } from '../lib/pdfjsAssets';
+import { UiIcon } from './icons';
 
 const Editor = lazy(() => import('@monaco-editor/react').then(m => ({ default: m.default })));
 
@@ -793,7 +794,7 @@ function PptxViewer({ fileUrl, zoom }: { fileUrl: string; zoom: number }) {
 function UnsupportedViewer({ fileUrl, fileName, note }: { fileUrl: string; fileName: string; note?: string }) {
   return (
     <div className="flex flex-col items-center gap-3 p-6 rounded-lg border border-neutral-300 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800">
-      <div className="text-4xl">📄</div>
+      <UiIcon name="file" className="h-10 w-10 text-neutral-400" />
       <p className="text-sm text-neutral-600 dark:text-neutral-400">{fileName}</p>
       {note && <p className="max-w-md text-center text-xs text-neutral-500 dark:text-neutral-400">{note}</p>}
       <a
@@ -893,7 +894,7 @@ const stepZoom = (z: number, dir: 1 | -1) =>
   dir > 0 ? (ZOOM_PRESETS.find((p) => p > z + 1e-6) ?? MAX_ZOOM) : ([...ZOOM_PRESETS].reverse().find((p) => p < z - 1e-6) ?? MIN_ZOOM);
 
 const toolbarButton =
-  'rounded-md border border-neutral-300 px-2.5 py-1 text-sm hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-neutral-700 dark:hover:bg-neutral-800';
+  'inline-flex items-center gap-1.5 rounded-md border border-neutral-300 px-2.5 py-1 text-sm hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-neutral-700 dark:hover:bg-neutral-800';
 const fieldBox =
   'flex items-center rounded-md border border-neutral-300 px-2 py-1 text-sm focus-within:ring-2 focus-within:ring-accent-500 dark:border-neutral-700';
 
@@ -1117,7 +1118,7 @@ export function FileViewer({ fileUrl, fileName, contentType, onClose }: FileView
     return (
       <Shell title={fileName} onClose={onClose}>
         <div className="flex flex-col items-center gap-3 p-6 text-center">
-          <div className="text-4xl">📄</div>
+          <UiIcon name="file" className="h-10 w-10 text-neutral-400" />
           <p className="text-sm text-neutral-600 dark:text-neutral-400">{t("This file can't be previewed here.")}</p>
           <p className="max-w-md text-xs text-neutral-500 dark:text-neutral-400">{state.reason}</p>
           {state.download && (
@@ -1148,7 +1149,8 @@ export function FileViewer({ fileUrl, fileName, contentType, onClose }: FileView
             <ZoomControls zoom={zoom} setZoom={setZoom} />
             {/* The only way a file is ever saved: an explicit click. Saves the local copy under its real name. */}
             <a href={url} download={name} className={`${toolbarButton} bg-accent-600 text-white hover:bg-accent-700 dark:border-accent-600`}>
-              ⬇ {t('Download')}
+              <UiIcon name="download" />
+              {t('Download')}
             </a>
           </>
         )

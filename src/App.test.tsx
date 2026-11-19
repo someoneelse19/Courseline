@@ -47,6 +47,10 @@ const routes: Record<string, unknown> = {
   '/api/v1/courses/1/assignments/5/submissions/self': { ...lab.submission, body: '<p>My lab</p>', submission_comments: [{ id: 1, author_id: 9, author_name: 'Prof', comment: 'Nice work', created_at: '2026-09-23T10:00:00Z' }] },
   '/api/v1/courses/1/assignment_groups': [{ id: 1, name: 'Labs', position: 1, group_weight: 0, assignments: [lab, quiz, essay] }],
   // The same address serves announcements (asked with only_announcements=true) and discussions: see the handler below.
+  '/api/v1/courses/1/tabs': [
+    { id: 'home', label: 'Home', type: 'internal', html_url: '/courses/1', position: 1 },
+    { id: 'discussions', label: 'Discussions', type: 'internal', html_url: '/courses/1/discussion_topics', position: 2 },
+  ],
   '/api/v1/courses/1/users': [{ id: 7, name: 'Prof Rivera', sortable_name: 'Rivera, Prof', enrollments: [{ type: 'TeacherEnrollment' }] }],
   '/api/v1/courses/1/discussion_topics': [{ id: 92, title: 'Week 2 questions', message: '<p>Ask here</p>', posted_at: '2026-10-02T10:00:00Z', discussion_subentry_count: 3, author: { display_name: 'Prof Rivera' } }],
   '/api/v1/courses/1/modules': [
@@ -130,7 +134,8 @@ describe('screens', () => {
     ['/courses/1', ['Week 1', 'Slides.pdf', 'Welcome to Bio']],
     ['/courses/1/assignments', ['Lab report', '8/10', 'Quiz 1']],
     ['/courses/1/files', ['Slides.pdf', 'Not in a unit', 'Extra.docx']],
-    ['/courses/1/announcements', ['Midterm moved', 'Prof Rivera', 'Week 2 questions']],
+    ['/courses/1/announcements', ['Midterm moved', 'Prof Rivera', 'Discussions']],
+    ['/courses/1/discussions', ['Week 2 questions']],
     ['/courses/1/export', ['Week 1', 'Slides.pdf', 'Welcome to Bio']], // the old AI export address lands on the course
     ['/courses/1/grades', ['Current grade', 'Grade over time', 'Labs']],
     ['/courses/1/people', ['People', 'Prof Rivera', 'Everyone 1', 'Teachers 1', 'Message']],

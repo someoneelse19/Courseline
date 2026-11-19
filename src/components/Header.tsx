@@ -1,5 +1,6 @@
 import { useAuth } from '../context/AuthContext';
 import { t } from '../i18n';
+import { UiIcon } from './icons';
 
 export function Header({ onMenu }: { onMenu: () => void }) {
   const { user, logout } = useAuth();
@@ -7,7 +8,7 @@ export function Header({ onMenu }: { onMenu: () => void }) {
   return (
     <header className="flex h-14 shrink-0 items-center gap-3 border-b border-neutral-200 bg-white px-4 dark:border-neutral-800 dark:bg-neutral-900">
       <button onClick={onMenu} className="rounded-md p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 md:hidden" aria-label={t('Toggle menu')}>
-        ☰
+        <UiIcon name="menu" className="h-5 w-5" />
       </button>
       <span className="text-lg font-bold">Courseline</span>
       <div className="flex-1" />

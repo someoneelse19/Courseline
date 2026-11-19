@@ -19,6 +19,7 @@ import { useCourseColors, useCourseIcons, useCourses, useVisibleCourses } from '
 import { COURSE_ICON_KEYS, COURSE_ICON_LABELS } from '../lib/courseIcons';
 import { t, LANGUAGES, type Language } from '../i18n';
 import { useLanguage } from '../context/LanguageContext';
+import { UiIcon } from '../components/icons';
 
 // Sections are grouped into tabs so the page stays short. The open tab lives in the URL
 // (/settings?tab=courses) so it can be linked to and survives a reload. Add a section: put its
@@ -225,9 +226,10 @@ function ThemePicker() {
       <button
         type="button"
         onClick={toggle}
-        className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+        className="inline-flex items-center gap-2 rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
       >
-        {theme === 'dark' ? t('☀️ Light mode') : t('🌙 Dark mode')}
+        <UiIcon name={theme === 'dark' ? 'sun' : 'moon'} />
+        {theme === 'dark' ? t('Light mode') : t('Dark mode')}
       </button>
     </Card>
   );

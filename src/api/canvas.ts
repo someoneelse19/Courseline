@@ -1,6 +1,6 @@
 // Canvas endpoints. One small function per resource; add new features here.
 import { CanvasApiError, createClient, type ClientConfig } from './client';
-import type { Assignment, AssignmentGroup, CourseRoster, Conversation, Course, CourseFile, DiscussionTopic, MailScope, Module, ModuleItem, NewMessage, Page, Quiz, QuizQuestion, QuizSubmission, Recipient, Submission, UpcomingEvent, UserProfile } from './types';
+import type { Assignment, AssignmentGroup, CourseRoster, CourseTab, Conversation, Course, CourseFile, DiscussionTopic, MailScope, Module, ModuleItem, NewMessage, Page, Quiz, QuizQuestion, QuizSubmission, Recipient, Submission, UpcomingEvent, UserProfile } from './types';
 
 /** Students read before the People tab offers "Load everyone". */
 export const STUDENTS_FIRST = 500;
@@ -302,6 +302,38 @@ export function createCanvasApi(config: ClientConfig) {
       });
     },
 
+    /** A course's teachers and TAs, for New message: always few, so read in full. */
+    getCourseStaff: async (courseId: number): Promise<Recipient[]> => {
+      const users = await client.getAll<{ id: number; name: string; enrollments?: Array<{ type: string }> }>(`/courses/${courseId}/users`, {
+        enrollment_type: ['teacher', 'ta'],
+        include: ['enrollments'],
+      });
+      return users.map((u) => ({ id: u.id, name: u.name, role: u.enrollments?.some((e) => e.type === 'TeacherEnrollment') ? 'teacher' : 'ta' }));
+    },
+
+    /**
+     * Some of a course's students, for New message, without reading a class that can be thousands long: Canvas's own
+     * name search (`term`, which Canvas needs to be two characters or more), the ones among `userIds`, or else the first
+     * by name. One request, at most `limit` people.
+     */
+    findClassmates: async (courseId: number, q: { term?: string; userIds?: number[]; limit?: number }): Promise<Recipient[]> => {
+      const limit = q.limit ?? 30;
+      const term = q.term?.trim();
+      if (q.userIds && !q.userIds.length) return [];
+      const { items } = await client.getUpTo<{ id: number; name: string }>(
+        `/courses/${courseId}/users`,
+        {
+          enrollment_type: ['student'],
+          ...(term && term.length >= 2 ? { search_term: term } : {}),
+          ...(q.userIds ? { user_ids: q.userIds.map(String) } : {}),
+          per_page: Math.min(limit, 100),
+        },
+        limit,
+        1,
+      );
+      return items.map((u) => ({ id: u.id, name: u.name, role: 'student' }));
+    },
+
     /** Who the student can write to about a course: its teachers, TAs and classmates (the course's class list). */
     getCourseRecipients: async (courseId: number): Promise<Recipient[]> => {
       const users = await client.getAll<{ id: number; name: string; enrollments?: Array<{ type: string }> }>(`/courses/${courseId}/users`, {
@@ -445,6 +477,10 @@ export function createCanvasApi(config: ClientConfig) {
      */
     getAnnouncements: (courseId: number) =>
       client.getAll<DiscussionTopic>(`/courses/${courseId}/discussion_topics`, { only_announcements: true, order_by: 'recent_activity' }),
+
+    /** The course's Canvas menu as the student sees it: what the school hides is left out, external tools included. */
+    getCourseTabs: async (courseId: number): Promise<CourseTab[]> =>
+      (await client.getAll<CourseTab>(`/courses/${courseId}/tabs`)).filter((tab) => !tab.hidden).sort((a, b) => (a.position ?? 0) - (b.position ?? 0)),
 
     /** Discussion topics for one course (Canvas leaves announcements out of this list). */
     getDiscussions: (courseId: number) => client.getAll<DiscussionTopic>(`/courses/${courseId}/discussion_topics`, { order_by: 'recent_activity' }),

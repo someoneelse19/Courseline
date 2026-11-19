@@ -7,6 +7,7 @@ import { Overlay, OverlayPanel, overlayButton } from './Overlay';
 import { Card, ErrorMessage, Spinner } from './ui';
 import { htmlText } from '../lib/html';
 import { t } from '../i18n';
+import { UiIcon } from './icons';
 
 // The editor (and Tiptap with it) loads the first time it is opened.
 const RichTextEditor = lazy(() => import('./RichTextEditor').then((m) => ({ default: m.RichTextEditor })));
@@ -135,12 +136,12 @@ export function SubmissionForm({ courseId, assignmentId, assignment, onSubmitted
       <div className="mb-4 flex gap-2 border-b border-neutral-200 dark:border-neutral-800">
         {canUpload && (
           <button type="button" onClick={() => setTab('upload')} className={tabClass(activeTab === 'upload')}>
-            📁 {t('File upload')}
+            <span className="flex items-center gap-1.5"><UiIcon name="upload" />{t('File upload')}</span>
           </button>
         )}
         {canText && (
           <button type="button" onClick={() => setTab('text')} className={tabClass(activeTab === 'text')}>
-            📝 {t('Text entry')}
+            <span className="flex items-center gap-1.5"><UiIcon name="pencil" />{t('Text entry')}</span>
           </button>
         )}
       </div>
@@ -173,7 +174,7 @@ export function SubmissionForm({ courseId, assignmentId, assignment, onSubmitted
                       <p className="truncate text-sm font-medium">{item.file.name}</p>
                       <p className="text-xs text-neutral-500 dark:text-neutral-400">{megabytes(item.file.size)} MB</p>
                       {item.status === 'uploading' && <p className="text-xs text-accent-600 dark:text-accent-400">{t('Uploading…')}</p>}
-                      {item.status === 'uploaded' && <p className="text-xs text-green-700 dark:text-green-400">✓ {t('Uploaded')}</p>}
+                      {item.status === 'uploaded' && <p className="flex items-center gap-1 text-xs text-green-700 dark:text-green-400"><UiIcon name="check" className="h-3.5 w-3.5" />{t('Uploaded')}</p>}
                       {item.status === 'error' && <p className="text-xs text-red-700 dark:text-red-400">{item.error}</p>}
                     </div>
                     <button
@@ -183,7 +184,7 @@ export function SubmissionForm({ courseId, assignmentId, assignment, onSubmitted
                       aria-label={t('Remove {name}', { name: item.file.name })}
                       className="ml-2 shrink-0 rounded-sm px-2 py-1 text-sm text-neutral-500 hover:bg-neutral-200 disabled:opacity-50 dark:hover:bg-neutral-700"
                     >
-                      ✕
+                      <UiIcon name="close" />
                     </button>
                   </li>
                 ))}
@@ -199,7 +200,7 @@ export function SubmissionForm({ courseId, assignmentId, assignment, onSubmitted
               onClick={() => setEditorOpen(true)}
               className="block w-full rounded-lg border-2 border-dashed border-neutral-300 p-6 text-center text-sm text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800/50"
             >
-              <span className="font-medium text-accent-600 dark:text-accent-400">✏️ {t('Open the editor')}</span>
+              <span className="inline-flex items-center gap-1.5 font-medium text-accent-600 dark:text-accent-400"><UiIcon name="pencil" />{t('Open the editor')}</span>
               <span className="mt-1 block text-xs">{t('Write your submission with the same tools as Canvas')}</span>
             </button>
           ) : (
@@ -215,8 +216,9 @@ export function SubmissionForm({ courseId, assignmentId, assignment, onSubmitted
                 <span>
                   {t('{n} words', { n: countWords(htmlText(text)) })} · {t('Draft kept in this browser')}
                 </span>
-                <button type="button" onClick={() => setEditorOpen(true)} className="font-medium text-accent-600 hover:underline dark:text-accent-400">
-                  ✏️ {t('Continue editing')}
+                <button type="button" onClick={() => setEditorOpen(true)} className="inline-flex items-center gap-1 font-medium text-accent-600 hover:underline dark:text-accent-400">
+                  <UiIcon name="pencil" className="h-3.5 w-3.5" />
+                  {t('Continue editing')}
                 </button>
               </div>
             </div>

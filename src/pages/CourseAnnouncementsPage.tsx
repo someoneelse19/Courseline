@@ -9,8 +9,8 @@ import { htmlText } from '../lib/html';
 import { useIsNewPost, useMarkPostsRead } from '../hooks/useReadState';
 import { t, tn } from '../i18n';
 
-// Per-course announcements (what the instructor posted) and discussions (conversations). Messages are
-// instructor-written HTML, so they go through HtmlContent. Replies are not loaded here: "Open in Canvas" goes to them.
+// Per-course announcements (what the instructor posted) and, on their own tab, discussions (conversations). Messages
+// are instructor-written HTML, so they go through HtmlContent. Replies are not loaded here: "Open in Canvas" goes to them.
 
 /**
  * One announcement or discussion: title, author and date, and a short preview; opening it swaps the preview for the full
@@ -50,7 +50,7 @@ export function Topic({ topic, fresh = false, context }: { topic: DiscussionTopi
   );
 }
 
-function Section({ title, empty, query, fresh }: { title: string; empty: string; query: ReturnType<typeof useAnnouncements>; fresh?: ReadonlySet<number> }) {
+function Section({ title, empty, query, fresh }: { title?: string; empty: string; query: ReturnType<typeof useAnnouncements>; fresh?: ReadonlySet<number> }) {
   return (
     <Card title={title}>
       {query.error ? (
@@ -73,7 +73,6 @@ function Section({ title, empty, query, fresh }: { title: string; empty: string;
 export function CourseAnnouncementsPage() {
   const courseId = Number(useParams().courseId);
   const announcements = useAnnouncements(courseId);
-  const discussions = useDiscussions(courseId);
   const isNewPost = useIsNewPost();
   const markPostsRead = useMarkPostsRead();
   // What was new when the tab opened keeps its "New" label for this visit; opening the tab marks it all read (in Canvas
@@ -84,10 +83,11 @@ export function CourseAnnouncementsPage() {
     setFresh(new Set(announcements.data.filter((a) => isNewPost(courseId, a)).map((a) => a.id)));
     markPostsRead(courseId, announcements.data);
   }, [courseId, announcements.data, isNewPost, markPostsRead, fresh]);
-  return (
-    <div className="space-y-6">
-      <Section title={t('Announcements')} empty={t('No announcements.')} query={announcements} fresh={fresh ?? undefined} />
-      <Section title={t('Discussions')} empty={t('No discussions.')} query={discussions} />
-    </div>
-  );
+  return <Section empty={t('No announcements.')} query={announcements} fresh={fresh ?? undefined} />;
+}
+
+/** The Discussions tab, shown only when the course's Canvas menu has Discussions (see CourseTabs). */
+export function CourseDiscussionsPage() {
+  const courseId = Number(useParams().courseId);
+  return <Section empty={t('No discussions.')} query={useDiscussions(courseId)} />;
 }

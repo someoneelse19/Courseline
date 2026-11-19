@@ -32,7 +32,7 @@ export function DashboardPage() {
             ) : !upcomingVisible ? (
               <Spinner />
             ) : upcomingVisible.length === 0 ? (
-              <EmptyState>{t('Nothing due soon 🎉')}</EmptyState>
+              <EmptyState>{t('Nothing due soon.')}</EmptyState>
             ) : (
               <ul className="divide-y divide-neutral-200 dark:divide-neutral-800">
                 {upcomingVisible.map((e) => (

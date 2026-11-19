@@ -71,7 +71,7 @@ describe('SubmissionForm: file upload', () => {
     expect(api.submitAssignment).not.toHaveBeenCalled();
     expect(text()).toContain('1 file could not be uploaded, so nothing was submitted');
     expect(text()).toContain('storage said no');
-    expect(text()).toContain('✓ Uploaded');
+    expect(text()).toContain('Uploaded');
 
     await submit(); // retry
     expect(api.uploadSubmissionFile).toHaveBeenCalledTimes(3); // ok.txt once, bad.txt twice

@@ -1328,6 +1328,12 @@ function extensionInternals(fullSnapshot: Snapshot, onIssue: IssueSink) {
       return { people, complete: !!ds.newest(PEOPLE_COMPLETE, courseId), more: false };
     },
 
+    // New message reads the captured class list (getCourseRecipients) instead: it is only as big as Canvas's People
+    // page loaded.
+    getCourseStaff: needsToken,
+    getCourseTabs: needsToken,
+    findClassmates: needsToken,
+
     getCourseRecipients: async (courseId: number) => {
       const found = peopleFrom(snapshot.records, courseId);
       if (!found.length && hidden(courseId, 'people')) throw hiddenByCanvas(sectionName.people);

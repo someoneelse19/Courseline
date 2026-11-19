@@ -9,8 +9,11 @@ import { useFileViewer } from '../context/FileViewerContext';
 import { formatBytes, formatDay } from '../lib/format';
 import { linkedFiles } from '../lib/html';
 import { t } from '../i18n';
+import { UiIcon, type UiIconName } from '../components/icons';
+import { ToolCard } from '../components/ToolCard';
+import { isAttendanceTool } from '../lib/canvasTab';
 
-// The "Files by unit" tab. Header + tabs come from CourseLayout.
+// The "Files" tab (grouped by unit). Header + tabs come from CourseLayout.
 // "Units" are Canvas modules. Unit order and item order are the instructor's own
 // (module.position / item.position), so we keep them rather than re-sorting.
 // Files are matched to module items via item.content_id === file.id; files that
@@ -18,14 +21,14 @@ import { t } from '../i18n';
 
 type Mode = 'files' | 'all';
 
-const icons: Record<string, string> = {
-  File: '📄',
-  Page: '📃',
-  Assignment: '📝',
-  Quiz: '❓',
-  Discussion: '💬',
-  ExternalUrl: '🔗',
-  ExternalTool: '🧩',
+const icons: Record<string, UiIconName> = {
+  File: 'file',
+  Page: 'fileText',
+  Assignment: 'assignment',
+  Quiz: 'quiz',
+  Discussion: 'discussion',
+  ExternalUrl: 'link',
+  ExternalTool: 'externalTool',
 };
 
 export function CourseFilesPage() {
@@ -129,7 +132,7 @@ function Unit({ module, items, courseId, fileById }: { module: Module; items: Mo
     <details open className="rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
       <summary className="cursor-pointer px-4 py-3 font-semibold">
         {module.name} <span className="font-normal text-neutral-500 dark:text-neutral-400">· {count}</span>
-        {module.state === 'locked' && <span className="ml-2 text-xs font-normal text-amber-700 dark:text-amber-400">🔒 {t('locked')}</span>}
+        {module.state === 'locked' && <span className="ml-2 inline-flex items-center gap-1 text-xs font-normal text-amber-700 dark:text-amber-400"><UiIcon name="lock" className="h-3.5 w-3.5" />{t('locked')}</span>}
       </summary>
       <UnitItems items={items} courseId={courseId} fileById={fileById} className="px-4" />
     </details>
@@ -165,10 +168,10 @@ export function UnitItems({
   );
 }
 
-function rowShell(icon: string, indent: number, body: ReactNode, meta?: string) {
+function rowShell(icon: UiIconName | undefined, indent: number, body: ReactNode, meta?: string) {
   return (
     <li className="flex items-center gap-3 py-2.5 text-sm" style={{ paddingLeft: indent * 16 }}>
-      <span aria-hidden>{icon}</span>
+      <span className="text-neutral-500 dark:text-neutral-400">{icon ? <UiIcon name={icon} /> : <span className="block h-4 w-4" />}</span>
       <span className="min-w-0 flex-1">
         {body}
         {meta && <span className="block text-xs text-neutral-500 dark:text-neutral-400">{meta}</span>}
@@ -195,7 +198,7 @@ function FileRow({ courseId, title, file, item }: { courseId: number; title: str
   const body =
     locked || !href ? (
       <span className="text-neutral-500 dark:text-neutral-400">
-        {name} {locked && '🔒'}
+        {name} {locked && <UiIcon name="lock" className="inline h-3.5 w-3.5 align-[-2px]" />}
       </span>
     ) : (
       <button
@@ -215,7 +218,7 @@ function FileRow({ courseId, title, file, item }: { courseId: number; title: str
 
 function ItemRow({ item, courseId }: { item: ModuleItem; courseId: number }) {
   const indent = item.indent ?? 0;
-  const icon = icons[item.type] ?? '•';
+  const icon = icons[item.type];
 
   // Pages: fetch content and extract embedded files (slug comes from page_url, not html_url)
   if (item.type === 'Page' && item.page_url)
@@ -228,6 +231,13 @@ function ItemRow({ item, courseId }: { item: ModuleItem; courseId: number }) {
         {item.title}
       </Link>
     ));
+  // Quizzes and external tools open in a new tab, without Canvas's menus (lib/canvasTab.ts).
+  if ((item.type === 'Quiz' || item.type === 'ExternalTool') && item.html_url)
+    return (
+      <li className="py-1.5" style={{ paddingLeft: indent * 16 }}>
+        <ToolCard url={item.html_url} name={item.title} icon={item.type === 'Quiz' ? 'quiz' : isAttendanceTool(item.title) ? 'attendance' : 'externalTool'} />
+      </li>
+    );
   const href = item.external_url ?? item.html_url;
   return rowShell(
     icon,
@@ -259,7 +269,7 @@ function PageItemRow({ item, courseId, pageUrl, indent }: { item: ModuleItem; co
       )}
       {files.map((file) => (
         <li key={file.id} className="flex items-center gap-3 py-2.5 text-sm" style={{ paddingLeft: (indent + 1) * 16 }}>
-          <span aria-hidden>📄</span>
+          <span className="text-neutral-500 dark:text-neutral-400"><UiIcon name="file" /></span>
           <span className="min-w-0 flex-1">
             <button type="button" onClick={() => openFile(file.url, file.name)} className="text-left font-medium hover:underline">
               {file.name}

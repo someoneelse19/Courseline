@@ -12,6 +12,7 @@ import { CharacterCount, Placeholder } from '@tiptap/extensions';
 import type { UploadedFile } from '../api/client';
 import { cleanEditorHtml, countWords, equationImageHtml } from '../lib/editorHtml';
 import { t } from '../i18n';
+import { UiIcon } from './icons';
 
 // The text-entry editor, with the tools of Canvas's Rich Content Editor: block formats (paragraph, headings 2–4,
 // preformatted), font size, bold/italic/underline/strikethrough, text and highlight color, superscript/subscript,
@@ -487,7 +488,7 @@ function LinkMenu({ editor, menu, setMenu }: MenuProps) {
     setMenu(null);
   };
   return (
-    <Menu id="link" menu={menu} setMenu={setMenu} title={`${t('Link')} (${mod}+K)`} label="🔗" active={editor.isActive('link')} panel>
+    <Menu id="link" menu={menu} setMenu={setMenu} title={`${t('Link')} (${mod}+K)`} label={<UiIcon name="link" />} active={editor.isActive('link')} panel>
       <Form onSubmit={apply}>
         {empty && !editor.isActive('link') && <Field label={t('Text')} value={text} onChange={setText} />}
         <Field label={t('Address')} value={href} onChange={setHref} placeholder="https://…" autoFocus />
@@ -562,7 +563,7 @@ function ImageMenu({ editor, menu, setMenu, baseUrl, userId, upload }: UploadMen
     setMenu(null);
   };
   return (
-    <Menu id="image" menu={menu} setMenu={setMenu} title={t('Image')} label="🖼️" panel>
+    <Menu id="image" menu={menu} setMenu={setMenu} title={t('Image')} label={<UiIcon name="image" />} panel>
       <Form onSubmit={apply}>
         {upload && (
           <label className="block text-xs">
@@ -611,7 +612,7 @@ function DocumentMenu({ editor, menu, setMenu, baseUrl, userId, upload }: Upload
     }
   };
   return (
-    <Menu id="document" menu={menu} setMenu={setMenu} title={t('Document')} label="📄" panel>
+    <Menu id="document" menu={menu} setMenu={setMenu} title={t('Document')} label={<UiIcon name="fileText" />} panel>
       <Form onSubmit={apply}>
         <label className="block text-xs">
           <span className="mb-1 block text-neutral-500 dark:text-neutral-400">{t('Upload a document to link to')}</span>
@@ -693,7 +694,7 @@ function TableMenu({ editor, menu, setMenu }: MenuProps) {
   const [cols, setCols] = useState(3);
   const [header, setHeader] = useState(true);
   return (
-    <Menu id="table" menu={menu} setMenu={setMenu} title={t('Table')} label="▦" active={editor.isActive('table')} panel>
+    <Menu id="table" menu={menu} setMenu={setMenu} title={t('Table')} label={<UiIcon name="table" />} active={editor.isActive('table')} panel>
       <Form
         onSubmit={() => {
           editor.chain().focus().insertTable({ rows, cols, withHeaderRow: header }).run();

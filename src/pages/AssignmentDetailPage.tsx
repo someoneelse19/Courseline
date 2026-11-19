@@ -6,10 +6,13 @@ import { assignmentStatus } from '../components/AssignmentList';
 import { Attachments } from '../components/Attachments';
 import { HtmlContent } from '../components/HtmlContent';
 import { SubmissionForm } from '../components/SubmissionForm';
-import { Card, EmptyState, ErrorMessage, Spinner } from '../components/ui';
+import { ToolCard } from '../components/ToolCard';
+import { Card, EmptyState, ErrorMessage, Spinner, TabBlocked } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
 import { useAssignment, useMySubmission } from '../hooks/useCanvasData';
 import { useOpenFeedback } from '../hooks/useReadState';
+import { useCanvasTab } from '../hooks/useCanvasTab';
+import { isQuiz, isToolAssignment } from '../lib/canvasTab';
 import { markSeen } from '../lib/seen';
 import { formatDue } from '../lib/format';
 import { linkedFiles } from '../lib/html';
@@ -50,6 +53,7 @@ export function AssignmentDetailPage() {
   const { sub, newGrade, newCommentIds, hasNew: hasNewFeedback } = useOpenFeedback(courseId, assignmentId, submission, assignment.data?.submission);
   const description = assignment.data?.description ?? '';
   const attachedFiles = useMemo(() => linkedFiles(description), [description]);
+  const canvasTab = useCanvasTab();
 
   if (assignment.error) return <ErrorMessage error={assignment.error} onRetry={assignment.refetch} />;
   if (!assignment.data) return <Spinner />;
@@ -93,17 +97,25 @@ export function AssignmentDetailPage() {
           <div className="flex flex-wrap items-center gap-2">
             {hasNewFeedback && <NewPill>{t('New feedback')}</NewPill>}
             <span className={`rounded-full px-3 py-1 text-sm font-medium ${st.className}`}>{st.label}</span>
-            <a
-              href={a.html_url}
-              target="_blank"
-              rel="noreferrer"
-              className="shrink-0 rounded-md bg-accent-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-700"
-            >
-              {submitted ? t('Open in Canvas ↗') : t('Submit in Canvas ↗')}
-            </a>
+            {/* A quiz or another tool opens in a new tab, without Canvas's menus (lib/canvasTab.ts). */}
+            {isToolAssignment(a) ? (
+              <button type="button" onClick={() => canvasTab.open(a.html_url)} className="shrink-0 rounded-md bg-accent-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-700">
+                {isQuiz(a) ? t('Open quiz') : t('Open activity')}
+              </button>
+            ) : (
+              <a
+                href={a.html_url}
+                target="_blank"
+                rel="noreferrer"
+                className="shrink-0 rounded-md bg-accent-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-700"
+              >
+                {submitted ? t('Open in Canvas ↗') : t('Submit in Canvas ↗')}
+              </a>
+            )}
           </div>
         </div>
         <Facts a={a} formShown={formShown} />
+        {canvasTab.blocked && <div className="mt-2"><TabBlocked /></div>}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -113,6 +125,12 @@ export function AssignmentDetailPage() {
               <p className="font-medium">{t('Locked')}</p>
               {a.lock_explanation && <HtmlContent html={a.lock_explanation} />}
             </div>
+          )}
+
+          {isToolAssignment(a) && (
+            <Card title={isQuiz(a) ? t('Quiz') : t('Activity')}>
+              <ToolCard url={a.html_url} name={a.name} icon={isQuiz(a) ? 'quiz' : 'externalTool'} />
+            </Card>
           )}
 
           <Card title={t('Instructions')}>

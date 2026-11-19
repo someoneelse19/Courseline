@@ -2,7 +2,8 @@ import { useMemo, useState, type FormEvent } from 'react';
 import type { Assignment, ScoreStatistics, Submission, SubmissionComment } from '../api/types';
 import { useApi, useAuth } from '../context/AuthContext';
 import type { QueryResult } from '../hooks/useQuery';
-import { formatDue } from '../lib/format';
+import { formatDue, formatPoints } from '../lib/format';
+import { ToolCard } from './ToolCard';
 import { htmlText } from '../lib/html';
 import { Attachments } from './Attachments';
 import { HtmlContent } from './HtmlContent';
@@ -197,7 +198,9 @@ export function SubmissionView({
 function SubmittedWork({ sub }: { sub: Submission }) {
   return (
     <>
-      {sub.url && (
+      {sub.url && sub.submission_type === 'basic_lti_launch' ? (
+        <ToolCard url={sub.url} name={t('Your answers')} icon="quiz" />
+      ) : sub.url && (
         <a href={sub.url} target="_blank" rel="noreferrer" className="block break-all text-accent-600 underline dark:text-accent-400">
           {sub.url}
         </a>
@@ -222,7 +225,7 @@ export function NewPill({ children, small }: { children: string; small?: boolean
   );
 }
 
-const pts = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+const pts = formatPoints;
 
 /** The score inside a ring filled to the share of the points earned, with "Out of N pts" beside it. */
 function ScoreRing({ score, points, grade }: { score: number; points: number | null; grade?: string | null }) {
@@ -246,13 +249,14 @@ function ScoreRing({ score, points, grade }: { score: number; points: number | n
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-3xl font-semibold tabular-nums">{score}</span>
+          <span className={`${pts(score).length > 4 ? 'text-2xl' : 'text-3xl'} font-semibold tabular-nums`}>{pts(score)}</span>
           <span className="text-xs text-neutral-500 dark:text-neutral-400">{t('Points')}</span>
         </div>
       </div>
       <div className="text-neutral-500 dark:text-neutral-400">
         <p>{points != null ? t('Out of {n} pts', { n: points }) : null}</p>
-        {grade && grade !== String(score) && <p className="mt-1 font-medium text-neutral-800 dark:text-neutral-100">{grade}</p>}
+        {/* Canvas's grade text, unless it is just the score again (a number, maybe with float noise). */}
+        {grade && Number.isNaN(Number(grade)) && <p className="mt-1 font-medium text-neutral-800 dark:text-neutral-100">{grade}</p>}
       </div>
     </div>
   );

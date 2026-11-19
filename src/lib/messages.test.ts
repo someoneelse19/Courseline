@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { attachmentKind, chatName, composeTarget, mergeFolders, linkify, otherPeople, peopleLabel, threadDays } from './messages';
+import { attachmentKind, chatName, composeTarget, contactedIds, mergeFolders, linkify, otherPeople, peopleLabel, pickRecipients, threadDays } from './messages';
 
 const msg = (id: number, author: number, at: string, body = 'x') => ({ id, author_id: author, created_at: at, body });
 
@@ -69,5 +69,28 @@ describe('attachmentKind', () => {
     expect(attachmentKind({ display_name: 'Calculat_trig_functions_and_pi.java' })).toBe('code');
     expect(attachmentKind({ display_name: 'notes', mime_class: 'pdf' })).toBe('pdf');
     expect(attachmentKind({ display_name: 'thing.bin' })).toBe('file');
+  });
+});
+
+describe('New message recipients', () => {
+  const convo = (at: string, ...ids: number[]) => ({ last_message_at: at, participants: [{ id: 1, name: 'Me' }, ...ids.map((id) => ({ id, name: `P${id}` }))] });
+
+  it('lists who the student has written with, most recent first, without the student', () => {
+    expect(contactedIds([convo('2026-01-01', 5), convo('2026-03-01', 7), convo('2026-02-01', 5, 9)], 1)).toEqual([7, 5, 9]);
+  });
+
+  const people = [
+    { id: 1, name: 'Zoe Álvarez' },
+    { id: 2, name: 'Ana Gómez' },
+    { id: 3, name: 'Bruno Gomes' },
+    { id: 4, name: 'Carla Agomez' },
+    { id: 2, name: 'Ana Gómez' },
+  ];
+
+  it('puts people written with first, then names starting with the query, then the rest by name; each once, up to the limit', () => {
+    expect(pickRecipients(people, '', [3], 30).map((p) => p.id)).toEqual([3, 2, 4, 1]);
+    expect(pickRecipients(people, 'gom', [4], 30).map((p) => p.id)).toEqual([4, 2, 3]); // "gom" matches Gómez without the accent
+    expect(pickRecipients(people, 'alv', [], 30).map((p) => p.id)).toEqual([1]);
+    expect(pickRecipients(people, '', [], 2)).toHaveLength(2);
   });
 });

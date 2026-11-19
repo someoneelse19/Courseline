@@ -10,7 +10,7 @@ import { resolveNewGrade, useOpenFeedback, useNewFeedbackKind, type NewFeedbackK
 import { assignmentTone, TONE_CLASSES } from '../lib/assignmentState';
 import { startFeedbackRecord } from '../lib/feedback';
 import { classPercentile, computeGrade, gradeTrend, medianComparison, toModel, type QuantileStats } from '../lib/grades';
-import { formatDay } from '../lib/format';
+import { formatDay, formatPoints } from '../lib/format';
 import { t } from '../i18n';
 
 // Per-course grades: how the grade has moved, with the current grade, the work status and the class percentile beside
@@ -21,7 +21,7 @@ import { t } from '../i18n';
 type Filter = 'all' | 'graded' | 'missing' | 'pending';
 
 const pct = (n: number | null | undefined, digits = 1) => (n == null ? '—' : `${n.toFixed(digits)}%`);
-const pts = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+const pts = formatPoints;
 const sign = (n: number) => `${n >= 0 ? '+' : '−'}${Math.abs(n).toFixed(1)}`;
 
 function rowStatus(a: Assignment | undefined, graded: boolean): { label: string; className: string } {

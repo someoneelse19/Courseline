@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Course } from '../api/types';
-import { courseIdFromContext, formatAgoShort, formatBytes, formatGrade, getGrade } from './format';
+import { courseIdFromContext, formatAgoShort, formatBytes, formatGrade, formatPoints, getGrade } from './format';
 
 const course = (enrollments: Course['enrollments']): Course => ({ id: 1, name: 'C', enrollments });
 
@@ -38,5 +38,13 @@ describe('formatAgoShort', () => {
     expect(formatAgoShort(now - 9 * 60e3, now)).toMatch(/^9\s?min/);
     expect(formatAgoShort(now - 3 * 3600e3, now)).toMatch(/^3\s?hr/);
     expect(formatAgoShort(now - 2 * 86400e3, now)).toMatch(/^2\s?days?/);
+  });
+});
+
+describe('formatPoints', () => {
+  it('rounds the floating-point sums Canvas sends to two decimals at most', () => {
+    expect(formatPoints(7.1999999999999975)).toBe('7.2');
+    expect(formatPoints(10)).toBe('10');
+    expect(formatPoints(6.8333333)).toBe('6.83');
   });
 });

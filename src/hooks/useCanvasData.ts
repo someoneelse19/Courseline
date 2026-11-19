@@ -246,6 +246,27 @@ export function useCoursePeople(courseId: number, everyone = false) {
   return useQuery(`people:${courseId}${everyone ? ':everyone' : ''}`, () => api.getCoursePeople(courseId, everyone));
 }
 
+/** The course's Canvas menu (token mode; in extension mode it fails, and screens show what they did before). */
+export function useCourseTabs(courseId: number) {
+  const api = useApi();
+  return useQuery(`tabs:${courseId}`, () => api.getCourseTabs(courseId));
+}
+
+/** A course's teachers and TAs (token mode; New message). */
+export function useCourseStaff(courseId: number | null, enabled = true) {
+  const api = useApi();
+  const on = enabled && courseId !== null;
+  return useQuery(on ? `staff:${courseId}` : 'staff:none', async () => (on ? api.getCourseStaff(courseId) : []));
+}
+
+/** Some of a course's students: a name search, given ids, or the first by name (token mode; New message). */
+export function useClassmates(courseId: number | null, q: { term?: string; userIds?: number[] }, enabled = true) {
+  const api = useApi();
+  const key = q.userIds ? `ids=${q.userIds.join(',')}` : `term=${(q.term ?? '').trim().toLowerCase()}`;
+  const on = enabled && courseId !== null;
+  return useQuery(on ? `classmates:${courseId}:${key}` : 'classmates:none', async () => (on ? api.findClassmates(courseId, q) : []));
+}
+
 /** Teachers, TAs and classmates of a course: who the student can message about it. */
 export function useCourseRecipients(courseId: number | null) {
   const api = useApi();

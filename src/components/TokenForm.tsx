@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { t } from '../i18n';
+import { UiIcon } from './icons';
 
 const input =
   'mt-1 w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-950';
@@ -38,8 +39,9 @@ export function TokenForm() {
         {status === 'loading' ? t('Checking…') : t('Sign in')}
       </button>
 
-      <p className="text-xs text-amber-700 dark:text-amber-400">
-        {t('⚠️ The token is saved encrypted in this browser. Only use this on a device you trust, and revoke it in Canvas when done.')}
+      <p className="flex gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+        <UiIcon name="warning" className="mt-px h-3.5 w-3.5" />
+        {t('The token is saved encrypted in this browser. Only use this on a device you trust, and revoke it in Canvas when done.')}
       </p>
     </form>
   );
