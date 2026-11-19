@@ -8,8 +8,8 @@ reference.
 or of this project is assumed. Basic React + TypeScript is.
 
 > Companion files: `README.md` has the short version (setup, token, Canvas API notes). Where the two disagree, this
-> guide is newer. The browser extension (`dev` branch only) is described in `extension/README.md`, with manual checks in
-> `extension/TESTING.md`. All of these are the same files on `main` and `dev`.
+> guide is newer. The browser extension (`extension-edition` branch only) is described in `extension/README.md`, with manual checks in
+> `extension/TESTING.md`. This guide and `README.md` are the same files on `main` and `extension-edition`.
 
 ## Contents
 
@@ -32,7 +32,7 @@ or of this project is assumed. Basic React + TypeScript is.
 ## 1. What this is
 
 Courseline is a **browser app that replaces the Canvas LMS student interface**. It is a React single-page app that
-talks directly to your school's Canvas REST API (`https://<school>/api/v1/...`) using a personal access token, or, on the `dev` branch, from what the Courseline browser extension (`extension/`) saves
+talks directly to your school's Canvas REST API (`https://<school>/api/v1/...`) using a personal access token, or, on the `extension-edition` branch, from what the Courseline browser extension (`extension/`) saves
 from Canvas's own pages in the student's browser. There is
 **no backend of our own**: everything runs in the browser, and the only server is the Vite dev server during
 development.
@@ -49,14 +49,14 @@ What it gives you over Canvas itself:
   and classmates, and attachments with previews.
 - A **calendar** and an **All assignments** list across the selected courses.
 - Dark mode, a **user-chosen accent color**, per-course colors and icons, and English, Spanish and Portuguese.
-- (`dev` only) A **browser extension** as a second way in, for students who cannot get a token.
+- (`extension-edition` only) A **browser extension** as a second way in, for students who cannot get a token.
 
 Stack: React 18, TypeScript (strict), Vite 6, Tailwind CSS 4, React Router 7. Tests: Vitest 5. No state library, no UI kit.
 
-**Two editions, one codebase** (details in [Branches and editions](#branches-and-editions)): the `main` branch builds the
-**API-token edition** (token sign-in only; the app never looks for or talks to the browser extension), and `dev` builds
-the full app with the extension as a second way in. Only `edition.json` differs between the branches. This guide is the
-same file on both, so anything that exists only on `dev` is marked so.
+**Two editions, one codebase** (details in [Branches and editions](#branches-and-editions)): the `main` branch, where all work
+happens, builds the **API-token edition** (token sign-in only; the app never looks for or talks to the browser
+extension), and `extension-edition`, a fork that follows `main`, builds the full app with the extension as a second way in. Only `edition.json` differs between the branches. This guide is the
+same file on both, so anything that exists only on `extension-edition` is marked so.
 
 ---
 
@@ -64,21 +64,21 @@ same file on both, so anything that exists only on `dev` is marked so.
 
 | Area | State |
 |---|---|
-| Login with Canvas token, logout | Works in both editions. Signing in with the extension instead is `dev` only (see the extension row); on `main` the login page shows only the token form (`LoginPage.apiOnly.test.tsx`) |
+| Login with Canvas token, logout | Works in both editions. Signing in with the extension instead is `extension-edition` only (see the extension row); on `main` the login page shows only the token form (`LoginPage.apiOnly.test.tsx`) |
 | Dashboard, Courses, All assignments, Calendar, per-course tabs (Pages, Assignments, Announcements, Discussions, People, Files, Grades, Tools) | Works. The **AI export** tab was removed (Nov 19, 2026; `/courses/:id/export` now lands on the course); its code stays in `lib/` for the Claude desktop connector. 12/24-hour times and the calendar's first weekday follow the computer's settings when the dev server runs on macOS (`lib/systemClock.ts`); elsewhere, and in a production build, the browser's region decides |
 | Pages tab (pages + modules merged, collapse, reorder, saved per course) | Works |
 | File viewer: PDF, DOCX, XLSX/XLS/CSV/ODS, PPTX, images, code | Works (tested in headless Chrome against a mock Canvas). `.xlsx`/`.xlsm` also show their own fills, fonts, borders and column widths (`lib/xlsxStyles.ts`, unit-tested in `xlsxStyles.test.ts` and `SheetTable.test.tsx`); `.xls`, `.ods` and `.csv` show their values. `.xlsx` conditional formatting (`lib/xlsxConditional.ts`) and charts, pictures and text boxes; charts in Word and PowerPoint files too, all drawn by one renderer (`lib/officeChart.ts`, `lib/docxCharts.ts`, `lib/pptxCharts.ts`; checked in headless Chrome Nov 19, 2026 against a real student workbook and generated Word and PowerPoint files) |
 | Old `.doc` / `.ppt` | Not previewable (no browser renderer exists): shows a message + Download button |
 | Grades page, what-if, goal calculator, trend chart, class median estimate | Works (tested against a mock Canvas; maths unit-tested). Clicking an assignment's row opens your submission and the feedback below it (the same cards as the assignment page, in a box of limited height that does not scroll: what does not fit fades out (the reply box is always there, even where it is cut off), and **View assignment →** under it leads to the rest), which marks the feedback read; rows with unread feedback have a dot and say what is new: **New grade**, **New feedback** (comments) or both. The median is an estimate from each assignment's class median (`score_statistics`), since Canvas publishes no course median |
-| Settings: language (English, Spanish, Portuguese), theme, accent color, course selection, course colors and icons | Works. The extension cards on the Connection tab are `dev` only |
+| Settings: language (English, Spanish, Portuguese), theme, accent color, course selection, course colors and icons | Works. The extension cards on the Connection tab are `extension-edition` only |
 | Assignment detail page, rubric, comments, **Reply box** | Works; in use by the author on real coursework; unit-tested |
 | **Submitting text** | Works; in use by the author on real coursework; unit-tested |
 | **Submitting files (upload)** | Implements Canvas's documented three-step flow; in use by the author on real coursework; tested in a real browser against a fake Canvas (three confirmation styles, CORS, retry). **File-storage hosts differ between schools**, so another school's Canvas may refuse browser uploads (the app says so and points to "Submit in Canvas") |
-| **Messages** (Canvas Inbox as threads: reply, new message to teachers and classmates, attachments) | Works with a token: the sidebar shows the unread count (rechecked every 60 s while the tab is visible) and opening a conversation marks it read. On `dev`, also from the extension: opening Messages has it read the inbox, sending goes through a Canvas tab it opens in the background, and nothing is marked read. Endpoints, layout helpers (`lib/messages.ts`) and the extension's send checks (`extension/lib/message.js`) are unit-tested; the screen is not in the smoke test or the e2e |
-| Browser extension (`dev` only: capture, background-tab sync, preview, link following, in-page data, sidebar status, sending messages) | **Development paused (Nov 19, 2026):** kept working as it is; new features are built for the token mode only (see step 6 of [Fetch a new kind of Canvas data](#fetch-a-new-kind-of-canvas-data-end-to-end)), and `npm run e2e` is not run for every change. Works, tested in a **real Chrome against a mock Canvas** (`npm run e2e`, 55 checks, including a restricted course; sending messages is not in it). **Tried against one real school's Canvas** (Oct 30, 2026): what differed from the mock is in the gotchas table ("Exceptions seen on one school") and now in the mock; other schools may differ again (see Pending) |
+| **Messages** (Canvas Inbox as threads: reply, new message to teachers and classmates, attachments) | Works with a token: the sidebar shows the unread count (rechecked every 60 s while the tab is visible) and opening a conversation marks it read. On `extension-edition`, also from the extension: opening Messages has it read the inbox, sending goes through a Canvas tab it opens in the background, and nothing is marked read. Endpoints, layout helpers (`lib/messages.ts`) and the extension's send checks (`extension/lib/message.js`) are unit-tested; the screen is not in the smoke test or the e2e |
+| Browser extension (`extension-edition` only: capture, background-tab sync, preview, link following, in-page data, sidebar status, sending messages) | **Development paused (Nov 19, 2026):** kept working as it is; new features are built for the token mode only (see step 6 of [Fetch a new kind of Canvas data](#fetch-a-new-kind-of-canvas-data-end-to-end)), and `npm run e2e` is not run for every change. Works, tested in a **real Chrome against a mock Canvas** (`npm run e2e`, 55 checks, including a restricted course; sending messages is not in it). **Tried against one real school's Canvas** (Oct 30, 2026): what differed from the mock is in the gotchas table ("Exceptions seen on one school") and now in the mock; other schools may differ again (see Pending) |
 | API-token edition (`main`) | Works: the same app with the extension paths turned off (see [Branches and editions](#branches-and-editions)). CI builds it on every push to `main`; its login page is unit-tested with the switch mocked (`LoginPage.apiOnly.test.tsx`); every other test runs the full app |
-| Announcements and discussions per course | Works in both modes (token: Canvas API; extension, on `dev`: from captured pages) |
-| Automated tests | **~740 unit tests** (Vitest, in `src/` and `extension/`): API client, endpoints, grades, HTML sanitizing, cache, accent colors, the submission form, messages, spreadsheet formatting, the system clock, the API-token edition's login page, the extension's logic, the app's extension mode, and a smoke test that renders every screen except Messages against a fake Canvas. **`npm run e2e`** (`dev` only) drives a real Chrome with the unpacked extension through sign-in, sync, preview, stop, refresh, pull-a-page, linked pages, a restricted course, the popup, logout and signing back in, switching address and clearing captured data. CI runs typecheck, the unit tests and the build on every push to `main` and on pull requests, not on pushes to `dev` (the e2e needs a local Chrome, so it is run by hand) |
+| Announcements and discussions per course | Works in both modes (token: Canvas API; extension, on `extension-edition`: from captured pages) |
+| Automated tests | **~740 unit tests** (Vitest, in `src/` and `extension/`): API client, endpoints, grades, HTML sanitizing, cache, accent colors, the submission form, messages, spreadsheet formatting, the system clock, the API-token edition's login page, the extension's logic, the app's extension mode, and a smoke test that renders every screen except Messages against a fake Canvas. **`npm run e2e`** (`extension-edition` only) drives a real Chrome with the unpacked extension through sign-in, sync, preview, stop, refresh, pull-a-page, linked pages, a restricted course, the popup, logout and signing back in, switching address and clearing captured data. CI runs typecheck, the unit tests and the build on every push to `main` and on pull requests, not on pushes to `extension-edition` (the e2e needs a local Chrome, so it is run by hand) |
 | Deployment | **Not supported** as-is (token lives in the browser; dev proxy is dev-only) |
 
 The author uses the app day to day, with a token, against a real school's Canvas. The automated tests (`src/**/*.test.ts(x)`, `extension/**/*.test.js`, and `npm run e2e` with `e2e/mock-canvas.mjs`) use a fake
@@ -94,9 +94,9 @@ new school try a submission on a throwaway assignment first.
 
 - **Node 22.13 or newer** (22 LTS recommended). `pdfjs-dist` declares `>=22.13 || >=24` and Vitest 5 needs
   `>=22.12`. Node 20 can still install, build and run the app (with an `EBADENGINE` warning) but **cannot run the tests**.
-- A Canvas account and a personal access token, or, on `dev`, a Chrome-based browser with the extension in `extension/`
+- A Canvas account and a personal access token, or, on `extension-edition`, a Chrome-based browser with the extension in `extension/`
   loaded unpacked (see `extension/README.md`).
-- For `npm run e2e` (`dev` only): Google Chrome (set `CHROME_PATH` if it is not in the usual macOS place).
+- For `npm run e2e` (`extension-edition` only): Google Chrome (set `CHROME_PATH` if it is not in the usual macOS place).
 - Internet during `npm install` (the spreadsheet library downloads from `cdn.sheetjs.com`, not from npm).
 
 ### Commands
@@ -116,7 +116,7 @@ COURSELINE_EDITION=api npm run build   # the API-token edition, on any branch
 ```
 
 If port 5173 is taken, Vite silently picks the next one (5174, ...). **Use the address printed in the terminal.** The
-extension (`dev`) only talks to the app on ports 5173–5180 and 4173 (`ALLOWED_PORTS` in `extension/bridge.js`), and
+extension (`extension-edition`) only talks to the app on ports 5173–5180 and 4173 (`ALLOWED_PORTS` in `extension/bridge.js`), and
 `npm run e2e` expects 5173 (`APP_URL` overrides it). `start-courseline.command` uses `--strictPort`, so it stops instead
 of moving. Its "already running" check looks for the page title `<title>Courseline</title>` (both editions have it) and
 Vite's dev client.
@@ -136,63 +136,73 @@ with a real token in `.env`.
 ### Getting a token
 
 Canvas → Account → Settings → Approved Integrations → **+ New Access Token**. Set an expiry. Copy it immediately.
-Some schools disable personal tokens; then use the browser extension on `dev` (README, "Use it without a token"), or
+Some schools disable personal tokens; then use the browser extension on `extension-edition` (README, "Use it without a token"), or
 OAuth2, which is not implemented. The API-token edition on `main` has no way in without a token.
 
 ### Before you change anything
 
 Run `npm run typecheck && npm test && npm run build` once so you know the starting point is green, and commit often.
-All three also run in CI (`.github/workflows/ci.yml`) on every push to `main` and on every pull request; a push to `dev`
-alone does not start it. When you change the extension or the screens it feeds, also run `npm run e2e` on `dev` (with
-`npm run dev` running on 5173).
+All three also run in CI (`.github/workflows/ci.yml`) on every push to `main` and on every pull request; a push to
+`extension-edition` alone does not start it, so run them yourself there after merging `main` in. When you change the
+extension or the screens it feeds, also run `npm run e2e` on `extension-edition` (with `npm run dev` running on 5173).
 
 ### Branches and editions
 
-Two editions are built from this one codebase. The branches differ only in `edition.json`, and in what `main` leaves
-out: the browser extension (`extension/`), its real-Chrome test (`e2e/`) and the `e2e` script in `package.json`.
+Two editions are built from this one codebase. `main` is the trunk: the API-token edition, the one in daily use, and
+where all work happens. `extension-edition` is a fork of `main` that adds the browser extension back; it follows `main`
+by merging it in, and nothing flows the other way. The branches differ only in `edition.json`, and in what
+`extension-edition` adds: the browser extension (`extension/`), its real-Chrome test (`e2e/`) and the `e2e` script in
+`package.json`.
 
 | Branch | `edition.json` | What it builds |
 |---|---|---|
-| `dev` | `"apiOnly": false` | The full app: token sign-in **and** the browser extension (`extension/`) as a second way in. All work happens here. |
-| `main` | `"apiOnly": true` | The **API-token edition**: sign-in by access token only, and the app never looks for or talks to the extension. `vite.config.ts` removes `<meta name="courseline-app">` from the page (so `extension/bridge.js` ignores it) and defines `__API_ONLY__`, which `src/edition.ts` exports as `API_ONLY` (see the `edition.json` row in [5](#5-file-by-file-map) for what it turns off). The browser extension's `extension/` folder, its `e2e/` test and the `e2e` script are removed (the app-side `src/extension/` stays: the app imports it, and `API_ONLY` keeps it switched off). |
+| `extension-edition` | `"apiOnly": false` | The full app: token sign-in **and** the browser extension (`extension/`) as a second way in. Follows `main`; commit here only changes to `extension/` and `e2e/`. Extension development is paused (Nov 19, 2026). |
+| `main` | `"apiOnly": true` | The trunk: all work happens here. The **API-token edition**: sign-in by access token only, and the app never looks for or talks to the extension. `vite.config.ts` removes `<meta name="courseline-app">` from the page (so `extension/bridge.js` ignores it) and defines `__API_ONLY__`, which `src/edition.ts` exports as `API_ONLY` (see the `edition.json` row in [5](#5-file-by-file-map) for what it turns off). The browser extension's `extension/` folder, its `e2e/` test and the `e2e` script are not on it (the app-side `src/extension/` stays: the app imports it, and `API_ONLY` keeps it switched off). |
 
 The switch applies to `npm run dev` as well as `npm run build`. `COURSELINE_EDITION=api` makes either one API-only on any
 branch. Tests always run the full app (Vite mode `test` ignores both switches), so every feature is tested on both
 branches; `src/pages/LoginPage.apiOnly.test.tsx` mocks `API_ONLY` to test the API-token login page.
 
-Release flow: work on `dev`, then merge `dev` into `main`.
+Release flow: work and commit on `main`, then bring the changes into `extension-edition` when you want the full app
+up to date (CI does not run on `extension-edition`, so check it by hand).
 
 ```bash
-git checkout dev        # commit here; git push origin dev (CI does not run for this push)
+git checkout main       # commit here; git push origin main starts CI: typecheck, tests, and a build of the API-token edition
+git checkout extension-edition
+git merge main          # brings main's new commits; extension/, e2e/ and edition.json stay as they are
+npm run typecheck && npm test && npm run build
+git push origin extension-edition
 git checkout main
-git merge --no-commit dev; git rm -r -q -f --ignore-unmatch extension e2e && git commit --no-edit
-git push origin main    # starts CI: typecheck, tests, and a build of the API-token edition
-git checkout dev
 ```
 
-The middle line merges and then takes `extension/` and `e2e/` back out (`-f`, because the merge has just staged `dev`'s
-changes there), so new or changed files there never land on `main`. When `dev` changed a file in one of them, the merge
-stops with a "deleted in HEAD and modified in dev" conflict; the `git rm` resolves it. `main` also has no `e2e` line in
-`package.json`'s scripts; if `dev` edits the lines next to it, that merge conflicts once: keep `main`'s scripts without
-`e2e`. Any other conflict makes the
-commit fail: fix it, `git add` it, and run `git commit --no-edit` again.
+The merge is an ordinary one: `main` never has `extension/`, `e2e/` or a changed `edition.json` in its new commits, so
+there is nothing to take back out. If `main` edits the lines next to the `e2e` line in `package.json`'s scripts, the
+merge conflicts once: keep both, with the `e2e` line. Any other conflict: fix it, `git add` it, and `git commit --no-edit`.
 
-**Never edit `edition.json` on `dev`.** Then only `main` has changed it, and every merge keeps `main`'s version. If it
-ever does change on `dev`, check after the merge that `git show main:edition.json` still says `"apiOnly": true`.
+**Never edit `edition.json` on `main`.** Then only `extension-edition` has changed it (to `"apiOnly": false`), and every
+merge keeps its version. If it ever does change on `main`, check after the merge that
+`git show extension-edition:edition.json` still says `"apiOnly": false`.
+
+**Never merge `extension-edition` into `main`**: it would put `extension/`, `e2e/` and `"apiOnly": false` on `main`. A
+change to shared code (`src/`, docs, config) goes on `main` even when the extension needs it, then reaches
+`extension-edition` through the merge; only changes inside `extension/` and `e2e/` are committed on `extension-edition`.
+
+The two branches were called `dev` (the full app, where work used to happen) and `main` until Nov 19, 2026, when `dev`
+was renamed and the direction flipped; older commits say "Merge branch 'dev'".
 
 ### Publishing to GitHub
 
 `.gitignore` excludes `node_modules`, `dist`, `coverage`, `.env` (secrets), `.claude/` (local Claude Code settings), the
 e2e test's generated files (`e2e/*.pem`, `e2e/.san.cnf`, `e2e/.profile/`, `e2e/screenshots/`) and editor/OS files.
 
-The repository is on GitHub as `origin`, with both `main` and `dev` pushed. To put it in a new repository, push both
+The repository is on GitHub as `origin`, with both `main` and `extension-edition` pushed. To put it in a new repository, push both
 branches:
 
 ```bash
 git status                              # read the list: no .env, no node_modules, no .claude
 # create an EMPTY repository on github.com (start Private), then:
 git remote set-url origin git@github.com:<you>/courseline.git
-git push -u origin main dev
+git push -u origin main extension-edition
 ```
 
 Checklist before making it public:
@@ -235,7 +245,7 @@ Every piece of Canvas data follows the same route. Learn this and you can find a
       ▼                      (optional) Vite dev proxy  →  Canvas  https://<school>/api/v1/...
 ```
 
-In extension mode (the `dev` branch only: the extension installed, no token saved) `AuthContext` builds the `api` object
+In extension mode (the `extension-edition` branch only: the extension installed, no token saved) `AuthContext` builds the `api` object
 with `src/extension/extensionApi.ts` (`createExtensionApi`) instead of `api/canvas.ts`. It has the same `CanvasApi` type
 and answers from the snapshot that `src/extension/bridge.ts` loaded from the extension, so pages, hooks and the cache
 stay the same. Calls that must reach Canvas (sending a message, loading the inbox, Sync now) are passed to the extension
@@ -275,7 +285,7 @@ never as injected HTML.
 
 Every Canvas file link, anywhere, calls `useFileViewer().openFile(url, name)`. The viewer looks the file up through
 the API, downloads it into memory, and renders that local copy. See [6.9](#69-the-file-viewer). In extension mode there
-is no token to download with, so `openFile` opens the file in Canvas in a new tab instead (`dev` only).
+is no token to download with, so `openFile` opens the file in Canvas in a new tab instead (`extension-edition` only).
 Files listed on their own (an assignment's files, what you handed in, attachments on feedback and on messages) are
 drawn by `components/Attachments.tsx` as cards (a kind icon, the name, the size; images as thumbnails when the link is
 signed), the way Messages shows them; links inside instructor HTML stay links.
@@ -293,18 +303,18 @@ Config files sit in the project root.
 | File | Purpose |
 |---|---|
 | `index.html` | HTML shell. Carries `<meta name="courseline-app">`, which tells the extension's `bridge.js` that this page is the app (the API-token build removes it). Contains an **inline script** that applies the saved dark mode and accent color *before first paint* (prevents a flash), after moving settings saved under the app's old name (`better-canvas.*` keys) to `courseline.*`. Keep it in sync with `ThemeContext.tsx`. |
-| `edition.json`, `src/edition.ts` | The edition switch. `"apiOnly": true` (the `main` branch), or `COURSELINE_EDITION=api` at build time, makes the API-token edition: `vite.config.ts` defines `__API_ONLY__`, drops `<meta name="courseline-app">` (so `extension/bridge.js` ignores the page), and `API_ONLY` turns off `extensionInstalled()`, the extension sign-in, the sidebar status, the pinned-course sync, the extension's "open the plan" request and the Settings extension cards. Tests always run the full app (`mode === 'test'`); `LoginPage.apiOnly.test.tsx` mocks the switch. Keep `edition.json` out of `dev` → `main` merges' conflicts by never editing it on `dev`. |
+| `edition.json`, `src/edition.ts` | The edition switch. `"apiOnly": true` (the `main` branch), or `COURSELINE_EDITION=api` at build time, makes the API-token edition: `vite.config.ts` defines `__API_ONLY__`, drops `<meta name="courseline-app">` (so `extension/bridge.js` ignores the page), and `API_ONLY` turns off `extensionInstalled()`, the extension sign-in, the sidebar status, the pinned-course sync, the extension's "open the plan" request and the Settings extension cards. Tests always run the full app (`mode === 'test'`); `LoginPage.apiOnly.test.tsx` mocks the switch. Keep `edition.json` out of `main` → `extension-edition` merges by never editing it on `main`. |
 | `vite.config.ts` | Vite + React + Tailwind plugins, and the Vitest config (jsdom; runs `src/**/*.test.{ts,tsx}` and `extension/**/*.test.js`). Defines the optional **dev proxy** (`/canvas-proxy` → `VITE_CANVAS_BASE_URL`, with `followRedirects`, and without the browser's `Cookie` header; only when `VITE_USE_DEV_PROXY=true`), the CSP meta tag (from `lib/csp.ts`), the `courseline-clock` meta tag (dev server only: the Mac's time settings, from `lib/systemClockServer.ts`), and the edition: `__API_ONLY__`, plus removing `<meta name="courseline-app">` in the API-token edition (see `edition.json`). Raises the chunk-size warning to 1,400 KB because the file viewers are separate, lazily loaded chunks. Serves PDF.js's decoders, fonts and character maps at `/pdfjs/` and copies them into the build (`pdfjsAssets`; see 6.9). |
 | *(no `tailwind.config.js`)* | Tailwind 4 is configured in CSS, in `src/index.css` (`@theme`, `@custom-variant`, `@source`), and runs as a Vite plugin. There is no PostCSS config either. |
 | `tsconfig.json` | Strict TypeScript, **`noUnusedLocals` and `noUnusedParameters` on** (an unused import fails the build). |
 | `.env`, `.env.example` | Environment (see [3](#3-run-it)). |
-| `package.json`, `package-lock.json` | Scripts (`dev`, `build`, `preview`, `typecheck`, `test`, `test:watch`, and `e2e` on `dev` only), dependencies, and Node 22.13 or newer (`engines`). The lock file pins the exact versions `npm ci` installs. |
+| `package.json`, `package-lock.json` | Scripts (`dev`, `build`, `preview`, `typecheck`, `test`, `test:watch`, and `e2e` on `extension-edition` only), dependencies, and Node 22.13 or newer (`engines`). The lock file pins the exact versions `npm ci` installs. |
 | `start-courseline.command` | macOS launcher (double-click it, or `./start-courseline.command`). Finds Node 22.13 or newer (on `PATH`, then nvm, Volta, fnm, Homebrew, `/usr/local` and Raycast's bundled Node), says so and stops if Courseline is already running on the port (the page has the title `<title>Courseline</title>`, which both editions have, and Vite's client answers), stops if something else holds the port, and starts Vite on 5173 with `--strictPort` (the extension only talks to 5173-5180 and 4173). `PORT=` picks another port; `OPEN=1` also opens a browser tab. Gives Vite an input that stays open when there is no terminal. It runs whichever edition the checked-out branch has. |
-| `e2e/` | End-to-end test of the extension in a real Chrome (`npm run e2e`, with `npm run dev` already running; `CHROME_PATH` if Chrome is not in the usual macOS place). `run.mjs` holds the checks, `harness.mjs` starts Chrome with the unpacked extension and drives it, `cdp.mjs` is a dependency-free DevTools Protocol client, and `mock-canvas.mjs` is a fake Canvas over HTTPS. The certificate, browser profile and screenshots it makes are git-ignored. `dev` only: `main` has no `e2e/` (nor the extension it tests). |
+| `e2e/` | End-to-end test of the extension in a real Chrome (`npm run e2e`, with `npm run dev` already running; `CHROME_PATH` if Chrome is not in the usual macOS place). `run.mjs` holds the checks, `harness.mjs` starts Chrome with the unpacked extension and drives it, `cdp.mjs` is a dependency-free DevTools Protocol client, and `mock-canvas.mjs` is a fake Canvas over HTTPS. The certificate, browser profile and screenshots it makes are git-ignored. `extension-edition` only: `main` has no `e2e/` (nor the extension it tests). |
 | `public/favicon.svg` | The browser-tab icon (`index.html` links it). |
-| `DEVELOPER_GUIDE.md` | This guide: architecture, every file, how to change things, Canvas quirks, the security model and known gaps. The same file on `main` and `dev`. |
-| `README.md` | The public overview: the two editions (`main` is API-token only, `dev` adds the extension), what it does, screenshots, using it without a token (`dev` only), setup, security, status, Canvas API notes, license and contributing. |
-| `.github/workflows/ci.yml` | CI: `npm ci`, typecheck, tests, build on Node 22, on pushes to `main` and on every pull request (a push to `dev` alone does not run it). The build step builds whichever edition the branch's `edition.json` says; the tests always run the full app. |
+| `DEVELOPER_GUIDE.md` | This guide: architecture, every file, how to change things, Canvas quirks, the security model and known gaps. The same file on `main` and `extension-edition`. |
+| `README.md` | The public overview: the two editions (`main` is API-token only, `extension-edition` adds the extension), what it does, screenshots, using it without a token (`extension-edition` only), setup, security, status, Canvas API notes, license and contributing. |
+| `.github/workflows/ci.yml` | CI: `npm ci`, typecheck, tests, build on Node 22, on pushes to `main` and on every pull request (a push to `extension-edition` alone does not run it). The build step builds whichever edition the branch's `edition.json` says; the tests always run the full app. |
 | `.gitignore` | Keeps `.env` (and `.env.local` variants), `node_modules`, `dist`, `coverage`, `.claude/`, logs, OS/editor files and the e2e test's generated certificate, browser profile and screenshots out of Git. |
 | `.claude/` | Claude Code settings for this folder (git-ignored; not part of the app). |
 | `docs/screenshots/` | The README's images. They were taken from a fake Canvas with made-up course data. |
@@ -322,7 +332,7 @@ Config files sit in the project root.
 
 | File | Purpose |
 |---|---|
-| `AuthContext.tsx` | Sign-in and where data comes from; builds the `api` object. With a token: credentials in localStorage, the token encrypted (`courseline.credentials`, sealed and opened by `lib/tokenVault.ts`; else the `.env` values), the profile check, `createCanvasApi`, and logout on any 401. With the extension installed, no token saved and the extension not skipped (`dev` only): the extension's snapshot through `src/extension/bridge.ts`, loaded again 1.5 s after the extension reports a change, and `createExtensionApi` (see "Extension mode (app side)" below). Exposes `source` (`'token'` or `'extension'`), `snapshot`, `dataVersion` (changes with each new snapshot), `extensionAvailable` and `enableExtension()`. `useAuth()`, `useApi()`. In the API-token edition `extensionInstalled()` is always false, so only the token path runs. |
+| `AuthContext.tsx` | Sign-in and where data comes from; builds the `api` object. With a token: credentials in localStorage, the token encrypted (`courseline.credentials`, sealed and opened by `lib/tokenVault.ts`; else the `.env` values), the profile check, `createCanvasApi`, and logout on any 401. With the extension installed, no token saved and the extension not skipped (`extension-edition` only): the extension's snapshot through `src/extension/bridge.ts`, loaded again 1.5 s after the extension reports a change, and `createExtensionApi` (see "Extension mode (app side)" below). Exposes `source` (`'token'` or `'extension'`), `snapshot`, `dataVersion` (changes with each new snapshot), `extensionAvailable` and `enableExtension()`. `useAuth()`, `useApi()`. In the API-token edition `extensionInstalled()` is always false, so only the token path runs. |
 | `DataContext.tsx` | The keyed response cache behind `useQuery` (`QueryStore`; freshness, `ensure` and `prime` in [6.4](#64-cache-and-hooks)). `refreshAll()` marks everything stale, then reloads what is on screen in place, for when the extension captured something new. `useQueryStore()`. |
 | `ThemeContext.tsx` | Dark/light mode **and** custom accent color. `useTheme()`. |
 | `CourseStyleContext.tsx` | The user's own color and icon per course (Settings → Course order, colors and icons, which lists only the courses selected under Choose your courses), saved in localStorage. `useCourseStyles()`; read through `useCourseColors()` / `useCourseIcons()`. |
@@ -330,7 +340,7 @@ Config files sit in the project root.
 | `src/i18n/index.ts`, `src/i18n/es.ts`, `src/i18n/pt.ts` (not in `context/`) | `t('English text', { vars })` and the Spanish and Brazilian Portuguese dictionaries; `getLocale()` gives the date/number locale (`pt-BR` for Portuguese). English text is the key; a missing key falls back to English. |
 | `CourseFilterContext.tsx` | Which courses to show (Settings → Choose your courses), saved as `courseline.selected-courses`, and the order they go in (Settings → Course order, colors and icons: drag, or the ▲ ▼ buttons; **Reset order**), saved as `courseline.course-order` and applied by `useVisibleCourses` (`orderCourses`: the ordered ones first, any others after as they came). `useCourseFilter()`; `useOptionalCourseFilter()` returns null outside the provider (the login page). In extension mode `components/ExtensionPinnedSync.tsx` sends the same choice to the extension, and Sync now plans only those courses (not in the API-token edition). |
 | `FileViewerContext.tsx` | The shared viewer modal. `useFileViewer().openFile(...)`. In extension mode (no token, so no download) it opens the file in Canvas in a new tab instead. |
-| `PullContext.tsx` | Sync now, for the extension (`dev` only). Every request that makes the extension open Canvas pages goes through it: `requestSync` (the chosen courses; with "everything" it then opens the pages they link to, round after round, until nothing new turns up), `requestDeepSync` (Pull linked pages), `refreshCourse`, `refreshKind` (one kind of data) and `pullAddress` (one address typed in Settings). Shows the plan, Start, the live preview and Stop in `components/PullPanel.tsx`; plans come from `extension/pullPlan.ts` and `extension/linkDiscovery.ts`. `usePull()`. Mounted in `main.tsx` outside the auth gate. In the API-token edition the buttons that open it are hidden and it ignores the extension's "open the plan" request, but Settings → Connection with `?sync=1` still calls `requestSync`. |
+| `PullContext.tsx` | Sync now, for the extension (`extension-edition` only). Every request that makes the extension open Canvas pages goes through it: `requestSync` (the chosen courses; with "everything" it then opens the pages they link to, round after round, until nothing new turns up), `requestDeepSync` (Pull linked pages), `refreshCourse`, `refreshKind` (one kind of data) and `pullAddress` (one address typed in Settings). Shows the plan, Start, the live preview and Stop in `components/PullPanel.tsx`; plans come from `extension/pullPlan.ts` and `extension/linkDiscovery.ts`. `usePull()`. Mounted in `main.tsx` outside the auth gate. In the API-token edition the buttons that open it are hidden and it ignores the extension's "open the plan" request, but Settings → Connection with `?sync=1` still calls `requestSync`. |
 
 ### `src/hooks/`
 
@@ -434,7 +444,7 @@ Config files sit in the project root.
 | `lib/capture.js`, `lib/readers.js`, `lib/summary.js`, `lib/shape.js`, `lib/pullRunner.js`, `lib/peek.js` | Pure logic with tests: routes and shape checks, readers (course lists), popup summary, value-free response skeletons, the page runner (`concurrency` pages at a time, `CONCURRENCY` = 4 in every run `bridge.js` starts, with the pause and idle limits; no hourly cap and no page limit), and the short name samples shown in the preview. |
 | `lib/canvasAddress.js`, `lib/pinned.js`, `lib/message.js`, `lib/exportAll.js` | Pure logic with tests: the Canvas address typed in the popup or the app (`parseCanvasAddress`, https only; `applyCanvasAddress` saves it and clears what came from another address); which courses count as pinned (`effectivePinnedIds`, `pinnedList`: the app's choice, else the dashboard); what a message request may look like (`cleanSendRequest`: a reply, or a new message to up to 50 Canvas user ids, plain text up to 20,000 characters, a subject up to 255, up to 10 files and 25 MB in all; `sendRequestFor` maps it to Canvas's endpoint); and the popup's export JSON (`buildExport`). |
 | `popup.html/js` | The Canvas address field (Save, through `applyCanvasAddress`), per-course freshness, "N of M current courses synced", health, unread addresses ("Also saved"), **Sync in Courseline** (brings an open app tab forward and has `bridge.js` pass it `openPlan`, or opens `/settings?tab=connection&sync=1`), **Export everything (JSON)**, **Copy response shapes**, **Clear captured data**. |
-| *(linked pages)* | **Pull linked pages** follows internal links. `src/extension/linkDiscovery.ts` scans everything captured (including HTML inside bodies and every `html_url`) for links to assignments, pages, discussions, announcements, quizzes, files, module items and the syllabus on the student's own Canvas and chosen courses. It also opens every assignment the Grades page's ENV (`assignment_groups[].assignments[].id`) or a planner item (`plannable_type 'assignment'`) names by id, link or not (`dev` only): where the school hides the Assignments tab, an assignment's own page is the only place its instructions and rubric show (`assignmentPage`), and it still opens. A row link and the same id give one page. `pendingLinks` skips pages opened in the last day (the extension keeps `visited`), and `PullContext.requestDeepSync` opens them all in one run (no batch or hourly cap, by the owner's decision of Oct 27, 2026; Stop still works between pages). It also opens every subfolder a captured folder listing names (`/courses/<id>/files/folder/<path>`), because the Files page only loads the folder it shows. `extensionApi.ts` finds an opened assignment again by id in Canvas's newer GraphQL form (`assignmentFromObjects`) so instructions and rubrics fill in without a reader per query. |
+| *(linked pages)* | **Pull linked pages** follows internal links. `src/extension/linkDiscovery.ts` scans everything captured (including HTML inside bodies and every `html_url`) for links to assignments, pages, discussions, announcements, quizzes, files, module items and the syllabus on the student's own Canvas and chosen courses. It also opens every assignment the Grades page's ENV (`assignment_groups[].assignments[].id`) or a planner item (`plannable_type 'assignment'`) names by id, link or not (`extension-edition` only): where the school hides the Assignments tab, an assignment's own page is the only place its instructions and rubric show (`assignmentPage`), and it still opens. A row link and the same id give one page. `pendingLinks` skips pages opened in the last day (the extension keeps `visited`), and `PullContext.requestDeepSync` opens them all in one run (no batch or hourly cap, by the owner's decision of Oct 27, 2026; Stop still works between pages). It also opens every subfolder a captured folder listing names (`/courses/<id>/files/folder/<path>`), because the Files page only loads the folder it shows. `extensionApi.ts` finds an opened assignment again by id in Canvas's newer GraphQL form (`assignmentFromObjects`) so instructions and rubrics fill in without a reader per query. |
 | *(one pass)* | One click on **Sync now** (with "everything") opens the planned pages, then every page linked from what came back, then the pages linked from those, round after round until a round finds nothing new (`PullBuild.more`, asked after every run; `attempted` keeps any address from being opened twice in a pass, so it always ends). **Pull linked pages** chains the same way. Each round is a continuation of the run that just ended (`continueFrom`): `bridge.js` accepts it only from that run, within 2 minutes, and never after Stop (Stop clears the chain even between rounds, and the app sends `endChain` when the pass is over). "Essentials only" does not follow links. Opened pages are remembered in `visited` for a day (the same day `pendingLinks` waits), pruned by age, not by count, so a long pass never forgets its own pages. Class statistics read from the page must also fit the assignment's points (`sensibleStatistics(stats, points)`). |
 | *(what Sync now opens)* | Per course: the home page (front page and course menu), Assignments, Grades, Modules, Pages and Files (the Files tab needs both the units and the file list); with "everything" also Announcements, Discussions, Quizzes, Syllabus and People, plus the account pages once (`src/extension/pullPlan.ts`). **Tabs the school hides are skipped**: Canvas only redirects them to the course home. Which ones are hidden comes from the captured course menu (`hiddenSections`), so the first run of a course still tries them all. Discussions is the exception (`ALWAYS_TRIED`): one school serves it although its menu leaves it out, so "everything" tries it anyway (one page per course), and the landed page says whether it opened (`listPage`). With "everything", the linked-page rounds also open each assignment named by id in the Grades page's ENV or planner items (see "(linked pages)"); "Essentials only" follows no links. |
 | *(no sync window)* | Sync now has no extension window. The plan, **Start**, the live preview and **Stop** are in the app (`context/PullContext.tsx`, `components/PullPanel.tsx`). `bridge.js` runs the page-by-page loop in the app's own tab, and `background.js` opens each page in a **background tab** of the same window (`openPage`), 4 at a time (`CONCURRENCY`), waits for it, closes it, and reports what it brought in (captures are credited to the tab that sent them, so parallel pages do not mix). It moves to the next page as soon as the page reports it has gone quiet (`inject.js` counts requests in flight; the load event has fired and none has been pending for 0.7 s), cut off at 12 s, with a 0.4 s pause between pages. See "Deviations from the design doc". |
@@ -449,7 +459,7 @@ carried it or the Grades page showed it (`canvas_total`, read from the "Total" r
 whole course: no grading period chosen, or "All grading periods" (`grading_period_id` `"0"`); and only when that
 Grades page capture is at least as new as every capture carrying a score for the course (`newestScoreAt`: the
 submissions list, a submission, gradebook groups, an assignment list or detail that embed a submission, any Grades
-page), since a newer score makes its total stale; `dev` only), otherwise worked out by `lib/grades.ts` from captured scores and marked
+page), since a newer score makes its total stale; `extension-edition` only), otherwise worked out by `lib/grades.ts` from captured scores and marked
 `estimated: true` on the enrollment, and whether groups are weighted falls back to the Grades page's
 `ENV.group_weighting_scheme` (`"percent"`) when the course record does not say; lists for courses that were never visited are empty, not an
 error; submitting work, comments, marking a unit item read, and reading or downloading a file reject with "needs a Canvas access token" (a file opens in Canvas in a new tab instead of the viewer, `FileViewerContext`); messages are sent through the extension (see "Messages (extension mode)" below), and marking a conversation read does nothing (Canvas keeps its own read state). A
@@ -476,12 +486,12 @@ flags also come from captured planner items when nothing better was captured. Th
 page's load event and just before the page reports it has gone quiet, because Canvas draws module items late. Your name comes from `currentUser`; course names and code
 from the dashboard card (`originalName`, `courseCode`). The term name comes from a term object first (the course record,
 the `userCourses` list, then the `GetUserCourses` GraphQL list) and the card's `term` text last, because the card can
-label the term differently from its name (`dev` only). In the Grades page's data a submission has
+label the term differently from its name (`extension-edition` only). In the Grades page's data a submission has
 fewer fields than the API's, so it updates field by field; the row's pills add `missing` / `late`; each assignment counts
 in one group only (the one its newest capture puts it in); and `never_drop` ids are compared as numbers (`toModel`). Assignments, groups and
 scores also come from the Grades page's own data (`gradesPageGroups` turns a `gradesPage` capture into
 `assignment_groups`), so a course whose Assignments tab is hidden still has its gradebook and grade. Each assignment's
-own page (`assignmentPage`, `dev` only) adds what the lists lack: in the lists (`groupsOf`, through `fillFromPage`) it
+own page (`assignmentPage`, `extension-edition` only) adds what the lists lack: in the lists (`groupsOf`, through `fillFromPage`) it
 only fills empty fields (title, points, instructions, rubric, link), so a Grades row with no name gets the page's title
 instead of "Assignment {id}"; an assignment only its page knows is listed too (due date from planner items, outside
 every group, so never in the grade). On the assignment screen (`getAssignment`) the page's instructions and rubric win
@@ -490,7 +500,7 @@ its title, points and link only fill gaps; it never carries dates, so the due da
 API stays. When no captured source has a `description` key at all, the assignment carries `instructions_unknown: true`
 and the screen says "Instructions have not been synced yet…" instead of "No instructions provided." (which stays for a
 source that said there are none, such as an empty instructions element). Assignment pages count as assignments data in
-the freshness chips, and `listPage` as announcements data. **Values that do not add up** (`dev` only, `valueChecks.ts`):
+the freshness chips, and `listPage` as announcements data. **Values that do not add up** (`extension-edition` only, `valueChecks.ts`):
 every date is normalised to UTC "Z" as it is read (Grades page ENV and GraphQL write an offset, "+01:00", which sorts
 wrong against the API's "Z" strings): due, unlock, lock and created dates, announcement posted dates, and message
 dates; a date with no time zone, a date-only or localized text, or a year outside 2000-2100 is dropped, and a due date
@@ -562,7 +572,7 @@ their Canvas with their token. Read-only. Install and limits: `connector/README.
 |---|---|
 | `bridge.ts` | The app's end of `extension/bridge.js`, over `window.postMessage`: `extensionInstalled()` (reads `data-courselineExtension`; always false in the API-token edition), `loadSnapshot`, `startPull` / `cancelPull` / `endChain` / `onPullEvent`, `sendMessage` and `refreshMail` (`filesForExtension` turns attachments into base64), `setCanvasAddress`, `setPinnedCourses`, `onOpenPlanRequest`, `onExtensionChange`. |
 | `extensionApi.ts` | `createExtensionApi(snapshot)`: the `CanvasApi` built from captured records (see "Extension mode (app side)" above), plus summaries of the snapshot that the status bar, Sync now and the setup screens use (`coverage`, `freshnessByType`, `failingKinds`, `workingCourses`, `hiddenSections`, `newestRecord`, `snapshotHost`, `lastUpdatedAt`) and the readers for page data and messages (`gradesPageGroups`, `modulesFromPage`, `mailFrom`, `peopleFrom`, `sensibleStatistics`, `assignmentFromObjects`), and `valueIssues` (the values left out, for `ExtensionStatus`). `createExtensionApi(snapshot, onIssue?)` wraps `extensionInternals`, which `valueIssues` runs with a sink that collects. Snapshots never change once loaded, so each is indexed once (`datasetOf`, a `WeakMap` of `Dataset`s, shared by every helper above), and inside `extensionInternals` each course's groups, assignments, units, pages, topics and graded course, the mail and the profile are worked out once per language (`memo`). Those results are shared between calls: never change them. The longest file in the app (~1,330 lines). |
-| `valueChecks.ts` | Checks on values that are well-formed but cannot be right (`dev` only): `normalizeInstant` / `checkedInstant` (ISO with "Z" or an offset, years 2000-2100, converted to UTC "Z"), `checkedNumber`, `sensibleStatistics` / `checkedStatistics`, `looksLikeAssignmentOf` (the guard on objects found by id), the `ValueIssue` each drop raises through an `IssueSink`, `dedupeIssues` and `issueSummary` (the lines `ExtensionStatus` shows). Pure; `extensionApi.ts` wires it in and `valueIssues(snapshot)` collects the issues. |
+| `valueChecks.ts` | Checks on values that are well-formed but cannot be right (`extension-edition` only): `normalizeInstant` / `checkedInstant` (ISO with "Z" or an offset, years 2000-2100, converted to UTC "Z"), `checkedNumber`, `sensibleStatistics` / `checkedStatistics`, `looksLikeAssignmentOf` (the guard on objects found by id), the `ValueIssue` each drop raises through an `IssueSink`, `dedupeIssues` and `issueSummary` (the lines `ExtensionStatus` shows). Pure; `extensionApi.ts` wires it in and `valueIssues(snapshot)` collects the issues. |
 | `pullPlan.ts` | Which Canvas pages to open: `planSync` / `planCourse` (essentials or everything, hidden tabs skipped except `ALWAYS_TRIED`: Discussions), `stepsForKind` (`KIND_PAGES`, for one freshness chip), `stepForAddress` (Pull a page: the student's own Canvas, https only), `estimateSeconds`. |
 | `linkDiscovery.ts` | `discoverLinks`, `pendingLinks`, `planLinks`: the linked pages, subfolders and assignments named by id (Grades page ENV, planner items) a pass opens next (see "(linked pages)" above). |
 | `capturedData.ts` | `groupCaptured`, `buildCaptureExport`, `previewJson`: what Settings → Connection → Everything captured shows and downloads. |
@@ -967,7 +977,7 @@ list's submissions carry no comments. The "if the rest were zero", points,
 group breakdown and goal cards were dropped on Oct 31, 2026 (the owner's layout). **The current grade is Canvas's own**
 (`computed_current_score`); our engine is used for everything else. If our current grade differs from Canvas's by more than 0.6 points, the page shows a
 "Rebuilt here from your scores: X%" note rather than hiding the discrepancy. In extension mode the totals are Canvas's
-own when the captured course data carried them or the Grades page showed its total (`dev` only); otherwise
+own when the captured course data carried them or the Grades page showed its total (`extension-edition` only); otherwise
 `extensionApi.ts` works them out with this same engine from the captured scores and sets `estimated: true` on the
 enrollment. The page then treats them as not Canvas's (no mismatch note, which would compare the engine with itself)
 and says "Worked out by Courseline from the scores it has seen" under the current grade. Token mode never sets
@@ -1220,10 +1230,10 @@ For components, render with `react-dom/client` inside `act` (see `SubmissionForm
 Tests always run the full app, on both branches: `vite.config.ts` turns the edition switch off in Vitest's `test` mode,
 so `edition.json` saying `"apiOnly": true` on `main` changes nothing here. To test what the API-token edition shows,
 mock the switch as `pages/LoginPage.apiOnly.test.tsx` does: `vi.mock('../edition', () => ({ API_ONLY: true }))`. The
-extension's own logic is tested by `extension/**/*.test.js` (plain JS, run by the same `npm test`; `dev` only, since
+extension's own logic is tested by `extension/**/*.test.js` (plain JS, run by the same `npm test`; `extension-edition` only, since
 `main` has no `extension/`). `npm run e2e` (a real
 Chrome with the unpacked extension against a mock Canvas; start `npm run dev` first) is separate: neither `npm test` nor
-CI runs it, and it exists only on `dev` (`main` has no extension to test).
+CI runs it, and it exists only on `extension-edition` (`main` has no extension to test).
 
 ### Fetch a new kind of Canvas data (end to end)
 
@@ -1417,7 +1427,7 @@ Watch `pdfjs-dist` (its API changes between major versions; the legacy build pat
 
 `npm run build` → static files in `dist/`. **Do not publish this as-is**; read [9](#9-security-model). The dev proxy
 does not exist in a build, so file previews at CORS-restricted schools would need a real backend proxy. The edition
-depends on the branch: `dev` builds the full app, `main` (`edition.json` says `"apiOnly": true`) builds the API-token
+depends on the branch: `extension-edition` builds the full app, `main` (`edition.json` says `"apiOnly": true`) builds the API-token
 edition, and `COURSELINE_EDITION=api` makes any build API-only. Two things only the dev server adds are missing from a
 build: the computer's clock settings (`<meta name="courseline-clock">`, so the browser's region decides) and the dev
 entries in the CSP's `connect-src` (`ws://localhost:*`, `ws://127.0.0.1:*`, `http://localhost:*`; see `src/lib/csp.ts`).
@@ -1433,27 +1443,25 @@ with the switch mocked (see "Add or change a test").
 
 ### Try the API-token edition locally
 
-On `dev`, run `COURSELINE_EDITION=api npm run dev`, or `COURSELINE_EDITION=api npm run build && npm run preview`
+On `main`, `npm run dev` already is the API-token edition. On `extension-edition`, run `COURSELINE_EDITION=api npm run dev`, or `COURSELINE_EDITION=api npm run build && npm run preview`
 (`vite.config.ts` reads the variable from the environment or from `.env`). Check that the sign-in page offers only the
 token form, Settings → Connection has no extension cards, the sidebar has no sync status, and the page has no
 `<meta name="courseline-app">`, so an installed extension ignores it (after a build, `grep -c courseline-app
-dist/index.html` prints `0`). Without the variable, the dev server on `dev` is the full app again.
+dist/index.html` prints `0`). Without the variable, the dev server on `extension-edition` is the full app again.
 
-### Ship a change to the API-token edition (`main`)
+### Ship a change, and bring it to the full app (`extension-edition`)
 
-`main` is the API-token edition and `dev` the full app. They share all code and docs and differ only in `edition.json`
-and in `extension/`, `e2e/` and the `e2e` script, which `main` does not have.
+`main` is the API-token edition and the trunk; `extension-edition` the full app, which follows it. They share all code
+and docs and differ only in `edition.json` and in `extension/`, `e2e/` and the `e2e` script, which `main` does not have.
 
-1. Work and commit on `dev`. **Never edit `edition.json` on `dev`**: as long as `dev` leaves it alone, a merge never
-   carries `dev`'s `"apiOnly": false` into `main`.
-2. On `dev`: `npm run typecheck && npm test && npm run build`, and `COURSELINE_EDITION=api npm run build` to check that
-   the API-only bundle builds.
-3. `git checkout main`, then `git merge --no-commit dev; git rm -r -q -f --ignore-unmatch extension e2e && git commit --no-edit`
-   (this keeps `extension/` and `e2e/` off `main`; see [Branches and editions](#branches-and-editions) for conflicts). Then
-   `cat edition.json` must still print `{ "apiOnly": true }` and `ls extension e2e` must fail.
-4. Push `main`. CI (`.github/workflows/ci.yml`: typecheck, test, build) runs on pushes to `main` and on pull requests,
-   not on pushes to `dev`.
-5. Switch back to `dev` to keep working.
+1. Work and commit on `main`. **Never edit `edition.json` on `main`**: as long as `main` leaves it alone, a merge never
+   carries `main`'s `"apiOnly": true` into `extension-edition`.
+2. On `main`: `npm run typecheck && npm test && npm run build`, then push. CI (`.github/workflows/ci.yml`: typecheck,
+   test, build) runs on pushes to `main` and on pull requests, not on pushes to `extension-edition`.
+3. When you want the full app up to date: `git checkout extension-edition && git merge main` (see
+   [Branches and editions](#branches-and-editions) for conflicts), run the three commands again (and `npm run e2e` if
+   the change touches the screens the extension feeds), then `cat edition.json` must still print `{ "apiOnly": false }`.
+4. Push `extension-edition` and switch back to `main`.
 
 ### Change what Sync now opens, or its pace
 
@@ -1533,7 +1541,7 @@ hold the first key; Linux without a keyring encrypts cookies only nominally). Bu
 memory once signed in), and it acts as *you*, with your full Canvas access, until it expires or is revoked. That is acceptable for a personal tool on
 your own computer. It is **not** acceptable for a shared or public deployment.
 
-The token risk applies to both editions whenever someone signs in with a token. The browser extension parts below (the bridge, captured data, Sync now, messages through the extension) concern the `dev` edition, which is the one that uses the extension. The API-token edition on `main` has no `<meta name="courseline-app">` (`vite.config.ts` removes it), so `extension/bridge.js` never answers its page, and `API_ONLY` turns off every place the app looks for the extension (`extensionInstalled()` is always false).
+The token risk applies to both editions whenever someone signs in with a token. The browser extension parts below (the bridge, captured data, Sync now, messages through the extension) concern the `extension-edition` edition, which is the one that uses the extension. The API-token edition on `main` has no `<meta name="courseline-app">` (`vite.config.ts` removes it), so `extension/bridge.js` never answers its page, and `API_ONLY` turns off every place the app looks for the extension (`extensionInstalled()` is always false).
 
 What the code does to reduce the risk:
 
@@ -1597,7 +1605,7 @@ revisit. The doc records these departures, the build's status and the two editio
 Everything known to be risky, in one place. **Status:** *Open* = not addressed; *Mitigated* = reduced, with what is left
 stated; *Accepted* = deliberately left, fine for a personal tool. "Before sharing" means it must be resolved before
 anyone other than the author uses the app or the extension. **Editions:** 1, 13 and 14 apply to both; every other
-risk comes from the browser extension and so applies to `dev`. The API-token edition on `main` never talks to the
+risk comes from the browser extension and so applies to `extension-edition`. The API-token edition on `main` never talks to the
 extension. If someone installs the extension anyway, it still captures from Canvas pages once an address is saved in
 its popup (4–7, 11, 12, 15), but the app never reads what it holds.
 
@@ -1611,7 +1619,7 @@ its popup (4–7, 11, 12, 15), but the app never reads what it holds.
 | 6 | **A page can forge captures.** `relay.js` accepts any message with the right tag from the page's own window, so any script on that page (a school-added LTI tool, an analytics snippet, a compromised dependency) can post fake records. | `extension/relay.js`, `background.js` | Mitigated | `background.js` drops a record whose URL is not on the page that sent it (`sameOrigin`), and keeps nothing at all unless the student has **saved their Canvas address** (risk 7). So another website cannot add records, and cannot pose as Canvas. A script on the saved Canvas host's own pages can still forge records for that host. |
 | 7 | **The Canvas host could be chosen by a page.** The "is this Canvas?" check runs inside the page, where any website can fake it, so an automatic "first Canvas wins" pin would let a hostile site claim the extension and redirect links and Sync. | `background.js`, `src/context/PullContext.tsx`, `src/extension/extensionApi.ts` | Mitigated | Nothing chooses the host for the student any more: records are kept only from the address saved in the popup or in Settings → Connection, and changing it clears the old address's data. Found in code review and fixed. |
 | 8 | **Sync now automates page loads using the student's session, now in background tabs.** The student confirms inside the app and sees a live preview, can stop at any time, pages are opened 4 at a time in background tabs (`CONCURRENCY` in `extension/lib/pullRunner.js`), there is no cap on pages per run or per hour (owner's decision, Oct 27, 2026: this raises the automated-access risk below), and nothing is scheduled. A run can only start from a real click on the app's page; a confirmed run may continue from the run that just ended, round after round (the dashboard, then the courses, then the pages they link to, until nothing new turns up), within 2 minutes of each other and never after Stop. But the pages are no longer in a window the student watches, and Instructure or a school could still treat it as automated access under its terms. A student's account, not Courseline, carries that risk. | `extension/bridge.js`, `background.js`, `src/context/PullContext.tsx` | Accepted | This is a deliberate change from the design doc (see below). Keep the guardrails; do not add scheduled, repeating or fully hidden sync. |
-| 9 | **Canvas changes its pages or response shapes without notice**, so capture silently stops matching and the app shows old data as if it were current. | `extension/lib/capture.js`, `ExtensionStatus.tsx` | Mitigated | Unexpected shapes are counted, kept as value-free skeletons, and shown as a warning with what to do; every dataset shows a "last updated" time. Values that are well-formed but cannot be right (a date with no time zone, "8,5", statistics misread by a factor) are left out and listed under the sidebar's Extension item (amber "Needs attention"), with what to do (`valueChecks.ts`, `dev` only). Not caught: a value that is wrong but plausible. |
+| 9 | **Canvas changes its pages or response shapes without notice**, so capture silently stops matching and the app shows old data as if it were current. | `extension/lib/capture.js`, `ExtensionStatus.tsx` | Mitigated | Unexpected shapes are counted, kept as value-free skeletons, and shown as a warning with what to do; every dataset shows a "last updated" time. Values that are well-formed but cannot be right (a date with no time zone, "8,5", statistics misread by a factor) are left out and listed under the sidebar's Extension item (amber "Needs attention"), with what to do (`valueChecks.ts`, `extension-edition` only). Not caught: a value that is wrong but plausible. |
 | 10 | **Grades shown in extension mode can be calculated by Courseline**, not Canvas's own totals, and can differ (hidden totals, rules not modelled, grading periods). | `src/extension/extensionApi.ts`, `lib/grades.ts` | Mitigated | Canvas's own total is used when its Grades page shows it for the whole course (no grading period chosen, or "All grading periods") and no score was captured after that page; otherwise the grade is an estimate, marked `estimated` and labelled on the Grades screen, and the status bar says how grades are worked out. Do not use an estimate for decisions that matter without checking Canvas. |
 | 11 | **Pasting the "Copy response shapes" output elsewhere.** It has field names and types only, no values, but a field name can reveal what a school's Canvas contains. | `extension/lib/shape.js` | Accepted | Read it before pasting. |
 | 12 | **The extension is loaded unpacked.** Whatever is in the `extension/` folder runs with the extension's permissions, and there is no signing or update channel. Anything that can write to that folder can change what it does. | repository / local disk | Accepted | Keep the folder in a place only you can write to. A signed build is a distribution question, not a coding one. |
@@ -1664,8 +1672,8 @@ its popup (4–7, 11, 12, 15), but the app never reads what it holds.
 | Everything is suddenly slow: `tsc` sits at 0 % CPU for minutes, the dev server takes 20 s to answer or never does, tests time out or fail with `ECANCELED: operation canceled, read`, the e2e run is flaky | The project folder is in **iCloud Drive** (Desktop & Documents) with **Optimize Mac Storage** on, and macOS has offloaded files to iCloud (check with `find . -flags +dataless \| wc -l`; `node_modules` alone is ~25,000 files). Every read then waits for a download | Best: move the project out of `~/Documents` and `~/Desktop` (for example to `~/Developer/`). Or, in Finder, right-click the folder → **Keep Downloaded**. To get going right now, force the download: `find . -flags +dataless -type f -print0 \| xargs -0 -P 64 -n 20 cat > /dev/null` |
 | Two dev servers behave strangely | They share `node_modules/.vite` | Run one at a time, or give the second a different `cacheDir` |
 | Port 5173 "in use" | Another server running | Vite moves to 5174+; use the printed URL |
-| The login page shows only the token form, and there is no extension status in the sidebar or extension card in Settings, though the extension is installed | The API-token edition: the `main` branch (`edition.json` has `"apiOnly": true`) or a build or dev server started with `COURSELINE_EDITION=api` | Expected. Use the `dev` branch, without `COURSELINE_EDITION=api`, to use the extension |
-| On `dev`, the extension is installed but the app does not see it | The app is on a port the bridge does not answer (only 5173–5180 and 4173), or the app's tab was open before the extension was loaded or reloaded | Use one of those ports; reload the extension in `chrome://extensions`, then reload the app's tab |
+| The login page shows only the token form, and there is no extension status in the sidebar or extension card in Settings, though the extension is installed | The API-token edition: the `main` branch (`edition.json` has `"apiOnly": true`) or a build or dev server started with `COURSELINE_EDITION=api` | Expected. Use the `extension-edition` branch, without `COURSELINE_EDITION=api`, to use the extension |
+| On `extension-edition`, the extension is installed but the app does not see it | The app is on a port the bridge does not answer (only 5173–5180 and 4173), or the app's tab was open before the extension was loaded or reloaded | Use one of those ports; reload the extension in `chrome://extensions`, then reload the app's tab |
 | Times show 12-hour although the Mac is set to 24-hour, or the calendar week starts on the wrong day | Only `npm run dev` on macOS reads those settings (`defaults read -g`, `lib/systemClockServer.ts`) into `<meta name="courseline-clock">`. A built copy (`npm run build`, `npm run preview`) or another OS falls back to the browser's region, and Chrome on a Mac ignores the 24-hour switch | Use `npm run dev` on the Mac; after changing System Settings, reload the page |
 | Messages in extension mode look out of date, or show **Load latest messages** | The extension reads messages only after a click, and at most every two minutes | Click **Load latest messages**, or open Messages again after two minutes |
 | Sending or loading messages in extension mode says "You are not signed in to Canvas in this browser" | The background Canvas tab landed on Canvas's login page | Sign in to Canvas in the same browser, then try again |
@@ -1696,11 +1704,11 @@ its popup (4–7, 11, 12, 15), but the app never reads what it holds.
 - **Accessibility:** interactive elements are real buttons/links with labels; charts have a table view; keyboard
   support on custom controls.
 - **Commit** small, working steps (see [3](#before-you-change-anything)).
-- **Branches and editions:** work on `dev` (the full app, with the extension), then merge `dev` into `main` (the
-  API-token edition), taking `extension/` and `e2e/` back out in the merge (see [Branches and editions](#branches-and-editions)).
-  `edition.json` is the only other difference (`"apiOnly": true` on `main`): never edit it on `dev`, so a merge keeps
-  `main` API-only. Anything that looks for or talks to the extension goes behind `API_ONLY`
-  from `src/edition.ts`. To see the API-only app on `dev`, run `COURSELINE_EDITION=api npm run dev` (or build with
+- **Branches and editions:** work on `main` (the API-token edition, the trunk), then merge `main` into
+  `extension-edition` (the full app, with the extension) when it should catch up; never the other way (see
+  [Branches and editions](#branches-and-editions)). `edition.json` is the only other difference (`"apiOnly": false` on
+  `extension-edition`): never edit it on `main`, so a merge keeps `extension-edition` the full app. Anything that looks for or talks to the extension goes behind `API_ONLY`
+  from `src/edition.ts`. To see the API-only app on `extension-edition`, run `COURSELINE_EDITION=api npm run dev` (or build with
   it). Tests always run the full app; to test the API-only path, mock `../edition` as `LoginPage.apiOnly.test.tsx` does.
 
 ### Keeping it stable while you add features
@@ -1708,8 +1716,8 @@ its popup (4–7, 11, 12, 15), but the app never reads what it holds.
 The app is in real use, so treat every change as something a student will hit tomorrow.
 
 1. **One feature or fix per branch**, merged only when CI is green (`npm run typecheck`, `npm test`, `npm run build`).
-   CI runs on pushes to `main` and on pull requests, not on pushes to `dev`, so run the three commands yourself before
-   merging `dev` into `main`.
+   CI runs on pushes to `main` and on pull requests, not on pushes to `extension-edition`, so run the three commands
+   yourself there after merging `main` in.
 2. **Add a test with every fix.** If it was a bug, write the test that would have caught it first. Canvas data shapes go in
    `api/canvas.test.ts` using realistic JSON; pure logic goes next to the code in `lib/`.
 3. **Check UI changes in a browser**, on a real course, in light and dark mode and at phone width. Tests do not look at
@@ -1743,7 +1751,7 @@ The app is in real use, so treat every change as something a student will hit to
 3. **The grade engine** matches Canvas on the cases tested (weights, drops, excused, extra credit) but has not been
    compared with a wide range of real gradebooks. Canvas's own totals remain the headline for that reason.
 
-4. **Values the extension does not check yet** (`dev` only; see `valueChecks.ts` for what it does check):
+4. **Values the extension does not check yet** (`extension-edition` only; see `valueChecks.ts` for what it does check):
    - *Assignments that disappeared, and values that became empty:* an assignment no longer on the Grades page, or a
      field Canvas cleared, keeps its older captured value. Dropping it would be wrong too often with grading periods
      (each period's page lists only its own assignments).
