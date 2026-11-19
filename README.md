@@ -6,13 +6,13 @@ talks directly to your school's Canvas API with a personal access token. There i
 React · TypeScript · Vite · Tailwind CSS 4
 
 **Two editions, one codebase.** The `main` branch is the **API-token edition**: sign-in by access token only, and
-the app never looks for or talks to the browser extension. The `dev` branch is the full app, with the extension as a
-second way in. Both have every other feature. They differ only in [`edition.json`](edition.json) (`"apiOnly": true`
-on `main`, `false` on `dev`) and in the extension (`extension/`) and its real-Chrome test (`e2e/`), which `main` does
-not have. Merging `dev` into `main` keeps
-`main` API-only as long as `edition.json` is never changed on `dev` (see
-[Branches and editions](DEVELOPER_GUIDE.md#branches-and-editions) for the merge). Any build can be made API-only with
-`COURSELINE_EDITION=api`.
+the app never looks for or talks to the browser extension. All work happens on `main`. The `extension-edition` branch
+is a fork of it that adds the extension back as a second way in. It follows `main` by merging it in, and extension
+development is paused. Both have every other feature. They differ only in [`edition.json`](edition.json)
+(`"apiOnly": true` on `main`, `false` on `extension-edition`) and in the extension (`extension/`) and its real-Chrome
+test (`e2e/`), which `main` does not have. Merging `main` into `extension-edition` keeps it the full app as long as
+`edition.json` is never changed on `main` (see [Branches and editions](DEVELOPER_GUIDE.md#branches-and-editions) for
+the merge). Any build can be made API-only with `COURSELINE_EDITION=api`.
 
 ![Courseline dashboard](docs/screenshots/dashboard.png)
 
@@ -32,7 +32,7 @@ not have. Merging `dev` into `main` keeps
   or start a new message to a course's teachers and classmates (in a class of thousands too: it shows the 30 most
   likely, people you've written with first, and searches the whole class as you type). The sidebar shows how many conversations are unread;
   with a token, opening one marks it read. Works with a
-  token and, on `dev`, with the extension.
+  token and, on `extension-edition`, with the extension.
 - **Communities as one news feed.** The Canvas spaces you belong to besides your classes (library, student life, your
   degree's own space…) get their own sidebar item: every post from all of them in one feed, newest first, with a count
   of new posts, and a directory that says which have news. Hide the ones you don't care about; each opens as a single
@@ -56,7 +56,7 @@ not have. Merging `dev` into `main` keeps
 
 ## Screenshots
 
-Screenshots use made-up course data, signed in with a token, so they look the same on `main` and `dev`.
+Screenshots use made-up course data, signed in with a token, so they look the same on `main` and `extension-edition`.
 
 | Course pages and modules in one view | Grades: trend, percentile, class median, what-if |
 |---|---|
@@ -77,7 +77,7 @@ Developer documentation (architecture, every file, how to change anything, known
 
 ## Use it without a token
 
-> **`dev` branch only.** The API-token edition on `main` has no extension support; check out `dev` to use this.
+> **`extension-edition` branch only.** The API-token edition on `main` has no extension support; check out `extension-edition` to use this.
 
 ![The sidebar's Extension item opened: up to date, 2 of 2 courses synced, Sync now, and how current each kind of data is](docs/screenshots/extension-status.png)
 
@@ -129,7 +129,7 @@ npm run dev               # prints the address, usually http://localhost:5173
 **Or just double-click `start-courseline.command`** (macOS; or run `./start-courseline.command`). It finds a Node 22.13+
 on its own, starts the server on <http://localhost:5173> (it does not open a tab; add `OPEN=1` if you want it to); run it
 again and it says it is already running. Stop it with Ctrl-C. It uses port 5173 only,
-or the one you give with `PORT=5174` (on `dev` the browser extension talks to 5173-5180 and 4173), so it stops with a
+or the one you give with `PORT=5174` (on `extension-edition` the browser extension talks to 5173-5180 and 4173), so it stops with a
 message if something else has that port, rather than moving to another one.
 
 If you start it with `npm run dev` and port 5173 is busy, Vite moves to the next one and prints it. Use the address it prints.
@@ -146,7 +146,7 @@ because Tailwind 4 uses modern CSS.
 | `npm run build` | Typecheck, then a production bundle in `dist/` |
 | `npm run preview` | Serves the built `dist/` locally |
 | `npm run test:watch` | Tests, re-run on every save |
-| `npm run e2e` | (`dev` only; not on `main`) A real Chrome with the extension, a mock Canvas and the running app: start `npm run dev` first; set `CHROME_PATH` if Chrome is not in `/Applications` |
+| `npm run e2e` | (`extension-edition` only; not on `main`) A real Chrome with the extension, a mock Canvas and the running app: start `npm run dev` first; set `CHROME_PATH` if Chrome is not in `/Applications` |
 
 ### Environment (`.env`)
 
@@ -155,7 +155,7 @@ because Tailwind 4 uses modern CSS.
 | `VITE_CANVAS_BASE_URL` | Your school's Canvas address, e.g. `https://myschool.instructure.com`. Pre-fills the login form and is the dev proxy's target. |
 | `VITE_CANVAS_API_TOKEN` | Optional. Skips the login screen. Leave it empty unless you understand the security note below. |
 | `VITE_USE_DEV_PROXY` | `true` sends all Canvas calls through the Vite dev server. Needed if your school blocks browser requests (CORS), and **required for file previews at schools that do**. Restart `npm run dev` after changing it. |
-| `COURSELINE_EDITION` | `api` makes this build the API-token edition (token sign-in only; the app ignores the extension), even on `dev`. Also works from the shell, e.g. `COURSELINE_EDITION=api npm run build`. Tests ignore it. |
+| `COURSELINE_EDITION` | `api` makes this build the API-token edition (token sign-in only; the app ignores the extension), even on `extension-edition`. Also works from the shell, e.g. `COURSELINE_EDITION=api npm run build`. Tests ignore it. |
 
 ### Get a Canvas API token
 
@@ -185,7 +185,7 @@ in to Canvas).
 - The token is only ever sent to the Canvas address you entered, over https (an `http://` address is upgraded), and
   never to file storage or any other host. Instructor HTML is sanitized before display; spreadsheet cells and
   messages are shown as plain text (links only when they are http or https).
-- (`dev` only) The browser extension keeps nothing until you save your Canvas address, never saves credentials, email addresses
+- (`extension-edition` only) The browser extension keeps nothing until you save your Canvas address, never saves credentials, email addresses
   or capability links, and only takes commands from the Courseline app running on `localhost`. It sends a message only
   after a click on Send in Courseline, and reads your messages only when you open Messages there. The full list of known
   risks is in [DEVELOPER_GUIDE.md §9](DEVELOPER_GUIDE.md#9-security-model).
@@ -194,7 +194,7 @@ in to Canvas).
 
 In day-to-day use by the author on real school courses. Covered by automated tests: the API client (pagination, error
 mapping, downloads, file upload), grade calculation, HTML sanitizing, the data cache, accent colors, the submission
-form, messages, spreadsheet formatting, the system clock, the API-token edition's sign-in, the app's extension mode (on both branches), the browser extension's own logic (on `dev`, where `extension/` is), and a smoke test that renders every screen except Messages against a fake Canvas. On `dev`, `npm run e2e` also drives the extension in a real Chrome against a mock Canvas. The screens and the file viewer were also checked in a real browser, in light and dark mode and at phone width.
+form, messages, spreadsheet formatting, the system clock, the API-token edition's sign-in, the app's extension mode (on both branches), the browser extension's own logic (on `extension-edition`, where `extension/` is), and a smoke test that renders every screen except Messages against a fake Canvas. On `extension-edition`, `npm run e2e` also drives the extension in a real Chrome against a mock Canvas. The screens and the file viewer were also checked in a real browser, in light and dark mode and at phone width.
 
 Canvas installations differ a little between schools. If you use this at a new school, try a submission on a throwaway
 assignment first. If your school's file storage refuses browser uploads, the app says so and points you to "Submit in
@@ -236,5 +236,5 @@ free for commercial use.
 npm run typecheck && npm test && npm run build
 ```
 
-All three must pass (CI runs them on every push to `main` and on every pull request; pushes to `dev` are not checked). Read
+All three must pass (CI runs them on every push to `main` and on every pull request; pushes to `extension-edition` are not checked). Read
 [DEVELOPER_GUIDE.md § Conventions](DEVELOPER_GUIDE.md#12-conventions) first.
