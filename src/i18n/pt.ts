@@ -103,7 +103,7 @@ export const pt: Record<string, string> = {
   'Canvas → Account → Settings → “+ New Access Token”. See the README.': 'Canvas → Conta → Configurações → “+ Novo token de acesso”. Veja o README.',
   'Checking…': 'Verificando…',
   'Sign in': 'Entrar',
-  '⚠️ The token is saved in this browser’s localStorage. Only use this on a device you trust, and revoke it in Canvas when done.': '⚠️ O token fica salvo no localStorage deste navegador. Use apenas em um dispositivo de confiança e revogue-o no Canvas ao terminar.',
+  '⚠️ The token is saved encrypted in this browser. Only use this on a device you trust, and revoke it in Canvas when done.': '⚠️ O token fica salvo criptografado neste navegador. Use apenas em um dispositivo de confiança e revogue-o no Canvas ao terminar.',
   'No due date': 'Sem data de entrega',
   'Opening viewer…': 'Abrindo o visualizador…',
   'Excused': 'Dispensada',
