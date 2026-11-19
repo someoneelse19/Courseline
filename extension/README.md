@@ -3,11 +3,11 @@
 Saves the Canvas data your own browsing loads, so the Courseline app can show it without an access token. Plain
 JavaScript, no build step: load this folder as an unpacked extension.
 
-**For the `dev` branch only.** The API-token edition on `main` does not have this folder, and its app never looks for
+**For the `extension-edition` branch only.** The API-token edition on `main` does not have this folder, and its app never looks for
 or talks to the extension: the build leaves out `<meta name="courseline-app">`, so even an installed `bridge.js`
-ignores the page. Use `dev` (and no `COURSELINE_EDITION=api`) with the extension.
+ignores the page. Use `extension-edition` (and no `COURSELINE_EDITION=api`) with the extension.
 
-**Install:** `chrome://extensions` → Developer mode → Load unpacked → this folder. Then open Courseline (on `dev`:
+**Install:** `chrome://extensions` → Developer mode → Load unpacked → this folder. Then open Courseline (on `extension-edition`:
 `npm run dev`, <http://localhost:5173>) and follow Settings → Connection (or type your Canvas address in the extension's
 popup).
 

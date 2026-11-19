@@ -1,7 +1,7 @@
 # Testing the extension by hand
 
 Unit tests cover the logic (`npm test`). These steps cover what only a real browser shows. Do them after any change to
-`inject.js`, `relay.js`, `bridge.js`, `background.js`, `popup.*` or the manifest, on the `dev` branch: the API-token
+`inject.js`, `relay.js`, `bridge.js`, `background.js`, `popup.*` or the manifest, on the `extension-edition` branch: the API-token
 edition on `main` never talks to the extension (see the last safety check).
 
 ## Load it
@@ -19,7 +19,7 @@ edition on `main` never talks to the extension (see the last safety check).
 3. **Health** has no non-zero "Unexpected format" count.
 
 ## Signing in from the app
-1. On `dev`, start the app (`npm run dev`) and open `http://localhost:5173` while signed out (log out; a private window
+1. On `extension-edition`, start the app (`npm run dev`) and open `http://localhost:5173` while signed out (log out; a private window
    only works if the extension is allowed in Incognito and you sign in to Canvas in that window too).
 2. The login page shows **Your Canvas address**. Type your school's address and press **Connect and load my courses**.
 3. A panel appears at the bottom right of the page and shows each page loading in the background. No window opens.
@@ -133,7 +133,7 @@ edition on `main` never talks to the extension (see the last safety check).
   `addEventListener('message', (e) => e.data?.source === 'courseline-extension' && console.log(e.data))`, then
   `postMessage({ source: 'courseline-app', id: 't1', type: 'sendMessage', request: { kind: 'reply', conversationId: 1, body: 'test' } }, location.origin)`.
   The answer is `ok: false` with "A message is only sent from a click on Send in Courseline." and no tab opens.
-- The API-token edition ignores the extension: on `main` (or `COURSELINE_EDITION=api npm run dev` on `dev`), with the
+- The API-token edition ignores the extension: on `main` (or `COURSELINE_EDITION=api npm run dev` on `extension-edition`), with the
   extension still loaded, the login page shows only the token form, the sidebar has no **Extension** item, Settings has
   no extension setup, the page has no `<meta name="courseline-app">`, and
   `document.documentElement.dataset.courselineExtension` is `undefined`.
