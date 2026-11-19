@@ -1,11 +1,13 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
-import { useUnreadCount, useVisibleCourses } from '../hooks/useCanvasData';
+import { useCommunities, useCommunityNews, useUnreadCount, useVisibleCourses } from '../hooks/useCanvasData';
+import { newCount, useHiddenCommunities } from '../lib/communities';
+import { useSeenAll } from '../lib/seen';
 import { API_ONLY } from '../edition';
 import { ExtensionStatus } from './ExtensionStatus';
 import { CourseIcon, navIcons } from './icons';
 import { Spinner } from './ui';
-import { t } from '../i18n';
+import { t, tn } from '../i18n';
 
 // Layout: Dashboard (+ cross-course views) at the top, your courses in the middle,
 // Settings pinned to the bottom. Fixed column on desktop, slide-over drawer on mobile.
@@ -17,6 +19,26 @@ const item = (active: boolean) =>
       ? 'bg-accent-50 text-accent-700 dark:bg-accent-950 dark:text-accent-300'
       : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800'
   }`;
+
+/** Small count pill on a sidebar row. */
+function CountBadge({ n, label }: { n: number; label: string }) {
+  return (
+    <span className="ml-auto min-w-5 rounded-full bg-accent-600 px-1.5 text-center text-[11px] font-semibold leading-5 text-white">
+      <span aria-hidden>{n > 99 ? '99+' : n}</span>
+      <span className="sr-only">{label}</span>
+    </span>
+  );
+}
+
+/** New posts across the communities the student has not hidden. */
+function useCommunityNewCount(): number {
+  const { data: communities } = useCommunities();
+  const ids = useMemo(() => (communities ?? []).map((c) => c.id), [communities]);
+  const { data: news } = useCommunityNews(ids);
+  const { hidden } = useHiddenCommunities();
+  const seenOf = useSeenAll();
+  return (news ?? []).reduce((sum, n) => sum + (hidden.has(n.courseId) ? 0 : newCount(n.posts, seenOf(n.courseId, 'announcements'))), 0);
+}
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { data: courses, error } = useVisibleCourses();
@@ -32,6 +54,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, [refetchUnread]);
+  const communityNew = useCommunityNewCount();
   const { pathname } = useLocation();
   const currentCourseId = pathname.match(/^\/courses\/(\d+)/)?.[1];
 
@@ -61,12 +84,12 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           <NavLink to="/messages" className={({ isActive }) => item(isActive)}>
             {navIcons.messages}
             <span className="truncate">{t('Messages')}</span>
-            {!!unread && (
-              <span className="ml-auto min-w-5 rounded-full bg-accent-600 px-1.5 text-center text-[11px] font-semibold leading-5 text-white">
-                <span aria-hidden>{unread > 99 ? '99+' : unread}</span>
-                <span className="sr-only">{t('{n} unread', { n: unread })}</span>
-              </span>
-            )}
+            {!!unread && <CountBadge n={unread} label={t('{n} unread', { n: unread })} />}
+          </NavLink>
+          <NavLink to="/communities" className={({ isActive }) => item(isActive)}>
+            {navIcons.communities}
+            <span className="truncate">{t('Communities')}</span>
+            {!!communityNew && <CountBadge n={communityNew} label={tn(communityNew, '{n} new post', '{n} new posts')} />}
           </NavLink>
 
           <h3 className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">{t('Courses')}</h3>

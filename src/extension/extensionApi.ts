@@ -434,6 +434,9 @@ export function mailFrom(records: readonly CapturedRecord[]): Map<number, MailEn
 }
 
 /** Teachers, TAs and classmates of a course, from its People page (the class list the page loaded). */
+/** The record the extension leaves once it has read a course's whole class list (extension/background.js loadPeopleViaTab). */
+export const PEOPLE_COMPLETE = 'peopleComplete';
+
 export function peopleFrom(records: readonly CapturedRecord[], courseId: number): Recipient[] {
   const out = new Map<number, Recipient>();
   for (const r of records) {
@@ -1314,11 +1317,15 @@ function extensionInternals(fullSnapshot: Snapshot, onIssue: IssueSink) {
     },
 
     // From the People page the extension saw (identifying fields are never kept, so no email or student id).
+    // Whoever Canvas's People page loaded, unless the student had the extension read the whole list ("Load everyone",
+    // which leaves a PEOPLE_COMPLETE record): Canvas's page loads its list in batches as it is scrolled, so a big
+    // class is usually cut short. `everyone` cannot be asked of captured data; the People tab asks the extension.
     getCoursePeople: async (courseId: number) => {
       const found = peopleFrom(snapshot.records, courseId);
       if (!found.length && hidden(courseId, 'people')) throw hiddenByCanvas(sectionName.people);
       const rank = { teacher: 0, ta: 1, student: 2 } as Record<string, number>;
-      return [...found].sort((a, b) => (rank[a.role ?? 'student'] ?? 2) - (rank[b.role ?? 'student'] ?? 2) || a.name.localeCompare(b.name));
+      const people = [...found].sort((a, b) => (rank[a.role ?? 'student'] ?? 2) - (rank[b.role ?? 'student'] ?? 2) || a.name.localeCompare(b.name));
+      return { people, complete: !!ds.newest(PEOPLE_COMPLETE, courseId), more: false };
     },
 
     getCourseRecipients: async (courseId: number) => {

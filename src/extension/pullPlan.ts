@@ -73,6 +73,25 @@ export function planCourse(host: string, course: CourseRef, depth: Depth = 'ever
   return pages.map(([path, label]) => ({ url: `https://${host}/courses/${course.id}${path ? `/${path}` : ''}`, label: `${courseName(course)} · ${t(label)}` }));
 }
 
+// What a community is read from: its news, resources and forum. No grades or assignments pages (nothing is graded),
+// and no account pages: this runs on its own, apart from the course sync.
+const COMMUNITY_PAGES: Array<[string, string]> = [
+  ['', 'Home'],
+  ['announcements', 'Announcements'],
+  ['modules', 'Units'],
+  ['pages', 'Pages'],
+  ['discussion_topics', 'Discussions'],
+];
+
+export function planCommunities(host: string, communities: CourseRef[]): PullStep[] {
+  return communities.flatMap((c) =>
+    COMMUNITY_PAGES.filter(([path]) => !isHidden(c, path)).map(([path, label]) => ({
+      url: `https://${host}/courses/${c.id}${path ? `/${path}` : ''}`,
+      label: `${courseName(c)} · ${t(label)}`,
+    })),
+  );
+}
+
 // The pages that make Canvas load each kind of data shown in the status bar, first choice first. When a course's own
 // tab for it is hidden, the next page that still carries it is used (the Grades page lists the assignments; the course
 // home has the front page).

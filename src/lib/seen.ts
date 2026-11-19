@@ -60,6 +60,12 @@ export function useSeen(courseId: number, kind: SeenKind): SeenRecord | undefine
   return useSyncExternalStore(subscribe, get);
 }
 
+/** Every seen record, kept current, as a lookup: for screens that span many courses (the communities feed). */
+export function useSeenAll(): (courseId: number, kind: SeenKind) => SeenRecord | undefined {
+  const store = useSyncExternalStore(subscribe, read);
+  return useCallback((courseId, kind) => store[keyOf(courseId, kind)], [store]);
+}
+
 /**
  * Is this item new? Not seen here, not marked read in Canvas, and not older than the record (an older item that turns
  * up later, say from a page the extension had not captured yet, was already there). Canvas's own "unread" always counts.

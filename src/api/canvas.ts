@@ -1,6 +1,11 @@
 // Canvas endpoints. One small function per resource; add new features here.
 import { CanvasApiError, createClient, type ClientConfig } from './client';
-import type { Assignment, AssignmentGroup, CoursePerson, Conversation, Course, CourseFile, DiscussionTopic, MailScope, Module, ModuleItem, NewMessage, Page, Quiz, QuizQuestion, QuizSubmission, Recipient, Submission, UpcomingEvent, UserProfile } from './types';
+import type { Assignment, AssignmentGroup, CourseRoster, Conversation, Course, CourseFile, DiscussionTopic, MailScope, Module, ModuleItem, NewMessage, Page, Quiz, QuizQuestion, QuizSubmission, Recipient, Submission, UpcomingEvent, UserProfile } from './types';
+
+/** Students read before the People tab offers "Load everyone". */
+export const STUDENTS_FIRST = 500;
+/** A safety valve even for "everyone": 1,000 pages of 100. */
+const PEOPLE_SAFETY_MAX = 100_000;
 
 export function createCanvasApi(config: ClientConfig) {
   const client = createClient(config);
@@ -289,14 +294,25 @@ export function createCanvasApi(config: ClientConfig) {
      * student id (sis_user_id, else login_id) come only when this Canvas lets students see them; many do not (the
      * school's permissions read_sis / view_user_logins), and then they are simply absent.
      */
-    getCoursePeople: async (courseId: number): Promise<CoursePerson[]> => {
-      const users = await client.getAll<{ id: number; name: string; sortable_name?: string; avatar_url?: string; email?: string; login_id?: string; sis_user_id?: string; enrollments?: Array<{ type: string }> }>(`/courses/${courseId}/users`, {
-        enrollment_type: ['teacher', 'ta', 'student'],
-        include: ['enrollments', 'email', 'avatar_url'],
-      });
+    /**
+     * A course's teachers, TAs and students. A university-wide course can have tens of thousands of students, so unless
+     * `everyone` is set only the first STUDENTS_FIRST students are read (`more` says Canvas has others). Teachers and
+     * TAs are read apart and always in full, so they are never the ones cut off.
+     */
+    getCoursePeople: async (courseId: number, everyone = false): Promise<CourseRoster> => {
+      type User = { id: number; name: string; sortable_name?: string; avatar_url?: string; email?: string; login_id?: string; sis_user_id?: string; enrollments?: Array<{ type: string }> };
+      const path = `/courses/${courseId}/users`;
+      const include = ['enrollments', 'email', 'avatar_url'];
+      const [staff, students] = await Promise.all([
+        client.getAll<User>(path, { enrollment_type: ['teacher', 'ta'], include }),
+        client.getUpTo<User>(path, { enrollment_type: ['student'], include }, everyone ? PEOPLE_SAFETY_MAX : STUDENTS_FIRST),
+      ]);
       const roleOf = (types: string[]) => (types.includes('TeacherEnrollment') ? 'teacher' : types.includes('TaEnrollment') ? 'ta' : 'student');
       const rank = { teacher: 0, ta: 1, student: 2 } as Record<string, number>;
-      return users
+      // Someone in both lists (a TA who is also enrolled as a student) is listed once, by their staff role.
+      const byId = new Map<number, User>();
+      for (const u of [...students.items, ...staff]) byId.set(u.id, { ...u, enrollments: [...(byId.get(u.id)?.enrollments ?? []), ...(u.enrollments ?? [])] });
+      const people = [...byId.values()]
         .map((u) => ({
           id: u.id,
           name: u.name,
@@ -308,6 +324,7 @@ export function createCanvasApi(config: ClientConfig) {
         }))
         .sort((a, b) => rank[a.role] - rank[b.role] || a.sortable.localeCompare(b.sortable))
         .map(({ sortable: _sortable, ...p }) => p);
+      return { people, complete: !students.more, more: students.more };
     },
 
     postSubmissionComment: (courseId: number, assignmentId: number, userId: number, text: string) =>

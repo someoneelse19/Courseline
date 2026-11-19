@@ -8,14 +8,25 @@
 //   - connect-src https:: the Canvas address is typed in by the user, so any https host has to be reachable; this
 //     does not stop a script from sending data to an https site.
 // Closing those two needs a backend (see the security model in DEVELOPER_GUIDE.md).
+/** What an allowed embed is: a video player, or a page made to be embedded (it may have links and a search box). */
+export interface Embed {
+  kind: 'video' | 'page';
+  /** The addresses on that host that are the embeddable player or widget. */
+  path: RegExp;
+}
+
 /**
- * Video players instructors embed in Canvas pages, and the player addresses on each. An iframe is kept in Canvas HTML
- * only when it is one of these (components/HtmlContent.tsx), and frames may load only from these hosts.
+ * Frames instructors embed in Canvas pages that Courseline shows inline (components/HtmlContent.tsx), by origin. Frames
+ * may load only from these hosts; any other embed is shown as a link to it instead.
  */
-export const VIDEO_EMBEDS: Record<string, RegExp> = {
-  'https://player.vimeo.com': /^\/video\/\d+\/?$/,
-  'https://www.youtube.com': /^\/embed\/[\w-]+\/?$/,
-  'https://www.youtube-nocookie.com': /^\/embed\/[\w-]+\/?$/,
+export const EMBEDS: Record<string, Embed> = {
+  'https://player.vimeo.com': { kind: 'video', path: /^\/video\/\d+\/?$/ },
+  'https://www.youtube.com': { kind: 'video', path: /^\/embed\/[\w-]+\/?$/ },
+  'https://www.youtube-nocookie.com': { kind: 'video', path: /^\/embed\/[\w-]+\/?$/ },
+  // LibGuides (Springshare LibApps): library research guides, served from one API host per region.
+  ...Object.fromEntries(
+    ['eu', 'us', 'ca', 'au'].map((region): [string, Embed] => [`https://lgapi-${region}.libapps.com`, { kind: 'page', path: /^\/widgets?(?:_c)?\.php$/ }]),
+  ),
 };
 
 export function contentSecurityPolicy(dev: boolean): string {
@@ -30,7 +41,7 @@ export function contentSecurityPolicy(dev: boolean): string {
     "font-src 'self' data: blob: https://cdn.jsdelivr.net",
     `connect-src ${connect.join(' ')}`,
     "worker-src 'self' blob:",
-    `frame-src 'self' ${Object.keys(VIDEO_EMBEDS).join(' ')}`,
+    `frame-src 'self' ${Object.keys(EMBEDS).join(' ')}`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

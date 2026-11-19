@@ -9,6 +9,8 @@ import { PullProvider } from './context/PullContext';
 import { setLanguage } from './i18n';
 import { ThemeProvider } from './context/ThemeContext';
 import { installFetch, json, type Call } from './test/fakeFetch';
+import { resetHiddenCommunities } from './lib/communities';
+import { resetSeen } from './lib/seen';
 
 // Smoke test for the screens: every route renders against a small fake Canvas, through the real providers,
 // cache and lazy-loaded pages. It checks the screens come up with their data, not how they look.
@@ -126,16 +128,93 @@ describe('screens', () => {
     ['/courses/1/announcements', ['Midterm moved', 'Prof Rivera', 'Week 2 questions']],
     ['/courses/1/export', ['AI export', 'Scan course']],
     ['/courses/1/grades', ['Current grade', 'Grade over time', 'Labs']],
-    ['/courses/1/people', ['People', 'Prof Rivera', 'Teacher', 'Message']],
+    ['/courses/1/people', ['People', 'Prof Rivera', 'Everyone 1', 'Teachers 1', 'Message']],
     ['/courses/1/assignments/5', ['Instructions', 'rubric.pdf', 'Nice work']],
     ['/courses/1/assignments/5/submission', ['Your submission', '8 / 10', 'My lab']],
     ['/calendar', ['Calendar', 'Today']],
+    ['/communities', ['Communities', 'No communities.']],
     ['/settings', ['Appearance', 'Accent color']],
     ['/settings?tab=courses', ['Choose your courses', '1 of 1 selected', 'Course order, colors and icons']],
     ['/nowhere', ['Page not found']],
   ])('%s', async (at, texts) => {
     await show(at);
     await until(...texts);
+  }, 15_000);
+});
+
+describe('communities', () => {
+  const library = { id: 2, name: 'Biblioteca Campus Madrid', enrollments: [enrollment] };
+  const calculus2 = { id: 3, name: 'CÁLCULO II (2026PBOK001108M1100)', start_at: '2026-09-01T00:00:00Z', enrollments: [enrollment] };
+  const hours = { id: 301, title: 'Extended opening hours', message: '<p>Open until 23:00</p>', posted_at: new Date(Date.now() - 86_400_000).toISOString(), read_state: 'unread', author: { display_name: 'Library' } };
+  const forum = { id: 302, title: 'Study groups', message: '<p>Find a group</p>', posted_at: '2026-10-01T10:00:00Z', discussion_subentry_count: 4 };
+  const home = { page_id: 9, url: 'home', title: 'Welcome to the library', body: '<p>Opening hours and loans</p>', front_page: true };
+  const community: Record<string, unknown> = {
+    // Library is a community; Calculus II is next semester's class, not chosen yet.
+    '/api/v1/courses': [course, library, calculus2],
+    '/api/v1/courses/2': library,
+    '/api/v1/courses/2/pages': [home],
+    '/api/v1/courses/2/modules': [],
+    '/api/v1/courses/2/assignments': [],
+    '/api/v1/courses/2/files': [],
+  };
+  beforeEach(() => {
+    // localStorage is cleared before each test, but these keep a copy in memory.
+    resetSeen();
+    resetHiddenCommunities();
+    localStorage.setItem('courseline.selected-courses', JSON.stringify([1]));
+    ({ calls } = installFetch((c) => {
+      const p = path(c);
+      if (p === '/api/v1/courses/2/discussion_topics') return json(c.url.searchParams.get('only_announcements') === 'true' ? [hours] : [forum]);
+      return p in community ? json(community[p]) : p in routes ? json(routes[p]) : undefined;
+    }));
+  });
+
+  it('the hub: one feed with the news of every community, and a directory', async () => {
+    await show('/communities');
+    await until('Latest news', 'Extended opening hours', 'New', 'Your communities', 'Biblioteca Campus Madrid');
+    expect(host.querySelector('a[href="/communities/2"]')).not.toBeNull();
+    // Biology is one of the student's courses, not a community: no news fetched for it here.
+    expect(host.querySelector('a[href="/communities/1"]')).toBeNull();
+    // Next semester's class is listed apart, not as a community, and its news is not read.
+    await until('Classes not in your list (1)');
+    expect(host.querySelector('a[href="/communities/3"]')).toBeNull();
+    expect(host.querySelector('a[href="/courses/3"]')?.textContent).toBe('CÁLCULO II (2026PBOK001108M1100)');
+    expect(calls.some((c) => path(c).startsWith('/api/v1/courses/3/'))).toBe(false);
+  }, 15_000);
+
+  it('a community: news, resources and discussions on one page, with no grade', async () => {
+    await show('/communities/2');
+    await until('News', 'Extended opening hours', 'Resources', 'Opening hours and loans', 'Discussions', 'Study groups');
+    expect(host.textContent).not.toContain('Current grade');
+    expect(host.textContent).not.toContain('Activities'); // it has no assignments
+    expect(host.querySelector('a[href="https://school.test/courses/2"]')).not.toBeNull();
+  }, 15_000);
+
+  it('the sidebar counts new community posts', async () => {
+    await show('/');
+    await until('Welcome, Sam');
+    const link = [...host.querySelectorAll('aside a')].find((a) => a.textContent?.startsWith('Communities'))!;
+    await until('1 new post');
+    expect(link.textContent).toContain('1');
+  }, 15_000);
+});
+
+describe('people in a huge course', () => {
+  it('shows the first 500 students, then everyone after a click on Load everyone', async () => {
+    // A course of 700 students in pages of 100, and its teacher.
+    installFetch((c) => {
+      if (path(c) !== '/api/v1/courses/1/users') return path(c) in routes ? json(routes[path(c)]) : undefined;
+      if (c.url.searchParams.getAll('enrollment_type[]').includes('teacher')) return json([{ id: 7, name: 'Prof Rivera', enrollments: [{ type: 'TeacherEnrollment' }] }]);
+      const n = Number(c.url.searchParams.get('page') ?? 0);
+      const body = Array.from({ length: 100 }, (_, i) => ({ id: 1000 + n * 100 + i, name: `Student ${n * 100 + i}`, enrollments: [{ type: 'StudentEnrollment' }] }));
+      return json(body, n < 6 ? { headers: { Link: `<https://school.test/api/v1/courses/1/users?enrollment_type[]=student&page=${n + 1}&per_page=100>; rel="next"` } } : {});
+    });
+    await show('/courses/1/people');
+    await until('Showing the first 500 students.', 'Students 500+', '501+ people');
+    const button = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Load everyone')!;
+    await act(async () => button.click());
+    await until('Students 700', '701 people');
+    expect(host.textContent).not.toContain('Load everyone');
   }, 15_000);
 });
 

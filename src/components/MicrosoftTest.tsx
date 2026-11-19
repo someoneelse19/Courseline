@@ -40,7 +40,7 @@ export function MicrosoftTest() {
     try {
       const course = courses.data?.[0];
       if (!course) throw new Error('no course to take names from');
-      const names = (await api.getCoursePeople(course.id)).filter((p) => p.id !== user?.id).slice(0, 5).map((p) => p.name);
+      const names = (await api.getCoursePeople(course.id)).people.filter((p) => p.id !== user?.id).slice(0, 5).map((p) => p.name);
       let found = 0;
       let withMail = 0;
       let idShaped = 0;

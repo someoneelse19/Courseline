@@ -6,7 +6,7 @@ import { t } from '../i18n';
 import { hiddenSections, snapshotHost, workingCourses } from '../extension/extensionApi';
 import { discoverLinks, pendingLinks, planLinks } from '../extension/linkDiscovery';
 import type { FreshnessKey } from '../extension/extensionApi';
-import { dashboardStep, planCourse, planSync, stepForAddress, stepsForKind, type CourseRef, type Depth } from '../extension/pullPlan';
+import { dashboardStep, planCommunities, planCourse, planSync, stepForAddress, stepsForKind, type CourseRef, type Depth } from '../extension/pullPlan';
 
 // Everything that opens Canvas pages goes through here. The student confirms inside the app (or the click that asked
 // for it is the confirmation), watches a live preview, and can stop at any time. The extension opens the pages one
@@ -68,6 +68,8 @@ interface PullValue {
   /** Open the internal links found in what has been captured (assignments, pages, discussions, quizzes, files). */
   requestDeepSync: () => void;
   refreshCourse: (course: CourseRef) => void;
+  /** Open the pages communities are read from (news, resources, forum), for these communities. */
+  syncCommunities: (communities: CourseRef[]) => void;
   refreshKind: (course: CourseRef | null, key: FreshnessKey, label: string) => void;
   pullAddress: (input: string) => Promise<string | null>;
   setDepth: (depth: Depth) => void;
@@ -326,6 +328,22 @@ export function PullProvider({ children }: { children: ReactNode }) {
     [request],
   );
 
+  const syncCommunities = useCallback<PullValue['syncCommunities']>(
+    (communities) =>
+      request({
+        title: communities.length === 1 ? t('Refresh {what}', { what: communities[0].name ?? t('Course {id}', { id: communities[0].id }) }) : t('Sync communities'),
+        confirm: true,
+        build: async () => {
+          const snapshot = await loadSnapshot();
+          const host = snapshot ? snapshotHost(snapshot) : null;
+          if (!snapshot || !host) throw new Error(t('Courseline does not know your Canvas address yet.'));
+          // The captured view of each community knows which of its tabs the school hides.
+          return { steps: planCommunities(host, communities.map((c) => ({ ...c, hidden: hiddenSections(snapshot, c.id) }))) };
+        },
+      }),
+    [request],
+  );
+
   const refreshKind = useCallback<PullValue['refreshKind']>(
     (course, key, label) =>
       request({
@@ -370,8 +388,8 @@ export function PullProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<PullValue>(
-    () => ({ state, running: state?.phase === 'running', request, requestSync, requestDeepSync, refreshCourse, refreshKind, pullAddress, setDepth, start, stop, close }),
-    [state, request, requestSync, requestDeepSync, refreshCourse, refreshKind, pullAddress, setDepth, start, stop, close],
+    () => ({ state, running: state?.phase === 'running', request, requestSync, requestDeepSync, refreshCourse, syncCommunities, refreshKind, pullAddress, setDepth, start, stop, close }),
+    [state, request, requestSync, requestDeepSync, refreshCourse, syncCommunities, refreshKind, pullAddress, setDepth, start, stop, close],
   );
 
   return (

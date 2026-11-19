@@ -32,6 +32,13 @@ not have. Merging `dev` into `main` keeps
   or start a new message to a course's teachers and classmates. The sidebar shows how many conversations are unread;
   with a token, opening one marks it read. Works with a
   token and, on `dev`, with the extension.
+- **Communities as one news feed.** The Canvas spaces you belong to besides your classes (library, student life, your
+  degree's own space…) get their own sidebar item: every post from all of them in one feed, newest first, with a count
+  of new posts, and a directory that says which have news. Hide the ones you don't care about; each opens as a single
+  page (posts, resources, discussions) instead of class tabs. Courseline tells classes and communities apart on its
+  own, and you can correct it.
+- **People tab in every course**, filtered by role (teachers, TAs, students) and searchable, with a Message button per
+  person. Big courses load the first 500 students; **Load everyone** reads the rest (also with the extension).
 - **Calendar and All assignments** across your chosen courses, colored by course and by status (missing, to do,
   handed in).
 - **Dark mode and a custom accent color**, your own color and icon per course, and a setting to pick which courses to
@@ -48,15 +55,17 @@ not have. Merging `dev` into `main` keeps
 
 Screenshots use made-up course data, signed in with a token, so they look the same on `main` and `dev`.
 
-| Course pages and modules in one view | Grades: trend, groups, class median, what-if |
+| Course pages and modules in one view | Grades: trend, percentile, class median, what-if |
 |---|---|
 | ![Course pages, dark mode](docs/screenshots/course-pages.png) | ![Grades page](docs/screenshots/grades.png) |
 | **Messages: conversations as chats, with attachments** | **Spreadsheet viewer: the file's own colours and borders** |
 | ![Messages page with a conversation open](docs/screenshots/messages.png) | ![A colour-coded spreadsheet in the in-app viewer, dark mode](docs/screenshots/viewer-xlsx.png) |
 | **PDF viewer** | **PowerPoint viewer** |
 | ![PDF in the in-app viewer](docs/screenshots/viewer-pdf.png) | ![A slide deck in the in-app viewer](docs/screenshots/viewer-slides.png) |
-| **Calendar, colored by course and status** | |
-| ![Calendar](docs/screenshots/calendar.png) | |
+| **Calendar, colored by course and status** | **Communities: every community's news in one feed** |
+| ![Calendar](docs/screenshots/calendar.png) | ![Communities: one news feed and a directory with new-post counts](docs/screenshots/communities.png) |
+| **One community on one page** | **People tab: role filters, search, message anyone** |
+| ![A community's page: its news and resources](docs/screenshots/community.png) | ![A course's People tab](docs/screenshots/people.png) |
 
 Developer documentation (architecture, every file, how to change anything, known gaps):
 **[DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md)**.
@@ -82,7 +91,8 @@ It works in Chrome, Arc, Edge, Brave and other Chromium browsers.
 What it can and cannot do: it shows courses, assignments, grades (Canvas's own total when its Grades page shows one for the
 whole course, that is in a course without grading periods or with "All grading periods" chosen, and no newer score has
 been seen since; otherwise worked out from the scores it saw and marked as an estimate), units, pages,
-announcements, discussions and the syllabus. Some of that Canvas builds into the page instead of loading it (the Grades
+announcements, discussions, the syllabus, your communities' news (the Communities screen's Sync button) and class
+lists (**Load everyone** on a People tab reads the whole list). Some of that Canvas builds into the page instead of loading it (the Grades
 page, the course home page, the syllabus), and the extension reads it from the page too. **Messages** work too: when you open
 Messages in Courseline, the extension reads your inbox, your sent folder and their threads from a Canvas tab it opens in
 the background (read-only, nothing is marked read, at most every two minutes; visiting Canvas's own Inbox adds to it),

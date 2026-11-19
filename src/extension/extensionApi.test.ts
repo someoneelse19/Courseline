@@ -707,6 +707,14 @@ describe('people to write to, from a course\'s People page', () => {
     expect(peopleFrom([people], 9)).toEqual([{ id: 6, name: 'Al Helper', role: 'ta' }, { id: 7, name: 'Classmate', role: 'student' }, { id: 5, name: 'Zoe Prof', role: 'teacher' }]);
     expect(peopleFrom([people], 8)).toEqual([]);
   });
+
+  it('the People tab: complete only once the extension has read the whole list', async () => {
+    const page = Object.assign(rec('other', 9, [{ id: 7, name: 'Classmate', enrollments: [{ type: 'StudentEnrollment' }] }], T0, 'https://school.test/api/v1/courses/9/users'), { route: 'GET /courses/:id/users' });
+    expect(await createExtensionApi(snap([page])).getCoursePeople(9)).toMatchObject({ complete: false, more: false });
+    const marker = rec('peopleComplete', 9, { count: 1, pages: 1 }, T0 + 1, 'https://school.test/courses/9/users');
+    const roster = await createExtensionApi(snap([page, marker])).getCoursePeople(9);
+    expect(roster).toEqual({ people: [{ id: 7, name: 'Classmate', role: 'student' }], complete: true, more: false });
+  });
 });
 
 describe('a thread opened in Canvas\'s Inbox, and its newest message from the list', () => {

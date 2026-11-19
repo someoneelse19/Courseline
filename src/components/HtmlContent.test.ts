@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isCanvasFileLink, isVideoEmbed, sanitize } from './HtmlContent';
+import { embedKind, isCanvasFileLink, sanitize } from './HtmlContent';
 
 const BASE = 'https://school.test';
 const dom = (html: string) => {
@@ -17,8 +17,29 @@ describe('sanitize: untrusted instructor HTML', () => {
     expect(out).toContain('hi');
   });
 
-  it('removes iframes and objects', () => {
-    expect(sanitize('<iframe src="https://evil.test"></iframe><object data="x"></object><embed src="x">', BASE).trim()).toBe('');
+  it('removes objects, and shows an embed from an unknown host as a link to it, not a frame', () => {
+    expect(sanitize('<object data="x"></object><embed src="x">', BASE).trim()).toBe('');
+    const root = dom(sanitize('<iframe src="https://forms.example.test/f/1" title="Sign-up form" onload="x()"></iframe>', BASE));
+    expect(root.querySelector('iframe')).toBeNull();
+    const a = root.querySelector('a.canvas-embed')!;
+    expect(a.getAttribute('href')).toBe('https://forms.example.test/f/1');
+    expect(a.textContent).toBe('Sign-up form');
+    expect(a.getAttribute('rel')).toBe('noopener noreferrer');
+    // No title: says where it comes from. A Canvas-relative one points at Canvas.
+    expect(dom(sanitize('<iframe src="/courses/1/external_tools/retrieve?url=x"></iframe>', BASE)).querySelector('a')?.textContent).toBe('Embedded content from school.test');
+  });
+
+  it('keeps an embedded LibGuides page, sandboxed, with a link to open it in a new tab', () => {
+    // As a course page embeds its library guide (Nov 13, 2026).
+    const guide =
+      '<iframe style="width: 100%; height: 800px;" title="" src="https://lgapi-eu.libapps.com/widget_c.php?site_id=24840&amp;widget_type=9&amp;output_format=3&amp;widget_embed_type=1&amp;guide_id=728860&amp;enable_navigation=1&amp;content_type_id=1&amp;config_id=1771861828743" loading="lazy" allowfullscreen="allowfullscreen" allow="geolocation *; microphone *; camera *; midi *; encrypted-media *; autoplay *; clipboard-write *; display-capture *"></iframe>';
+    const root = dom(sanitize(guide, BASE));
+    const frame = root.querySelector('iframe')!;
+    expect(frame.getAttribute('src')).toContain('https://lgapi-eu.libapps.com/widget_c.php?site_id=24840');
+    expect(frame.getAttribute('sandbox')).toContain('allow-forms');
+    expect(frame.getAttribute('allow')).not.toMatch(/geolocation|camera|microphone/);
+    expect(frame.getAttribute('style')).toContain('height: 800px');
+    expect(root.querySelector('a.canvas-embed-open')?.getAttribute('href')).toBe(frame.getAttribute('src'));
   });
 
   it('keeps an embedded video player from a known host, sandboxed, and nothing else that looks like one', () => {
@@ -74,14 +95,17 @@ describe('sanitize: links', () => {
   });
 });
 
-describe('isVideoEmbed', () => {
-  it('accepts Vimeo and YouTube players only', () => {
-    expect(isVideoEmbed('https://player.vimeo.com/video/42?h=abc')).toBe(true);
-    expect(isVideoEmbed('https://www.youtube.com/embed/dQw4w9WgXcQ')).toBe(true);
-    expect(isVideoEmbed('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?start=10')).toBe(true);
-    expect(isVideoEmbed('https://vimeo.com/42')).toBe(false);
-    expect(isVideoEmbed('https://user:pw@player.vimeo.com/video/42')).toBe(false);
-    expect(isVideoEmbed(null)).toBe(false);
+describe('embedKind', () => {
+  it('knows the Vimeo and YouTube players and LibGuides widgets, and nothing else', () => {
+    expect(embedKind('https://player.vimeo.com/video/42?h=abc')).toBe('video');
+    expect(embedKind('https://www.youtube.com/embed/dQw4w9WgXcQ')).toBe('video');
+    expect(embedKind('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?start=10')).toBe('video');
+    expect(embedKind('https://lgapi-eu.libapps.com/widget_c.php?site_id=1')).toBe('page');
+    expect(embedKind('https://lgapi-us.libapps.com/widgets.php?site_id=1')).toBe('page');
+    expect(embedKind('https://lgapi-eu.libapps.com/admin.php')).toBeNull();
+    expect(embedKind('https://vimeo.com/42')).toBeNull();
+    expect(embedKind('https://user:pw@player.vimeo.com/video/42')).toBeNull();
+    expect(embedKind(null)).toBeNull();
   });
 });
 
