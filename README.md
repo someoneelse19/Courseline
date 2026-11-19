@@ -69,6 +69,8 @@ Screenshots use made-up course data, signed in with a token, so they look the sa
 | ![Calendar](docs/screenshots/calendar.png) | ![Communities: one news feed and a directory with new-post counts](docs/screenshots/communities.png) |
 | **One community on one page** | **People tab: role filters, search, message anyone** |
 | ![A community's page: its news and resources](docs/screenshots/community.png) | ![A course's People tab](docs/screenshots/people.png) |
+| **Tools: a course's quizzes and external tools, opening in a new tab** | |
+| ![A course's Tools tab: quizzes with their scores, and the attendance tool](docs/screenshots/tools.png) | |
 
 Developer documentation (architecture, every file, how to change anything, known gaps):
 **[DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md)**.
