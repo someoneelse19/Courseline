@@ -55,15 +55,17 @@ not have. Merging `dev` into `main` keeps
 
 Screenshots use made-up course data, signed in with a token, so they look the same on `main` and `dev`.
 
-| Course pages and modules in one view | Grades: trend, groups, class median, what-if |
+| Course pages and modules in one view | Grades: trend, percentile, class median, what-if |
 |---|---|
 | ![Course pages, dark mode](docs/screenshots/course-pages.png) | ![Grades page](docs/screenshots/grades.png) |
 | **Messages: conversations as chats, with attachments** | **Spreadsheet viewer: the file's own colours and borders** |
 | ![Messages page with a conversation open](docs/screenshots/messages.png) | ![A colour-coded spreadsheet in the in-app viewer, dark mode](docs/screenshots/viewer-xlsx.png) |
 | **PDF viewer** | **PowerPoint viewer** |
 | ![PDF in the in-app viewer](docs/screenshots/viewer-pdf.png) | ![A slide deck in the in-app viewer](docs/screenshots/viewer-slides.png) |
-| **Calendar, colored by course and status** | |
-| ![Calendar](docs/screenshots/calendar.png) | |
+| **Calendar, colored by course and status** | **Communities: every community's news in one feed** |
+| ![Calendar](docs/screenshots/calendar.png) | ![Communities: one news feed and a directory with new-post counts](docs/screenshots/communities.png) |
+| **One community on one page** | **People tab: role filters, search, message anyone** |
+| ![A community's page: its news and resources](docs/screenshots/community.png) | ![A course's People tab](docs/screenshots/people.png) |
 
 Developer documentation (architecture, every file, how to change anything, known gaps):
 **[DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md)**.
